@@ -1,0 +1,22 @@
+Scans for hosts on a specified network using arp.
+Scans for open ports on a particular host
+
+subcommands:
+1. scan
+2. find
+3. wifi
+
+gohunter find --network 192.168.22.0/24  	(sends arp requests for all hosts on network.)
+gohunter find --host 192.168.22.100            
+gohunter find --iface eth0
+
+gohunter scan --network 192.168.22.0/24		(scans for open ports 1-999)
+gohunter scan --list targets.txt
+gohunter scan --host 192.168.22.100 --port 22
+gohunter scan --host 192.168.22.100 --port-range 90-100
+
+
+other options:
+--verbose
+
+
