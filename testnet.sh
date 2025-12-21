@@ -19,10 +19,15 @@ remove() {
     fi
 }
 
-if [ "$1" == "remove" ]; then
-    remove
-else
-    make
-fi
-
+case "$1" in 
+    "remove")
+	remove
+	;;
+    "")
+	make
+	;;
+    *)
+	echo "Unknown command: $1. To make a test network run with no arguments"
+	;;
+esac
 
