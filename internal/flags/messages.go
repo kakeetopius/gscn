@@ -29,6 +29,7 @@ Available Options:
   -H, --host			An IPv4 address of a host to find on the network.
   -n, --network			A network address with subnet mask in CIDR notation eg 10.10.10.1/24.
   -i, --iface			A network interface to scan hosts from. Can be used instead of --network
+  -t, --timeout			Amount of time in seconds to wait for responses. Default is 5 seconds.
   -h, --help			Show this help message.
 `
 	fmt.Println(message)

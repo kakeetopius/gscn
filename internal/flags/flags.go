@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/spf13/pflag"
 	"github.com/kakeetopius/gohunter/internal/net/find"
 	"github.com/kakeetopius/gohunter/internal/net/scan"
+	"github.com/spf13/pflag"
 )
 
 type Runner func(map[string]string) error
@@ -60,6 +60,7 @@ func findArgParser(opts []string) (map[string]string, int, error) {
 	netStr := findFs.StringP("network", "n", "", "")
 	hostStr := findFs.StringP("host", "H", "", "")
 	ifaceStr := findFs.StringP("iface", "i", "", "")
+	timeout := findFs.StringP("timeout", "t", "", "")
 
 	if len(opts) < 2 {
 		findFs.Usage()
@@ -87,6 +88,9 @@ func findArgParser(opts []string) (map[string]string, int, error) {
 	}
 	if findFs.Changed("iface") {
 		argValues["iface"] = *ifaceStr
+	}
+	if findFs.Changed("timeout") {
+		argValues["timeout"] = *timeout
 	}
 
 	return argValues, 0, nil
@@ -138,7 +142,6 @@ func scanArgParser(opts []string) (map[string]string, int, error) {
 	}
 	if scanFs.Changed("port-range") {
 		argValues["port-range"] = *portRangeStr
-		argValues["list"] = *list
 	}
 
 	return argValues, 0, nil
