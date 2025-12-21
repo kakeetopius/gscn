@@ -1,4 +1,4 @@
-//Package scan is used to get various network information about hosts on a network.
+// Package scan is used to get various network information about hosts on a network.
 package scan
 
 import (
