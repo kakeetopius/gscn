@@ -1,6 +1,7 @@
 .PHONY:clean
-
 .DEFAULT_GOAL := build
+
+BINDIR := bin
 
 build: | $(BINDIR)
 	@go build -o bin . 
