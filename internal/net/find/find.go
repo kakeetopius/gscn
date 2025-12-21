@@ -6,6 +6,11 @@ import (
 )
 
 func RunFind(opts map[string]string) error {
-	fmt.Println("Discovering Hosts.....")
+	fmt.Println("Discovering Host(s).....")
+
+	err := runArp(opts)
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
 	return nil
 }
