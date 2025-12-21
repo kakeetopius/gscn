@@ -5,6 +5,7 @@ make() {
     docker run  -d --name alpine-$i --network testnet alpine:latest sleep infinity
     done
     echo -e "\nNetwork address of test network is 172.16.22.0/24"
+	echo "Run testnet.sh remove to clean up"
 }
 
 remove() {
