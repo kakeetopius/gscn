@@ -5,8 +5,8 @@ import (
 )
 
 func GeneralUsage() {
-	message := 
-`Usage: gohunter [COMMAND] [OPTIONS]
+	message :=
+		`Usage: gohunter [COMMAND] [OPTIONS]
 
 Available Commands:
   find					discover hosts on a network.
@@ -20,8 +20,8 @@ Use gohunter <COMMAND> --help or -h to get more information about a command.
 }
 
 func findUsage() {
-	message := 
-`Usage of find:  gohunter find [OPTIONS]
+	message :=
+		`Usage of find:  gohunter find [OPTIONS]
 
 gohunter find discovers hosts on the network using ARP for IPv4 network and ICMP Neighbor discovery for IPv6. 
 
@@ -36,8 +36,8 @@ Available Options:
 }
 
 func scanUsage() {
-	message := 
-`Usage of scan:  gohunter scan [OPTIONS]
+	message :=
+		`Usage of scan:  gohunter scan [OPTIONS]
 
 gohunter scan determines information about hosts connected on a network for example open ports.
 

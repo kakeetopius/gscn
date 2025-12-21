@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 make() {
+    docker network create --subnet 172.16.22.0/24 testnet
     for i in {1..10}; do
-    docker run  -d --name netshoot-$i --network test nicolaka/netshoot sleep infinity
+    docker run  -d --name alpine-$i --network testnet alpine:latest sleep infinity
     done
+    echo -e "\nNetwork address of test network is 172.16.22.0/24"
 }
 
 remove() {
-    docker rm -f $(docker ps -q --filter name=netshoot-)
+    toremove=$(docker ps -q --filter name=alpine-)
+    if [ -n "$toremove" ]; then
+	docker rm -f $toremove
+    fi
+    toremove=$(docker network ls -q --filter name=testnet)
+    if [ -n "$toremove" ]; then
+	docker network rm "$toremove"
+    fi
 }
 
 if [ "$1" == "remove" ]; then

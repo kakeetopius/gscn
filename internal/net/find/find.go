@@ -1,4 +1,4 @@
-//Package find is used to discover hosts on a network using ARP for IPv4 or ICMP Neigbour Discovery for IPv6.
+// Package find is used to discover hosts on a network using ARP for IPv4 or ICMP Neigbour Discovery for IPv6.
 package find
 
 import (
