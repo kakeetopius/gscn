@@ -158,7 +158,7 @@ func sendArptoHosts(prefix *netip.Prefix, iface *IfaceDetails, responseTimeout t
 	}
 	bar.Stop()
 
-	WaitTimeout(responseTimeout*time.Second, "response")
+	WaitTimeout(responseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
