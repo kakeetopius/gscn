@@ -107,9 +107,13 @@ func runArp(opts map[string]string, flags int) error {
 	return nil
 }
 
-func sendArptoHosts(prefix *netip.Prefix, iface *IfaceDetails, responseTimeout time.Duration) ([]Results, error) {
-	networkAddress := prefix.Masked()
+func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout time.Duration) ([]Results, error) {
+	addHostIP := false
+	networkAddress := network.Masked()
 
+	if network.Contains(iface.ifaceIP) {
+		addHostIP = true
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -130,9 +134,9 @@ func sendArptoHosts(prefix *netip.Prefix, iface *IfaceDetails, responseTimeout t
 	resultsChan := make(chan []Results)
 	startSending := make(chan struct{})
 
-	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits()))) - 2
-
-	pterm.Info.Println("Sending ARP packets on interface: " + iface.Name)
+	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits())))
+	
+	pterm.Info.Println("Probing host(s) on interface: " + iface.Name)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		fmt.Println(err)
@@ -141,20 +145,20 @@ func sendArptoHosts(prefix *netip.Prefix, iface *IfaceDetails, responseTimeout t
 	go getARPReplies(ctx, iface, &networkAddress, resultsChan, startSending)
 
 	<-startSending // wait for packet receiving go routine to finish setup.
-
-	IPaddr := networkAddress.Addr().Next() // get the first IP in subnet
-	addHostIP := false
-	for i := 1; i <= numHosts; i++ {
-		if IPaddr == iface.ifaceIP {
-			addHostIP = true
+	IPaddr := networkAddress.Addr()
+	for network.Contains(IPaddr) {
+		if IPaddr == iface.ifaceIP { // skip interfaces' own ip
+			bar.Increment()
+			IPaddr = IPaddr.Next()
+			continue
 		} else {
 			err = sendArpPacket(iface, &IPaddr, &socketinfo)
+			if err != nil {
+				fmt.Println(err)
+			}
+			bar.Increment()
+			IPaddr = IPaddr.Next()
 		}
-		bar.Increment()
-		if err != nil {
-			fmt.Println(err)
-		}
-		IPaddr = IPaddr.Next()
 	}
 	bar.Stop()
 
@@ -164,7 +168,7 @@ func sendArptoHosts(prefix *netip.Prefix, iface *IfaceDetails, responseTimeout t
 
 	if addHostIP {
 		results = append(results, Results{
-			ipAddr:  iface.ipStrWithoutMask,
+			ipAddr:  iface.ipStrWithoutMask + " (this host)",
 			macAddr: iface.macStr,
 		})
 	}
@@ -250,6 +254,11 @@ func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *net
 						continue
 					}
 					if !expectedPrefix.Contains(ipAddr) {
+						//skip responses outside the specified network
+						continue
+					}
+					if ipAddr == iface.ifaceIP {
+						//skip responses from the capturing interface to other devices.
 						continue
 					}
 					packetsReceived++
