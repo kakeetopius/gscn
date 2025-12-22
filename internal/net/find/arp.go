@@ -20,19 +20,46 @@ type socketInfo struct {
 	socketAddr *syscall.SockaddrLinklayer
 }
 
-func runArp(opts map[string]string) error {
+type Results struct {
+	ipAddr   string
+	macAddr  string
+	hostName string
+}
+
+var (
+	packetsSent = 0
+	packetsReceived = 0
+)
+
+func runArp(opts map[string]string, flags int) error {
 	var iface *net.Interface
 	var err error
 	var responseTimeout time.Duration
 	var ipwithMask string
 
 	hostIPStr, hostfound := opts["host"]
+	netStr, netfound := opts["network"]
+	ifaceName, ifacefound := opts["iface"]
+
+	if ifacefound {
+		iface, err = net.InterfaceByName(ifaceName)
+		if err != nil {
+			return err
+		}
+	}
+
 	if hostfound {
 		ipwithMask = fmt.Sprintf("%v/%v", hostIPStr, 32)
-	}
-	netStr, netfound := opts["network"]
-	if netfound {
+	} else if netfound {
 		ipwithMask = netStr
+	} else if ifacefound && ipwithMask == "" {
+		ipAddr, addrerr := iface.Addrs()
+		if addrerr != nil {
+			return err
+		}
+		ipwithMask = ipAddr[0].String()
+	} else {
+		return fmt.Errorf("no ip(s) or interface to scan given")
 	}
 
 	prefix, err := netip.ParsePrefix(ipwithMask)
@@ -40,15 +67,9 @@ func runArp(opts map[string]string) error {
 		return err
 	}
 
-	ifaceName, found := opts["iface"]
-	if !found {
+	if !ifacefound {
 		addr := prefix.Addr()
 		iface, err = getDevIface(&addr)
-		if err != nil {
-			return err
-		}
-	} else {
-		iface, err = net.InterfaceByName(ifaceName)
 		if err != nil {
 			return err
 		}
@@ -56,19 +77,28 @@ func runArp(opts map[string]string) error {
 
 	timeout, found := opts["timeout"]
 	if !found {
-		responseTimeout = 5
+		responseTimeout = 2
 	} else {
-		timeout, err := strconv.Atoi(timeout)
-		if err != nil {
-			return err
+		timeout, timeouterr := strconv.Atoi(timeout)
+		if timeouterr != nil {
+			return timeouterr
 		}
 		responseTimeout = time.Duration(timeout)
 	}
 
-	return sendArptoHosts(&prefix, iface, responseTimeout)
+	resultSet, err := sendArptoHosts(&prefix, iface, responseTimeout)
+	if err != nil {
+		return err
+	}
+	if flags&DoReverseLookup != 0 {
+		getHostNames(resultSet)
+	}
+	displayResults(resultSet)
+	return nil
 }
 
-func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout time.Duration) error {
+
+func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout time.Duration) ([]Results, error) {
 	networkPrefix := prefix.Masked()
 
 	ctx, cancelTimeout := context.WithTimeout(context.Background(), responseTimeout*time.Second)
@@ -77,7 +107,7 @@ func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout 
 	sockfd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, htons(syscall.ETH_P_ARP))
 	if err != nil {
 		fmt.Println(err)
-		return err
+		return nil, err
 	}
 	addr := &syscall.SockaddrLinklayer{
 		Ifindex:  iface.Index,
@@ -92,7 +122,7 @@ func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout 
 	startSending := make(chan struct{})
 	go getARPReplies(ctx, iface, &networkPrefix, ipMacChan, startSending)
 
-	<-startSending //wait for packet receiving go routine to finish setup.
+	<-startSending // wait for packet receiving go routine to finish setup.
 	fmt.Printf("Sending ARP packets on interface: %v\n\n", iface.Name)
 	IPaddr := networkPrefix.Addr()
 	for networkPrefix.Contains(IPaddr) {
@@ -103,10 +133,12 @@ func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout 
 		IPaddr = IPaddr.Next()
 	}
 	ipMacMap := <-ipMacChan
+	resultSet := make([]Results, 0, 10)
+
 	for ip, mac := range ipMacMap {
-		fmt.Printf("%v:        %v\n", ip, mac)
+		resultSet = append(resultSet, Results{ipAddr: ip, macAddr: mac})
 	}
-	return nil
+	return resultSet, nil
 }
 
 func sendArpPacket(iface *net.Interface, dstIP *netip.Addr, sockinfo *socketInfo) error {
@@ -130,7 +162,7 @@ func sendArpPacket(iface *net.Interface, dstIP *netip.Addr, sockinfo *socketInfo
 		AddrType:        layers.LinkTypeEthernet,
 		Protocol:        layers.EthernetTypeIPv4,
 		HwAddressSize:   6,
-		ProtAddressSize: 6,
+		ProtAddressSize: 4,
 
 		SourceHwAddress:   iface.HardwareAddr,
 		SourceProtAddress: ifaceIP.To4(),
@@ -153,6 +185,7 @@ func sendArpPacket(iface *net.Interface, dstIP *netip.Addr, sockinfo *socketInfo
 	packetBytes := buf.Bytes()
 
 	syscall.Sendto(sockinfo.socketFD, packetBytes, 0, sockinfo.socketAddr)
+	packetsSent++
 	return nil
 }
 
@@ -194,6 +227,7 @@ func getARPReplies(ctx context.Context, iface *net.Interface, expectedPrefix *ne
 					if !expectedPrefix.Contains(ipAddr) {
 						continue
 					}
+					packetsReceived++
 					mac := net.HardwareAddr(arpPacket.SourceHwAddress)
 					ipMacMap[ipAddr.String()] = mac.String()
 				}
@@ -227,6 +261,23 @@ func getDevIface(toFind *netip.Addr) (*net.Interface, error) {
 	}
 
 	return nil, fmt.Errorf("no non-loopback interface connected to that network")
+}
+
+func displayResults(resultSet []Results) {
+	for _, result := range resultSet {
+		fmt.Printf("%v %v          %v\n", result.ipAddr, result.hostName, result.macAddr)
+	}
+	fmt.Println("\nPackets Sent: ", packetsSent)
+	fmt.Println("Packets Received: ", packetsReceived)
+}
+
+func getHostNames(resultSet []Results) {
+	for i := range resultSet {
+		names, err := net.LookupAddr(resultSet[i].ipAddr)
+		if err == nil && len(names) > 0 {
+			resultSet[i].hostName = names[0]
+		}
+	}
 }
 
 func htons(num int) int {

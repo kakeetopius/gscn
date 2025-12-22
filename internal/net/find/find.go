@@ -5,10 +5,17 @@ import (
 	"fmt"
 )
 
-func RunFind(opts map[string]string) error {
+const (
+	DoReverseLookup = 1 << iota
+)
+
+func RunFind(opts map[string]string, flags int) error {
 	fmt.Println("Discovering Host(s).....")
 
-	err := runArp(opts)
+	if len(opts) < 1 {
+		fmt.Println("No options provided")
+	}
+	err := runArp(opts, flags)
 	if err != nil {
 		fmt.Println("Error: ", err)
 	}

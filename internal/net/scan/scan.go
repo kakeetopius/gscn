@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func RunScan(opts map[string]string) error {
+func RunScan(opts map[string]string, flags int) error {
 	fmt.Println("Scanning Hosts.....")
 	return nil
 }
