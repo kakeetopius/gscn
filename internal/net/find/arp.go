@@ -27,7 +27,7 @@ type Results struct {
 }
 
 var (
-	packetsSent = 0
+	packetsSent     = 0
 	packetsReceived = 0
 )
 
@@ -69,10 +69,16 @@ func runArp(opts map[string]string, flags int) error {
 
 	if !ifacefound {
 		addr := prefix.Addr()
+		//finding an interface to which the given ip or network is connected to
 		iface, err = getDevIface(&addr)
 		if err != nil {
 			return err
 		}
+	}
+
+	err = verifyInterface(iface)
+	if err != nil {
+		return err
 	}
 
 	timeout, found := opts["timeout"]
@@ -96,7 +102,6 @@ func runArp(opts map[string]string, flags int) error {
 	displayResults(resultSet)
 	return nil
 }
-
 
 func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout time.Duration) ([]Results, error) {
 	networkPrefix := prefix.Masked()
@@ -123,8 +128,9 @@ func sendArptoHosts(prefix *netip.Prefix, iface *net.Interface, responseTimeout 
 	go getARPReplies(ctx, iface, &networkPrefix, ipMacChan, startSending)
 
 	<-startSending // wait for packet receiving go routine to finish setup.
+
 	fmt.Printf("Sending ARP packets on interface: %v\n\n", iface.Name)
-	IPaddr := networkPrefix.Addr()
+	IPaddr := networkPrefix.Addr() //get the first IP in subnet
 	for networkPrefix.Contains(IPaddr) {
 		err = sendArpPacket(iface, &IPaddr, &socketinfo)
 		if err != nil {
@@ -184,7 +190,10 @@ func sendArpPacket(iface *net.Interface, dstIP *netip.Addr, sockinfo *socketInfo
 
 	packetBytes := buf.Bytes()
 
-	syscall.Sendto(sockinfo.socketFD, packetBytes, 0, sockinfo.socketAddr)
+	err = syscall.Sendto(sockinfo.socketFD, packetBytes, 0, sockinfo.socketAddr)
+	if err != nil {
+		return err
+	}
 	packetsSent++
 	return nil
 }
@@ -278,6 +287,17 @@ func getHostNames(resultSet []Results) {
 			resultSet[i].hostName = names[0]
 		}
 	}
+}
+
+func verifyInterface(iface *net.Interface) error {
+	if iface.Flags&net.FlagLoopback != 0 {
+		return fmt.Errorf("cannot scan on a loopback interface")
+	} else if iface.Flags&net.FlagUp == 0 {
+		return fmt.Errorf("interface %v is administratively down", iface.Name)
+	} else if iface.Flags&net.FlagRunning == 0 {
+		return fmt.Errorf("interface %v is not running", iface.Name)
+	}
+	return nil
 }
 
 func htons(num int) int {
