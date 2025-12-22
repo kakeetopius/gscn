@@ -9,8 +9,8 @@ func GeneralUsage() {
 		`Usage: gohunter [COMMAND] [OPTIONS]
 
 Available Commands:
-  find					discover hosts on a network.
-  scan					Scan hosts on a network.
+  find					Discover hosts on a local network.
+  scan					Scan hosts on a any network.
   wifi					Do various operations on a WiFi network.
   help					Show this help message.
 
@@ -23,7 +23,7 @@ func findUsage() {
 	message :=
 		`Usage of find:  gohunter find [OPTIONS]
 
-gohunter find discovers hosts on the network using ARP for IPv4 network and ICMP Neighbor discovery for IPv6. 
+gohunter find discovers hosts on the local network using ARP for IPv4 network and ICMP Neighbor discovery for IPv6. 
 
 Available Options:
   -n, --network			A network address with subnet mask in CIDR notation eg 10.10.10.1/24.
