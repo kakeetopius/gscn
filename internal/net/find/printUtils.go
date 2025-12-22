@@ -32,12 +32,15 @@ func displayResults(resultSet []Results, withHostNames bool) {
 	fmt.Println("Packets Received: ", packetsReceived)
 }
 
-func WaitTimeout(timeout time.Duration, timeoutReason string) {
+func WaitTimeout(seconds time.Duration, timeoutReason string) {
+	if seconds < 1 {
+		return
+	}
 	spinner, err := pterm.DefaultSpinner.Start("Waiting for "+timeoutReason, " timeout")
 	if err != nil {
 		fmt.Println(err)
 	}
-	time.Sleep(timeout)
+	time.Sleep(seconds * time.Second)
 	spinner.Success("Timeout Reached.")
 }
 
