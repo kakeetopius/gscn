@@ -30,6 +30,7 @@ func displayResults(resultSet []Results, withHostNames bool) {
 	}
 	fmt.Println("\nPackets Sent: ", packetsSent)
 	fmt.Println("Packets Received: ", packetsReceived)
+	fmt.Println("Hosts Found: ", len(resultSet))
 }
 
 func WaitTimeout(seconds time.Duration, timeoutReason string) {
