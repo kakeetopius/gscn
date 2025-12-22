@@ -2,7 +2,9 @@
 package find
 
 import (
-	"fmt"
+
+	"github.com/pterm/pterm"
+	"github.com/kakeetopius/gohunter/internal/utils"
 )
 
 const (
@@ -10,14 +12,13 @@ const (
 )
 
 func RunFind(opts map[string]string, flags int) error {
-	fmt.Println("Discovering Host(s).....")
-
 	if len(opts) < 1 {
-		fmt.Println("No options provided")
+		pterm.Error.Println("No options given. Run gohunter find -h for more details.")
 	}
 	err := runArp(opts, flags)
 	if err != nil {
-		fmt.Println("Error: ", err)
+		pterm.Error.Println(utils.GetErrString(err))
 	}
 	return nil
 }
+
