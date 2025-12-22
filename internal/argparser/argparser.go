@@ -1,40 +1,15 @@
-// Package flags provides command-line parsing utilites for subcommands
-package flags
+// Package argparser provides command-line parsing utilites for subcommands
+package argparser
 
 import (
 	"errors"
 	"fmt"
 
 	"github.com/kakeetopius/gohunter/internal/net/find"
-	"github.com/kakeetopius/gohunter/internal/net/scan"
 	"github.com/spf13/pflag"
 )
 
-type Runner func(map[string]string) error
-
-type Command struct {
-	Name      string
-	Arguments map[string]string
-	Flags     int
-	argParser func([]string) (map[string]string, int, error)
-	cmdRun    Runner
-}
-
-var commands = map[string]Command{
-	"find": {Name: "find", argParser: findArgParser, cmdRun: find.RunFind},
-	"scan": {Name: "scan", argParser: scanArgParser, cmdRun: scan.RunScan},
-}
-
 var ErrHelp = errors.New("user requested help")
-
-func (c *Command) Run() {
-	c.cmdRun(c.Arguments)
-}
-
-func (c *Command) addArgs(args map[string]string, flags int) {
-	c.Arguments = args
-	c.Flags = flags
-}
 
 func ParseArgs(args []string) (Command, error) {
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -56,10 +31,12 @@ func ParseArgs(args []string) (Command, error) {
 func findArgParser(opts []string) (map[string]string, int, error) {
 	findFs := pflag.NewFlagSet("find", pflag.ContinueOnError)
 	findFs.Usage = findUsage
+	flags := 0
 
 	netStr := findFs.StringP("network", "n", "", "")
 	hostStr := findFs.StringP("host", "H", "", "")
 	ifaceStr := findFs.StringP("iface", "i", "", "")
+	reverseLookup := findFs.BoolP("reverse", "r", false, "")
 	timeout := findFs.StringP("timeout", "t", "", "")
 
 	if len(opts) < 2 {
@@ -79,7 +56,7 @@ func findArgParser(opts []string) (map[string]string, int, error) {
 		return nil, 0, fmt.Errorf("unexpected argument(s): %v", findFs.Args())
 	}
 
-	argValues := make(map[string]string, 3)
+	argValues := make(map[string]string, 4)
 	if findFs.Changed("network") {
 		argValues["network"] = *netStr
 	}
@@ -93,7 +70,10 @@ func findArgParser(opts []string) (map[string]string, int, error) {
 		argValues["timeout"] = *timeout
 	}
 
-	return argValues, 0, nil
+	if *reverseLookup {
+		flags |= find.DoReverseLookup
+	}
+	return argValues, flags, nil
 }
 
 func scanArgParser(opts []string) (map[string]string, int, error) {

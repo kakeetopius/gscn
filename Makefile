@@ -6,8 +6,11 @@ BINDIR := bin
 build: | $(BINDIR)
 	@go build -o bin . 
 
+install: build
+	sudo cp bin/gohunter /usr/local/bin/
+
 clean:
-	@rm -rf bin
+	@rm -rf $(BINDIR)
 
 $(BINDIR):
 	@mkdir -p $@
