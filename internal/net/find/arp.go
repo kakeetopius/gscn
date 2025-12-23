@@ -59,6 +59,9 @@ func runArp(opts map[string]string, flags int) error {
 		if addrerr != nil {
 			return err
 		}
+		if (len(ipAddr) < 1) {
+			return fmt.Errorf("interface %v has no IP addresses", iface.Name)
+		}
 		ipwithMask = ipAddr[0].String()
 	} else {
 		return fmt.Errorf("no ip(s) or interface to scan given")

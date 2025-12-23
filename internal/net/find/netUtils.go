@@ -65,6 +65,9 @@ func verifyInterface(iface *net.Interface) (*IfaceDetails, error) {
 		return nil, err
 	}
 
+	if (len(ifaceAddrs) < 1) {
+		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
+	}
 	ifaceAddr, err := netip.ParsePrefix(ifaceAddrs[0].String())
 	if err != nil {
 		return nil, err
