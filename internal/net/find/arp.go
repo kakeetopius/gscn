@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/google/gopacket"
@@ -15,11 +14,12 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gohunter/internal/utils"
 	"github.com/pterm/pterm"
+	"golang.org/x/sys/unix"
 )
 
 type socketInfo struct {
 	socketFD   int
-	socketAddr *syscall.SockaddrLinklayer
+	socketAddr *unix.SockaddrLinklayer
 }
 
 type Results struct {
@@ -59,7 +59,7 @@ func runArp(opts map[string]string, flags int) error {
 		if addrerr != nil {
 			return err
 		}
-		if (len(ipAddr) < 1) {
+		if len(ipAddr) < 1 {
 			return fmt.Errorf("interface %v has no IP addresses", iface.Name)
 		}
 		ipwithMask = ipAddr[0].String()
@@ -120,14 +120,14 @@ func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sockfd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, utils.Htons(syscall.ETH_P_ARP))
+	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, utils.Htons(unix.ETH_P_ARP))
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
 	}
-	addr := &syscall.SockaddrLinklayer{
+	addr := &unix.SockaddrLinklayer{
 		Ifindex:  iface.Index,
-		Protocol: uint16(utils.Htons(syscall.ETH_P_ARP)),
+		Protocol: uint16(utils.Htons(unix.ETH_P_ARP)),
 	}
 	socketinfo := socketInfo{
 		socketFD:   sockfd,
@@ -138,7 +138,7 @@ func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout 
 	startSending := make(chan struct{})
 
 	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits())))
-	
+
 	pterm.Info.Println("Probing host(s) on interface: " + iface.Name)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
@@ -212,7 +212,7 @@ func sendArpPacket(iface *IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo)
 
 	packetBytes := buf.Bytes()
 
-	err = syscall.Sendto(sockinfo.socketFD, packetBytes, 0, sockinfo.socketAddr)
+	err = unix.Sendto(sockinfo.socketFD, packetBytes, 0, sockinfo.socketAddr)
 	if err != nil {
 		return err
 	}
@@ -257,11 +257,11 @@ func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *net
 						continue
 					}
 					if !expectedPrefix.Contains(ipAddr) {
-						//skip responses outside the specified network
+						// skip responses outside the specified network
 						continue
 					}
 					if ipAddr == iface.ifaceIP {
-						//skip responses from the capturing interface to other devices.
+						// skip responses from the capturing interface to other devices.
 						continue
 					}
 					packetsReceived++
