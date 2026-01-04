@@ -237,7 +237,7 @@ func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *net
 	packetChan := packetSource.Packets()
 
 	results := make([]Results, 0, 15)
-	receivedFrom := make(map[netip.Addr]bool) // to keep track of which IPs we have got replies from
+	receivedFrom := make(map[netip.Addr]struct{}) // to keep track of which IPs we have got replies from
 
 	startSendChan <- struct{}{}
 	for {
@@ -269,7 +269,7 @@ func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *net
 					if alreadyReceived {
 						continue
 					}
-					receivedFrom[ipAddr] = true
+					receivedFrom[ipAddr] = struct{}{}
 					results = append(results, Results{
 						ipAddr:  ipAddr.String(),
 						macAddr: net.HardwareAddr(arpPacket.SourceHwAddress).String(),
