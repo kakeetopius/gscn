@@ -12,7 +12,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/kakeetopius/gohunter/internal/utils"
+	"github.com/kakeetopius/gscn/internal/utils"
 	"github.com/pterm/pterm"
 	"golang.org/x/sys/unix"
 )
@@ -104,7 +104,7 @@ func runArp(opts map[string]string, flags int) error {
 	printWithHostNames := false
 	if flags&DoReverseLookup != 0 {
 		printWithHostNames = true
-		getHostNames(resultSet)
+		getHostNames(resultSet, responseTimeout)
 	}
 	displayResults(resultSet, printWithHostNames)
 	return nil

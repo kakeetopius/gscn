@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kakeetopius/gohunter/internal/net/find"
+	"github.com/kakeetopius/gscn/internal/net/find"
 	"github.com/spf13/pflag"
 )
 
@@ -37,6 +37,7 @@ func findArgParser(opts []string) (map[string]string, int, error) {
 	hostStr := findFs.StringP("host", "H", "", "")
 	ifaceStr := findFs.StringP("iface", "i", "", "")
 	reverseLookup := findFs.BoolP("reverse", "r", false, "")
+	ipv6 := findFs.BoolP("six", "6", false, "")
 	timeout := findFs.StringP("timeout", "t", "", "")
 
 	if len(opts) < 2 {
@@ -72,6 +73,10 @@ func findArgParser(opts []string) (map[string]string, int, error) {
 
 	if *reverseLookup {
 		flags |= find.DoReverseLookup
+	}
+	if *ipv6 {
+		flags |= find.DoIPv6AddressResolution
+		fmt.Println("Using IPv6 ND")
 	}
 	return argValues, flags, nil
 }

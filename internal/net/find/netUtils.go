@@ -1,9 +1,11 @@
 package find
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/pterm/pterm"
 )
@@ -65,7 +67,7 @@ func verifyInterface(iface *net.Interface) (*IfaceDetails, error) {
 		return nil, err
 	}
 
-	if (len(ifaceAddrs) < 1) {
+	if len(ifaceAddrs) < 1 {
 		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
 	}
 	ifaceAddr, err := netip.ParsePrefix(ifaceAddrs[0].String())
@@ -78,17 +80,23 @@ func verifyInterface(iface *net.Interface) (*IfaceDetails, error) {
 	return &ifaceDetails, nil
 }
 
-func getHostNames(resultSet []Results) {
+func getHostNames(resultSet []Results, timeout time.Duration) {
 	fmt.Println()
 	pterm.Info.Println("Trying to resolve hostnames")
 	numHosts := len(resultSet)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout*time.Second)
+	defer cancel()
+
+	resolver := net.Resolver{}
+	resolver.PreferGo = true
 
 	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
 	if err != nil {
 		fmt.Println(err)
 	}
 	for i := range resultSet {
-		names, err := net.LookupAddr(resultSet[i].ipAddr)
+		names, err := resolver.LookupAddr(ctx, resultSet[i].ipAddr)
 		if err == nil && len(names) > 0 {
 			resultSet[i].hostName = names[0]
 		}
@@ -96,4 +104,3 @@ func getHostNames(resultSet []Results) {
 	}
 	bar.Stop()
 }
-

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kakeetopius/gohunter/internal/argparser"
+	"github.com/kakeetopius/gscn/internal/argparser"
 )
 
 func main() {

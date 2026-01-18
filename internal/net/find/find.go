@@ -2,13 +2,13 @@
 package find
 
 import (
-
+	"github.com/kakeetopius/gscn/internal/utils"
 	"github.com/pterm/pterm"
-	"github.com/kakeetopius/gohunter/internal/utils"
 )
 
 const (
 	DoReverseLookup = 1 << iota
+	DoIPv6AddressResolution
 )
 
 func RunFind(opts map[string]string, flags int) error {
@@ -21,4 +21,3 @@ func RunFind(opts map[string]string, flags int) error {
 	}
 	return nil
 }
-

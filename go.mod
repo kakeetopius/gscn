@@ -1,4 +1,4 @@
-module github.com/kakeetopius/gohunter
+module github.com/kakeetopius/gscn
 
 go 1.25.5
 
