@@ -1,8 +1,8 @@
 package argparser
 
 import (
-	"github.com/kakeetopius/gohunter/internal/net/find"
-	"github.com/kakeetopius/gohunter/internal/net/scan"
+	"github.com/kakeetopius/gscn/internal/net/find"
+	"github.com/kakeetopius/gscn/internal/net/scan"
 )
 
 type Runner func(map[string]string, int) error

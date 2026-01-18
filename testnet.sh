@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 make() {
-    docker network create --subnet 172.16.22.0/24 testnet
+    docker network create --subnet 172.16.22.0/24 --ipv6 testnet
     for i in {1..10}; do
     docker run  -d --name alpine-$i --network testnet alpine:latest sleep infinity
     done
