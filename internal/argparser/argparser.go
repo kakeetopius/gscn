@@ -5,22 +5,22 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kakeetopius/gscn/internal/net/find"
+	"github.com/kakeetopius/gscn/internal/net/discover"
 	"github.com/spf13/pflag"
 )
 
 var ErrHelp = errors.New("user requested help")
 
-func ParseArgs(args []string) (Command, error) {
+func ParseArgs(args []string) (*Command, error) {
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		GeneralUsage()
-		return Command{}, ErrHelp
+		return nil, ErrHelp
 	}
 
-	inputCommand, found := commands[args[0]]
-	if !found {
+	inputCommand, err := getCommand(args[0])
+	if err != nil {
 		GeneralUsage()
-		return Command{}, fmt.Errorf("unknown subcommand: %v", args[0])
+		return nil, err
 	}
 
 	argMap, flags, err := inputCommand.argParser(args)
@@ -28,55 +28,54 @@ func ParseArgs(args []string) (Command, error) {
 	return inputCommand, err
 }
 
-func findArgParser(opts []string) (map[string]string, int, error) {
-	findFs := pflag.NewFlagSet("find", pflag.ContinueOnError)
-	findFs.Usage = findUsage
+func discoverArgParser(opts []string) (map[string]string, int, error) {
+	discoverFs := pflag.NewFlagSet("discover", pflag.ContinueOnError)
+	discoverFs.Usage = discoverUsage
 	flags := 0
 
-	netStr := findFs.StringP("network", "n", "", "")
-	hostStr := findFs.StringP("host", "H", "", "")
-	ifaceStr := findFs.StringP("iface", "i", "", "")
-	reverseLookup := findFs.BoolP("reverse", "r", false, "")
-	ipv6 := findFs.BoolP("six", "6", false, "")
-	timeout := findFs.StringP("timeout", "t", "", "")
+	netStr := discoverFs.StringP("network", "n", "", "")
+	hostStr := discoverFs.StringP("host", "H", "", "")
+	ifaceStr := discoverFs.StringP("iface", "i", "", "")
+	reverseLookup := discoverFs.BoolP("reverse", "r", false, "")
+	ipv6 := discoverFs.BoolP("six", "6", false, "")
+	timeout := discoverFs.StringP("timeout", "t", "", "")
 
 	if len(opts) < 2 {
-		findFs.Usage()
+		discoverFs.Usage()
 		return nil, 0, fmt.Errorf("no option given")
 	}
 
-	err := findFs.Parse(opts[1:])
+	err := discoverFs.Parse(opts[1:])
 	if err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
 			return nil, 0, ErrHelp
 		}
-		findFs.Usage()
+		discoverFs.Usage()
 		return nil, 0, err
 	}
-	if len(findFs.Args()) > 0 {
-		return nil, 0, fmt.Errorf("unexpected argument(s): %v", findFs.Args())
+	if len(discoverFs.Args()) > 0 {
+		return nil, 0, fmt.Errorf("unexpected argument(s): %v", discoverFs.Args())
 	}
 
 	argValues := make(map[string]string, 4)
-	if findFs.Changed("network") {
+	if discoverFs.Changed("network") {
 		argValues["network"] = *netStr
 	}
-	if findFs.Changed("host") {
+	if discoverFs.Changed("host") {
 		argValues["host"] = *hostStr
 	}
-	if findFs.Changed("iface") {
+	if discoverFs.Changed("iface") {
 		argValues["iface"] = *ifaceStr
 	}
-	if findFs.Changed("timeout") {
+	if discoverFs.Changed("timeout") {
 		argValues["timeout"] = *timeout
 	}
 
 	if *reverseLookup {
-		flags |= find.DoReverseLookup
+		flags |= discover.DoReverseLookup
 	}
 	if *ipv6 {
-		flags |= find.DoIPv6AddressResolution
-		fmt.Println("Using IPv6 ND")
+		flags |= discover.DoIPv6AddressResolution
 	}
 	return argValues, flags, nil
 }

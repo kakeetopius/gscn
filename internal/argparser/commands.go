@@ -1,7 +1,10 @@
 package argparser
 
 import (
-	"github.com/kakeetopius/gscn/internal/net/find"
+	"fmt"
+	"strings"
+
+	"github.com/kakeetopius/gscn/internal/net/discover"
 	"github.com/kakeetopius/gscn/internal/net/scan"
 )
 
@@ -15,9 +18,9 @@ type Command struct {
 	cmdRun    Runner
 }
 
-var commands = map[string]Command{
-	"find": {Name: "find", argParser: findArgParser, cmdRun: find.RunFind},
-	"scan": {Name: "scan", argParser: scanArgParser, cmdRun: scan.RunScan},
+var commands = []Command{
+	{Name: "discover", argParser: discoverArgParser, cmdRun: discover.RunDiscover},
+	{Name: "scan", argParser: scanArgParser, cmdRun: scan.RunScan},
 }
 
 func (c *Command) Run() {
@@ -27,4 +30,14 @@ func (c *Command) Run() {
 func (c *Command) addArgs(args map[string]string, flags int) {
 	c.Arguments = args
 	c.Flags = flags
+}
+
+func getCommand(commandName string) (*Command, error) {
+	for _, command := range commands {
+		if strings.HasPrefix(command.Name, commandName) {
+			return &command, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unknown command: %v", commandName)
 }

@@ -1,4 +1,4 @@
-package find
+package discover
 
 import (
 	"context"
@@ -81,7 +81,7 @@ func runArp(opts map[string]string, flags int) error {
 		}
 	}
 
-	ifaceDetails, err := verifyInterface(iface)
+	ifaceDetails, err := verifyInterface(iface, &addrWithPrefix)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout 
 
 func sendArpPacket(iface *IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
-		SrcMAC:       iface.ifaceMac,
+		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 		EthernetType: layers.EthernetTypeARP,
 	}
@@ -192,7 +192,7 @@ func sendArpPacket(iface *IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo)
 		HwAddressSize:   6,
 		ProtAddressSize: 4,
 
-		SourceHwAddress:   iface.ifaceMac,
+		SourceHwAddress:   iface.HardwareAddr,
 		SourceProtAddress: iface.ifaceIP.AsSlice(),
 
 		DstHwAddress:   net.HardwareAddr{0, 0, 0, 0, 0, 0},
