@@ -1,4 +1,4 @@
-package find
+package discover
 
 import (
 	"context"
@@ -11,13 +11,11 @@ import (
 )
 
 type IfaceDetails struct {
-	Name             string
-	Index            int
 	ifaceIP          netip.Addr
-	ifaceMac         net.HardwareAddr
 	ipStrWithMask    string
 	ipStrWithoutMask string
 	macStr           string
+	*net.Interface
 }
 
 func getDevIface(toFind *netip.Addr) (*net.Interface, error) {
@@ -47,7 +45,7 @@ func getDevIface(toFind *netip.Addr) (*net.Interface, error) {
 	return nil, fmt.Errorf("no non-loopback interface connected to that network")
 }
 
-func verifyInterface(iface *net.Interface) (*IfaceDetails, error) {
+func verifyInterface(iface *net.Interface, addrToUse *netip.Prefix) (*IfaceDetails, error) {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return nil, fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
@@ -57,23 +55,38 @@ func verifyInterface(iface *net.Interface) (*IfaceDetails, error) {
 	}
 
 	ifaceDetails := IfaceDetails{}
-	ifaceDetails.Name = iface.Name
-	ifaceDetails.ifaceMac = iface.HardwareAddr
+	ifaceDetails.Interface = iface
 	ifaceDetails.macStr = iface.HardwareAddr.String()
-	ifaceDetails.Index = iface.Index
 
 	ifaceAddrs, err := iface.Addrs()
 	if err != nil {
 		return nil, err
 	}
-
 	if len(ifaceAddrs) < 1 {
 		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
 	}
-	ifaceAddr, err := netip.ParsePrefix(ifaceAddrs[0].String())
-	if err != nil {
-		return nil, err
+
+	var ifaceAddr *netip.Prefix
+	var defaultAddr *netip.Prefix
+	for i, addr := range ifaceAddrs {
+		addr, err := netip.ParsePrefix(addr.String())
+		if err != nil {
+			return nil, err
+		}
+		if i == 0 {
+			defaultAddr = &addr
+		}
+		networkAddr := addr.Masked()
+		if networkAddr.Contains(addrToUse.Addr()) {
+			ifaceAddr = &addr
+			break
+		}
 	}
+
+	if ifaceAddr == nil {
+		ifaceAddr = defaultAddr
+	}
+
 	ifaceDetails.ifaceIP = ifaceAddr.Addr()
 	ifaceDetails.ipStrWithMask = ifaceAddr.String()
 	ifaceDetails.ipStrWithoutMask = ifaceAddr.Addr().String()

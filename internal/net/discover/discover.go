@@ -1,5 +1,5 @@
-// Package find is used to discover hosts on a network using ARP for IPv4 or ICMP Neigbour Discovery for IPv6.
-package find
+// Package discover is used to discover hosts on a network using ARP for IPv4 or ICMP Neigbour Discovery for IPv6.
+package discover
 
 import (
 	"github.com/kakeetopius/gscn/internal/utils"
@@ -11,9 +11,9 @@ const (
 	DoIPv6AddressResolution
 )
 
-func RunFind(opts map[string]string, flags int) error {
+func RunDiscover(opts map[string]string, flags int) error {
 	if len(opts) < 1 {
-		pterm.Error.Println("No options given. Run gohunter find -h for more details.")
+		pterm.Error.Println("No options given. Run gohunter disc -h for more details.")
 	}
 	err := runArp(opts, flags)
 	if err != nil {

@@ -1,4 +1,4 @@
-package find
+package discover
 
 import (
 	"fmt"
@@ -44,4 +44,3 @@ func WaitTimeout(seconds time.Duration, timeoutReason string) {
 	time.Sleep(seconds * time.Second)
 	spinner.Success("Timeout Reached.")
 }
-

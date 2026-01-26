@@ -7,25 +7,25 @@ import (
 )
 
 func GeneralUsage() {
-	message := `Usage: gscn [COMMAND] [OPTIONS]
+	message := `Usage: gscn <COMMAND> [OPTIONS]
 
-Available Commands:
-  find					Discover hosts on a local network.
-  scan					Scan hosts on a any network.
-  wifi					Do various operations on a WiFi network.
-  help					Show this help message.
+Commands:
+  disc		Discover hosts connected to the local network.
+  scan		Scan hosts on any network.
+  wifi		Do various operations on a WiFi network.
+  help		Show this help message.
 
 Use gscn <COMMAND> --help or -h to get more information about a command.
 `
 	fmt.Println(message)
 }
 
-func findUsage() {
-	message := `Usage of find:  gscn find [OPTIONS]
+func discoverUsage() {
+	message := `Usage of disc:  gscn disc [OPTIONS]
 
-gscn find discovers hosts on the local network using ARP for IPv4 network and ICMP Neighbor discovery for IPv6. 
+gscn discover discovers hosts on the local network using ARP for IPv4 network and ICMP Neighbor discovery for IPv6. 
 
-Available Options:
+Options:
   -6, --six				Use IPv6's ICMP Neighbor discovery instead of ARP.
   -n, --network				A network address with subnet mask in CIDR notation eg 10.10.10.1/24.
   -H, --host				An IPv4 address of a host to find on the network. Same effect as using a /32(for ipv4) with -n option.
@@ -40,9 +40,9 @@ Available Options:
 func scanUsage() {
 	message := `Usage of scan:  gscn scan [OPTIONS]
 
-gscn scan determines information about hosts connected on a network for example open ports.
+gscn scan determines information about hosts connected on any network for example open ports.
 
-Available Options:
+Options:
   -H, --host			An IPv4 address of a host to scan on the network.
   -n, --network			A network address with subnet mask in CIDR notation eg 10.10.10.1/24.
   -i, --iface			A network interface to scan hosts from.
