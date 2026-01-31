@@ -22,6 +22,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	var target *netip.Prefix
 	var iface *net.Interface
 	ifaceGiven := cmd.String("iface") != ""
+	useIP6 := cmd.Bool("six")
 
 	if hostIP := cmd.String("host"); hostIP != "" {
 		addr, err := netip.ParsePrefix(fmt.Sprintf("%v/%v", hostIP, 32))
@@ -56,7 +57,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		if target == nil {
-			target, err = netutils.GetFirstIfaceIP(iface)
+			target, err = netutils.GetFirstIfaceIP(iface, useIP6)
 			if err != nil {
 				return err
 			}
@@ -68,16 +69,22 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	} else if target == nil {
 		return fmt.Errorf("could not determine which address to use. Use the -n or -H or -i options")
 	}
-	opts.Interface, err = netutils.VerifyandGetIfaceDetails(iface, target)
+	opts.Interface, err = netutils.VerifyandGetIfaceDetails(iface, target, useIP6)
 	if err != nil {
 		return err
 	}
 	opts.Target = target
 	opts.Timeout = cmd.Int("timeout")
 
-	if cmd.Bool("six") {
+	if useIP6 {
+		if !target.Addr().Is6() {
+			return fmt.Errorf("the given IP address is not IPv6")
+		}
 		err = runIPv6Disc(&opts, cmd)
 	} else {
+		if !target.Addr().Is4() {
+			return fmt.Errorf("arp can only be used with IPv4 addresses")
+		}
 		err = runArp(&opts, cmd)
 	}
 	return err
