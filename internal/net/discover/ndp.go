@@ -14,13 +14,11 @@ import (
 func runIPv6Disc(opts *DiscoverOptions, cmd *cli.Command) error {
 	iface, err := net.InterfaceByName("br-5ddee015f91d")
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 	addr := &unix.SockaddrLinklayer{

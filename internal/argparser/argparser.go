@@ -66,7 +66,7 @@ func GetCommand() *cli.Command {
 					&cli.BoolFlag{
 						Name:    "six",
 						Value:   false,
-						Aliases: []string{"6"},
+						Aliases: []string{"s"},
 						Usage:   "Use IPv6's ICMP Neighbor discovery instead of ARP.",
 					},
 				},

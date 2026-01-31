@@ -77,15 +77,17 @@ func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, respons
 
 	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits())))
 
+	go getARPReplies(ctx, iface, &networkAddress, resultsChan, startSending)
+	_, ok := <-startSending // wait for packet receiving go routine to finish setup.
+	if !ok {
+		return nil, fmt.Errorf("could not capture packets on the interface")
+	}
+
 	pterm.Info.Println("Probing host(s) on interface: " + iface.Name)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
-
-	go getARPReplies(ctx, iface, &networkAddress, resultsChan, startSending)
-
-	<-startSending // wait for packet receiving go routine to finish setup.
 	IPaddr := networkAddress.Addr()
 	for network.Contains(IPaddr) {
 		if IPaddr == iface.IfaceIP { // skip interfaces' own ip
@@ -95,7 +97,7 @@ func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, respons
 		} else {
 			err = sendArpPacket(iface, &IPaddr, &socketinfo)
 			if err != nil {
-				fmt.Println(err)
+				return nil, err
 			}
 			bar.Increment()
 			IPaddr = IPaddr.Next()
@@ -161,13 +163,13 @@ func sendArpPacket(iface *netutils.IfaceDetails, dstIP *netip.Addr, sockinfo *so
 func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPrefix *netip.Prefix, resultsChan chan<- []Results, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
 	defer handle.Close()
 	err = handle.SetBPFFilter("arp")
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error setting up packet capturing interface: ", err)
+		close(startSendChan)
 		return
 	}
 
@@ -232,6 +234,7 @@ func addHostNames(resultSet []Results, timeout time.Duration) {
 	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 	for i := range resultSet {
 		names, err := resolver.LookupAddr(ctx, resultSet[i].ipAddr)
