@@ -12,6 +12,7 @@ import (
 
 var ErrHelp = errors.New("user requested help")
 
+// GetCommand returns a command struct containing the context about the command line flags and arguments the user has passed.
 func GetCommand() *cli.Command {
 	return &cli.Command{
 		Name:                  "gscn",
