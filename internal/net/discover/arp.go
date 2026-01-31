@@ -11,7 +11,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/kakeetopius/gscn/internal/utils"
+	"github.com/kakeetopius/gscn/internal/bits"
+	"github.com/kakeetopius/gscn/internal/netutils"
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sys/unix"
@@ -42,29 +43,29 @@ func runArp(opts *DiscoverOptions, cmd *cli.Command) error {
 	printWithHostNames := false
 	if cmd.Bool("reverse") {
 		printWithHostNames = true
-		getHostNames(resultSet, time.Duration(opts.Timeout))
+		addHostNames(resultSet, time.Duration(opts.Timeout))
 	}
 	displayResults(resultSet, printWithHostNames)
 	return nil
 }
 
-func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout time.Duration) ([]Results, error) {
+func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, responseTimeout time.Duration) ([]Results, error) {
 	addHostIP := false
 	networkAddress := network.Masked()
 
-	if network.Contains(iface.ifaceIP) {
+	if network.Contains(iface.IfaceIP) {
 		addHostIP = true
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, utils.Htons(unix.ETH_P_ARP))
+	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
 		return nil, err
 	}
 	addr := &unix.SockaddrLinklayer{
 		Ifindex:  iface.Index,
-		Protocol: uint16(utils.Htons(unix.ETH_P_ARP)),
+		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
 	}
 	socketinfo := socketInfo{
 		socketFD:   sockfd,
@@ -87,7 +88,7 @@ func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout 
 	<-startSending // wait for packet receiving go routine to finish setup.
 	IPaddr := networkAddress.Addr()
 	for network.Contains(IPaddr) {
-		if IPaddr == iface.ifaceIP { // skip interfaces' own ip
+		if IPaddr == iface.IfaceIP { // skip interfaces' own ip
 			bar.Increment()
 			IPaddr = IPaddr.Next()
 			continue
@@ -108,14 +109,14 @@ func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout 
 
 	if addHostIP {
 		results = append(results, Results{
-			ipAddr:  iface.ipStrWithoutMask + " (this host)",
-			macAddr: iface.macStr,
+			ipAddr:  iface.IPStrWithoutMask + " (this host)",
+			macAddr: iface.MacStr,
 		})
 	}
 	return results, nil
 }
 
-func sendArpPacket(iface *IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *netutils.IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -130,7 +131,7 @@ func sendArpPacket(iface *IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo)
 		ProtAddressSize: 4,
 
 		SourceHwAddress:   iface.HardwareAddr,
-		SourceProtAddress: iface.ifaceIP.AsSlice(),
+		SourceProtAddress: iface.IfaceIP.AsSlice(),
 
 		DstHwAddress:   net.HardwareAddr{0, 0, 0, 0, 0, 0},
 		DstProtAddress: dstIP.AsSlice(),
@@ -157,7 +158,7 @@ func sendArpPacket(iface *IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo)
 	return nil
 }
 
-func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *netip.Prefix, resultsChan chan<- []Results, startSendChan chan<- struct{}) {
+func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPrefix *netip.Prefix, resultsChan chan<- []Results, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		fmt.Println(err)
@@ -197,7 +198,7 @@ func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *net
 						// skip responses outside the specified network
 						continue
 					}
-					if ipAddr == iface.ifaceIP {
+					if ipAddr == iface.IfaceIP {
 						// skip responses from the capturing interface to other devices.
 						continue
 					}
@@ -215,4 +216,29 @@ func getARPReplies(ctx context.Context, iface *IfaceDetails, expectedPrefix *net
 			}
 		}
 	}
+}
+
+func addHostNames(resultSet []Results, timeout time.Duration) {
+	fmt.Println()
+	pterm.Info.Println("Trying to resolve hostnames")
+	numHosts := len(resultSet)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout*time.Second)
+	defer cancel()
+
+	resolver := net.Resolver{}
+	resolver.PreferGo = true
+
+	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
+	if err != nil {
+		fmt.Println(err)
+	}
+	for i := range resultSet {
+		names, err := resolver.LookupAddr(ctx, resultSet[i].ipAddr)
+		if err == nil && len(names) > 0 {
+			resultSet[i].hostName = names[0]
+		}
+		bar.Increment()
+	}
+	bar.Stop()
 }

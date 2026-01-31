@@ -7,12 +7,13 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/kakeetopius/gscn/internal/netutils"
 	"github.com/urfave/cli/v3"
 )
 
 type DiscoverOptions struct {
 	Target    *netip.Prefix
-	Interface *IfaceDetails
+	Interface *netutils.IfaceDetails
 	Timeout   int
 }
 
@@ -23,13 +24,13 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	ifaceGiven := cmd.String("iface") != ""
 
 	if hostIP := cmd.String("host"); hostIP != "" {
-		addr, err := netip.ParsePrefix(fmt.Sprintf("%v:%v", hostIP, 32))
+		addr, err := netip.ParsePrefix(fmt.Sprintf("%v/%v", hostIP, 32))
 		if err != nil {
 			return err
 		}
 		target = &addr
 		if !ifaceGiven {
-			iface, err = getIfaceByIP(target.Addr())
+			iface, err = netutils.GetIfaceByIP(target.Addr())
 			if err != nil {
 				return err
 			}
@@ -41,7 +42,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		target = &net
 		if !ifaceGiven {
-			iface, err = getIfaceByIP(target.Addr())
+			iface, err = netutils.GetIfaceByIP(target.Addr())
 			if err != nil {
 				return err
 			}
@@ -55,7 +56,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		if target == nil {
-			target, err = getFirstIfaceIP(iface)
+			target, err = netutils.GetFirstIfaceIP(iface)
 			if err != nil {
 				return err
 			}
@@ -67,7 +68,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	} else if target == nil {
 		return fmt.Errorf("could not determine which address to use. Use the -n or -H or -i options")
 	}
-	opts.Interface, err = verifyandGetIfaceDetails(iface, target)
+	opts.Interface, err = netutils.VerifyandGetIfaceDetails(iface, target)
 	if err != nil {
 		return err
 	}

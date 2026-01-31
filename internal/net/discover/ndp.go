@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/kakeetopius/gscn/internal/utils"
+	"github.com/kakeetopius/gscn/internal/bits"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sys/unix"
 )
@@ -18,14 +18,14 @@ func runIPv6Disc(opts *DiscoverOptions, cmd *cli.Command) error {
 		return err
 	}
 
-	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, utils.Htons(unix.ETH_P_ARP))
+	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 	addr := &unix.SockaddrLinklayer{
 		Ifindex:  iface.Index,
-		Protocol: uint16(utils.Htons(unix.ETH_P_ARP)),
+		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
 	}
 
 	eth := &layers.Ethernet{
