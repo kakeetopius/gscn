@@ -18,7 +18,7 @@ type IfaceDetails struct {
 	*net.Interface
 }
 
-func getDevIface(toFind *netip.Addr) (*net.Interface, error) {
+func getIfaceByIP(toFind *netip.Addr) (*net.Interface, error) {
 	allIfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func getDevIface(toFind *netip.Addr) (*net.Interface, error) {
 	return nil, fmt.Errorf("no non-loopback interface connected to that network")
 }
 
-func verifyInterface(iface *net.Interface, addrToUse *netip.Prefix) (*IfaceDetails, error) {
+func verifyandGetIfaceDetails(iface *net.Interface, addrToUse *netip.Prefix) (*IfaceDetails, error) {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return nil, fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {

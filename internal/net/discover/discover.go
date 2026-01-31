@@ -1,4 +1,4 @@
-// Package discover is used to discover hosts on a network using ARP for IPv4 or ICMP Neigbour Discovery for IPv6.
+// Package discover is used to discover hosts on a network using ARP for IPv4 or ICMPv6 Neigbour Discovery for IPv6.
 package discover
 
 import (
