@@ -2,22 +2,82 @@
 package discover
 
 import (
-	"github.com/kakeetopius/gscn/internal/utils"
-	"github.com/pterm/pterm"
+	"context"
+	"fmt"
+	"net"
+	"net/netip"
+
+	"github.com/urfave/cli/v3"
 )
 
-const (
-	DoReverseLookup = 1 << iota
-	DoIPv6AddressResolution
-)
+type DiscoverOptions struct {
+	Target    *netip.Prefix
+	Interface *IfaceDetails
+	Timeout   int
+}
 
-func RunDiscover(opts map[string]string, flags int) error {
-	if len(opts) < 1 {
-		pterm.Error.Println("No options given. Run gohunter disc -h for more details.")
+func RunDiscover(ctx context.Context, cmd *cli.Command) error {
+	var opts DiscoverOptions
+	var target *netip.Prefix
+	var iface *net.Interface
+	ifaceGiven := cmd.String("iface") != ""
+
+	if hostIP := cmd.String("host"); hostIP != "" {
+		addr, err := netip.ParsePrefix(fmt.Sprintf("%v:%v", hostIP, 32))
+		if err != nil {
+			return err
+		}
+		target = &addr
+		if !ifaceGiven {
+			iface, err = getIfaceByIP(target.Addr())
+			if err != nil {
+				return err
+			}
+		}
+	} else if netIP := cmd.String("network"); netIP != "" {
+		net, err := netip.ParsePrefix(netIP)
+		if err != nil {
+			return err
+		}
+		target = &net
+		if !ifaceGiven {
+			iface, err = getIfaceByIP(target.Addr())
+			if err != nil {
+				return err
+			}
+		}
 	}
-	err := runArp(opts, flags)
+
+	var err error
+	if ifaceName := cmd.String("iface"); ifaceName != "" {
+		iface, err = net.InterfaceByName(ifaceName)
+		if err != nil {
+			return err
+		}
+		if target == nil {
+			target, err = getFirstIfaceIP(iface)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if iface == nil {
+		return fmt.Errorf("could not determine which interface to use. Use the -n or -H or -i options")
+	} else if target == nil {
+		return fmt.Errorf("could not determine which address to use. Use the -n or -H or -i options")
+	}
+	opts.Interface, err = verifyandGetIfaceDetails(iface, target)
 	if err != nil {
-		pterm.Error.Println(utils.GetErrString(err))
+		return err
 	}
-	return nil
+	opts.Target = target
+	opts.Timeout = cmd.Int("timeout")
+
+	if cmd.Bool("six") {
+		err = runIPv6Disc(&opts, cmd)
+	} else {
+		err = runArp(&opts, cmd)
+	}
+	return err
 }

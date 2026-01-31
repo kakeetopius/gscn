@@ -18,7 +18,7 @@ type IfaceDetails struct {
 	*net.Interface
 }
 
-func getIfaceByIP(toFind *netip.Addr) (*net.Interface, error) {
+func getIfaceByIP(toFind netip.Addr) (*net.Interface, error) {
 	allIfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -36,13 +36,25 @@ func getIfaceByIP(toFind *netip.Addr) (*net.Interface, error) {
 			}
 			// converting the interface to network address and checking if the address(es) to scan are part of that network
 			addr = addr.Masked()
-			if addr.Contains(*toFind) {
+			if addr.Contains(toFind) {
 				return &iface, nil
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("no non-loopback interface connected to that network")
+	return nil, fmt.Errorf("no interface connected to that network")
+}
+
+func getFirstIfaceIP(iface *net.Interface) (*netip.Prefix, error) {
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	if len(addrs) < 1 {
+		return nil, fmt.Errorf("the interface %v has no IP addresses", iface.Name)
+	}
+	addr, err := netip.ParsePrefix(addrs[0].String())
+	return &addr, err
 }
 
 func verifyandGetIfaceDetails(iface *net.Interface, addrToUse *netip.Prefix) (*IfaceDetails, error) {

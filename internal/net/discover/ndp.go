@@ -7,10 +7,11 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/utils"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/sys/unix"
 )
 
-func runIPv6Disc() error {
+func runIPv6Disc(opts *DiscoverOptions, cmd *cli.Command) error {
 	iface, err := net.InterfaceByName("br-5ddee015f91d")
 	if err != nil {
 		fmt.Println(err)
