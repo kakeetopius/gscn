@@ -27,7 +27,7 @@ gscn discover discovers hosts on the local network using ARP for IPv4 network an
 
 Options:
   -6, --six				Use IPv6's ICMP Neighbor discovery instead of ARP.
-  -n, --network				A network address with subnet mask in CIDR notation eg 10.10.10.1/24.
+  -n, --network				A network address with subnet mask in CIDR notation eg 10.10.10.1/24. For IPv6 it queries the neighbor table of the host.
   -H, --host				An IPv4 address of a host to find on the network. Same effect as using a /32(for ipv4) with -n option.
   -i, --iface				A network interface to find neighbouring hosts from. When used the entire subnet the interface is in is scanned.
   -t, --timeout				Amount of time in seconds to wait for ARP responses. Default is 2 seconds.

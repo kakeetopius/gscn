@@ -72,16 +72,19 @@ func runArp(opts map[string]string, flags int) error {
 		return err
 	}
 
+	if !addrWithPrefix.Addr().Is4() {
+		return fmt.Errorf("ARP can only be used with IPv4 addresses")
+	}
+
 	if !ifacefound {
 		addr := addrWithPrefix.Addr()
 		// finding an interface to which the given ip or network is connected to
-		iface, err = getDevIface(&addr)
+		iface, err = getIfaceByIP(&addr)
 		if err != nil {
 			return err
 		}
 	}
-
-	ifaceDetails, err := verifyInterface(iface, &addrWithPrefix)
+	ifaceDetails, err := verifyandGetIfaceDetails(iface, &addrWithPrefix)
 	if err != nil {
 		return err
 	}
