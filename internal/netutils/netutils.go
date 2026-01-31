@@ -15,7 +15,8 @@ type IfaceDetails struct {
 	*net.Interface
 }
 
-func GetIfaceByIP(toFind netip.Addr) (*net.Interface, error) {
+// GetIfaceByIP gets an interface on the host machine that has an address which matches IPAddr.
+func GetIfaceByIP(IPAddr netip.Addr) (*net.Interface, error) {
 	allIfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -33,7 +34,7 @@ func GetIfaceByIP(toFind netip.Addr) (*net.Interface, error) {
 			}
 			// converting the interface to network address and checking if the address(es) to scan are part of that network
 			addr = addr.Masked()
-			if addr.Contains(toFind) {
+			if addr.Contains(IPAddr) {
 				return &iface, nil
 			}
 		}
@@ -42,6 +43,7 @@ func GetIfaceByIP(toFind netip.Addr) (*net.Interface, error) {
 	return nil, fmt.Errorf("no interface connected to that network")
 }
 
+// GetFirstIfaceIP gets the first IP address on the interface iface.
 func GetFirstIfaceIP(iface *net.Interface) (*netip.Prefix, error) {
 	addrs, err := iface.Addrs()
 	if err != nil {
@@ -54,7 +56,11 @@ func GetFirstIfaceIP(iface *net.Interface) (*netip.Prefix, error) {
 	return &addr, err
 }
 
-func VerifyandGetIfaceDetails(iface *net.Interface, addrToUse *netip.Prefix) (*IfaceDetails, error) {
+// VerifyandGetIfaceDetails first verifies that the iface is up and running and is not a loopback interface and then
+// checks if destIP is part of any of the networks the interface is connected to. If it is the interface's IP for that network
+// is returned together with other details of the interface in an IfaceDetails struct. If not the first IP found on the interface
+// is returned in the struct.
+func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix) (*IfaceDetails, error) {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return nil, fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
@@ -86,7 +92,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, addrToUse *netip.Prefix) (*I
 			defaultAddr = &addr
 		}
 		networkAddr := addr.Masked()
-		if networkAddr.Contains(addrToUse.Addr()) {
+		if networkAddr.Contains(destIP.Addr()) {
 			ifaceAddr = &addr
 			break
 		}
