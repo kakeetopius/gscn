@@ -6,7 +6,6 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"strconv"
 	"time"
 
 	"github.com/google/gopacket"
@@ -14,6 +13,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/utils"
 	"github.com/pterm/pterm"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/sys/unix"
 )
 
@@ -33,81 +33,16 @@ var (
 	packetsReceived = 0
 )
 
-func runArp(opts map[string]string, flags int) error {
-	var iface *net.Interface
-	var err error
-	var responseTimeout time.Duration
-	var ipwithMask string
-
-	hostIPStr, hostfound := opts["host"]
-	netStr, netfound := opts["network"]
-	ifaceName, ifacefound := opts["iface"]
-
-	if ifacefound {
-		iface, err = net.InterfaceByName(ifaceName)
-		if err != nil {
-			return err
-		}
-	}
-
-	if hostfound {
-		ipwithMask = fmt.Sprintf("%v/%v", hostIPStr, 32)
-	} else if netfound {
-		ipwithMask = netStr
-	} else if ifacefound && ipwithMask == "" {
-		ipAddr, addrerr := iface.Addrs()
-		if addrerr != nil {
-			return err
-		}
-		if len(ipAddr) < 1 {
-			return fmt.Errorf("interface %v has no IP addresses", iface.Name)
-		}
-		ipwithMask = ipAddr[0].String()
-	} else {
-		return fmt.Errorf("no ip(s) or interface to scan given")
-	}
-
-	addrWithPrefix, err := netip.ParsePrefix(ipwithMask)
+func runArp(opts *DiscoverOptions, cmd *cli.Command) error {
+	resultSet, err := sendArptoHosts(opts.Target, opts.Interface, time.Duration(opts.Timeout))
 	if err != nil {
 		return err
 	}
 
-	if !addrWithPrefix.Addr().Is4() {
-		return fmt.Errorf("ARP can only be used with IPv4 addresses")
-	}
-
-	if !ifacefound {
-		addr := addrWithPrefix.Addr()
-		// finding an interface to which the given ip or network is connected to
-		iface, err = getIfaceByIP(&addr)
-		if err != nil {
-			return err
-		}
-	}
-	ifaceDetails, err := verifyandGetIfaceDetails(iface, &addrWithPrefix)
-	if err != nil {
-		return err
-	}
-
-	timeout, found := opts["timeout"]
-	if !found {
-		responseTimeout = 2
-	} else {
-		timeout, timeouterr := strconv.Atoi(timeout)
-		if timeouterr != nil {
-			return timeouterr
-		}
-		responseTimeout = time.Duration(timeout)
-	}
-
-	resultSet, err := sendArptoHosts(&addrWithPrefix, ifaceDetails, responseTimeout)
-	if err != nil {
-		return err
-	}
 	printWithHostNames := false
-	if flags&DoReverseLookup != 0 {
+	if cmd.Bool("reverse") {
 		printWithHostNames = true
-		getHostNames(resultSet, responseTimeout)
+		getHostNames(resultSet, time.Duration(opts.Timeout))
 	}
 	displayResults(resultSet, printWithHostNames)
 	return nil
@@ -125,7 +60,6 @@ func sendArptoHosts(network *netip.Prefix, iface *IfaceDetails, responseTimeout 
 
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, utils.Htons(unix.ETH_P_ARP))
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 	addr := &unix.SockaddrLinklayer{
