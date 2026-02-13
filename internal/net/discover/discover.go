@@ -57,7 +57,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		if target == nil {
-			target, err = netutils.GetFirstIfaceIP(iface, useIP6)
+			target, err = netutils.GetFirstIfaceIPNet(iface, useIP6)
 			if err != nil {
 				return err
 			}

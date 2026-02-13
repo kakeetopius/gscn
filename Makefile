@@ -4,7 +4,7 @@
 BINDIR := bin
 
 build: | $(BINDIR)
-	@go build -o bin . 
+	@go build -o $(BINDIR) . 
 
 install: build
 	@GOBIN=/usr/local/bin go install .
