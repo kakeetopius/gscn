@@ -149,7 +149,14 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 }
 
 func ipNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
-	addr, ok := netip.AddrFromSlice(ipnet.IP)
+	ip := ipnet.IP
+
+	// Check to see if the ipnet is IPv4 and if so change the slice to a 4 byte slice to allow AddrFromSlice to return correct representation
+	if ip4 := ip.To4(); ip4 != nil {
+		ip = ip4
+	}
+
+	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
 		return netip.Prefix{}, fmt.Errorf("invalid IPNet")
 	}
