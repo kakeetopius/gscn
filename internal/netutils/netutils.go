@@ -28,13 +28,12 @@ func GetIfaceByIP(IPAddr netip.Addr) (*net.Interface, error) {
 			return nil, err
 		}
 		for _, addr := range addrs {
-			addr, err := netip.ParsePrefix(addr.String())
-			if err != nil {
+			addr, ok := addr.(*net.IPNet)
+			if !ok {
 				return nil, err
 			}
-			// converting the interface to network address and checking if the address(es) to scan are part of that network
-			addr = addr.Masked()
-			if addr.Contains(IPAddr) {
+
+			if addr.Contains(IPAddr.AsSlice()) {
 				return &iface, nil
 			}
 		}
@@ -43,8 +42,9 @@ func GetIfaceByIP(IPAddr netip.Addr) (*net.Interface, error) {
 	return nil, fmt.Errorf("no interface connected to that network")
 }
 
-// GetFirstIfaceIP gets the first IP address on the interface iface.
-func GetFirstIfaceIP(iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
+// GetFirstIfaceIPNet gets the address(netip.Prefix) of the first IP network on the interface iface.
+// The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
+func GetFirstIfaceIPNet(iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
 	addrs, err := iface.Addrs()
 	if err != nil {
 		return nil, err
@@ -52,27 +52,23 @@ func GetFirstIfaceIP(iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
 	if len(addrs) < 1 {
 		return nil, fmt.Errorf("the interface %v has no IP addresses", iface.Name)
 	}
-	if ip6 {
-		for _, addr := range addrs {
-			addr, aerr := netip.ParsePrefix(addr.String())
-			if aerr != nil {
-				continue
-			}
-			if addr.Addr().Is6() {
-				return &addr, nil
-			}
-		}
-		return nil, fmt.Errorf("the interface %v has no IPv6 addresses", iface.Name)
-	}
 
 	for _, addr := range addrs {
-		addr, aerr := netip.ParsePrefix(addr.String())
-		if aerr != nil {
+		ipnet, ok := addr.(*net.IPNet)
+		if !ok {
 			continue
 		}
-		if addr.Addr().Is4() {
+		addr, err := ipNetToPrefix(ipnet)
+		if err != nil {
+			return nil, err
+		}
+		if addr.Addr().Is6() == ip6 {
 			return &addr, nil
 		}
+	}
+
+	if ip6 {
+		return nil, fmt.Errorf("the interface %v has no IPv6 addresses", iface.Name)
 	}
 	return nil, fmt.Errorf("the interface %v has no IPv4 addresses", iface.Name)
 }
@@ -105,10 +101,15 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 	var ifaceAddr *netip.Prefix
 
 	for _, addr := range ifaceAddrs {
-		addr, err := netip.ParsePrefix(addr.String())
+		ipnet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		addr, err := ipNetToPrefix(ipnet)
 		if err != nil {
 			return nil, err
 		}
+
 		if ip6 && !addr.Addr().Is6() {
 			continue
 		} else if !addr.Addr().Is4() {
@@ -122,7 +123,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 	}
 
 	if ip6 && ifaceAddr == nil {
-		defaultIP6Addr, err := GetFirstIfaceIP(iface, true)
+		defaultIP6Addr, err := GetFirstIfaceIPNet(iface, true)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +132,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 		}
 		ifaceAddr = defaultIP6Addr
 	} else if ifaceAddr == nil {
-		defaultIP4Addr, err := GetFirstIfaceIP(iface, false)
+		defaultIP4Addr, err := GetFirstIfaceIPNet(iface, false)
 		if err != nil {
 			return nil, err
 		}
@@ -145,4 +146,15 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 	ifaceDetails.IPStrWithMask = ifaceAddr.String()
 	ifaceDetails.IPStrWithoutMask = ifaceAddr.Addr().String()
 	return &ifaceDetails, nil
+}
+
+func ipNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
+	addr, ok := netip.AddrFromSlice(ipnet.IP)
+	if !ok {
+		return netip.Prefix{}, fmt.Errorf("invalid IPNet")
+	}
+
+	ones, _ := ipnet.Mask.Size()
+
+	return netip.PrefixFrom(addr, ones), nil
 }
