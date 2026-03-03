@@ -13,6 +13,7 @@ import (
 
 type DiscoverOptions struct {
 	Target    *netip.Prefix
+	Source    *netip.Addr
 	Interface *netutils.IfaceDetails
 	Timeout   int
 }
@@ -25,7 +26,13 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	useIP6 := cmd.Bool("six")
 
 	if hostIP := cmd.String("host"); hostIP != "" {
-		addr, err := netip.ParsePrefix(fmt.Sprintf("%v/%v", hostIP, 32))
+		var ipwithMask string
+		if useIP6 {
+			ipwithMask = fmt.Sprintf("%v/%v", hostIP, 64)
+		} else {
+			ipwithMask = fmt.Sprintf("%v/%v", hostIP, 32)
+		}
+		addr, err := netip.ParsePrefix(ipwithMask)
 		if err != nil {
 			return err
 		}
@@ -76,11 +83,21 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	opts.Target = target
 	opts.Timeout = cmd.Int("timeout")
 
+	if source := cmd.String("source"); source != "" {
+		source, parseerr := netip.ParseAddr(source)
+		if parseerr != nil {
+			return parseerr
+		}
+		opts.Source = &source
+	} else {
+		opts.Source = &opts.Interface.IfaceIP
+	}
+
 	if useIP6 {
 		if !target.Addr().Is6() {
 			return fmt.Errorf("the given IP address is not IPv6")
 		}
-		err = runIPv6Disc(&opts, cmd)
+		err = runIPv6Disc(&opts)
 	} else {
 		if !target.Addr().Is4() {
 			return fmt.Errorf("arp can only be used with IPv4 addresses")

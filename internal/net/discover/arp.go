@@ -35,7 +35,7 @@ var (
 )
 
 func runArp(opts *DiscoverOptions, cmd *cli.Command) error {
-	resultSet, err := sendArptoHosts(opts.Target, opts.Interface, time.Duration(opts.Timeout))
+	resultSet, err := sendArptoHosts(opts)
 	if err != nil {
 		return err
 	}
@@ -49,11 +49,11 @@ func runArp(opts *DiscoverOptions, cmd *cli.Command) error {
 	return nil
 }
 
-func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, responseTimeout time.Duration) ([]Results, error) {
+func sendArptoHosts(opts *DiscoverOptions) ([]Results, error) {
 	addHostIP := false
-	networkAddress := network.Masked()
+	networkAddress := opts.Target.Masked()
 
-	if network.Contains(iface.IfaceIP) {
+	if opts.Target.Contains(opts.Interface.IfaceIP) {
 		addHostIP = true
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -64,7 +64,7 @@ func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, respons
 		return nil, err
 	}
 	addr := &unix.SockaddrLinklayer{
-		Ifindex:  iface.Index,
+		Ifindex:  opts.Interface.Index,
 		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
 	}
 	socketinfo := socketInfo{
@@ -77,25 +77,25 @@ func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, respons
 
 	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits())))
 
-	go getARPReplies(ctx, iface, &networkAddress, resultsChan, startSending)
+	go getARPReplies(ctx, opts.Interface, &networkAddress, resultsChan, startSending)
 	_, ok := <-startSending // wait for packet receiving go routine to finish setup.
 	if !ok {
 		return nil, fmt.Errorf("could not capture packets on the interface")
 	}
 
-	pterm.Info.Println("Probing host(s) on interface: " + iface.Name)
+	pterm.Info.Println("Probing host(s) on interface: " + opts.Interface.Name)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		return nil, err
 	}
 	IPaddr := networkAddress.Addr()
-	for network.Contains(IPaddr) {
-		if IPaddr == iface.IfaceIP { // skip interfaces' own ip
+	for opts.Target.Contains(IPaddr) {
+		if IPaddr == opts.Interface.IfaceIP { // skip interfaces' own ip
 			bar.Increment()
 			IPaddr = IPaddr.Next()
 			continue
 		} else {
-			err = sendArpPacket(iface, &IPaddr, &socketinfo)
+			err = sendArpPacket(opts.Interface, opts.Source, &IPaddr, &socketinfo)
 			if err != nil {
 				return nil, err
 			}
@@ -105,20 +105,20 @@ func sendArptoHosts(network *netip.Prefix, iface *netutils.IfaceDetails, respons
 	}
 	bar.Stop()
 
-	WaitTimeout(responseTimeout, "response")
+	WaitTimeout(time.Duration(opts.Timeout), "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
 	if addHostIP {
 		results = append(results, Results{
-			ipAddr:  iface.IPStrWithoutMask + " (this host)",
-			macAddr: iface.MacStr,
+			ipAddr:  opts.Interface.IPStrWithoutMask + " (this host)",
+			macAddr: opts.Interface.MacStr,
 		})
 	}
 	return results, nil
 }
 
-func sendArpPacket(iface *netutils.IfaceDetails, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *netutils.IfaceDetails, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -133,7 +133,7 @@ func sendArpPacket(iface *netutils.IfaceDetails, dstIP *netip.Addr, sockinfo *so
 		ProtAddressSize: 4,
 
 		SourceHwAddress:   iface.HardwareAddr,
-		SourceProtAddress: iface.IfaceIP.AsSlice(),
+		SourceProtAddress: srcIP.AsSlice(),
 
 		DstHwAddress:   net.HardwareAddr{0, 0, 0, 0, 0, 0},
 		DstProtAddress: dstIP.AsSlice(),

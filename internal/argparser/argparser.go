@@ -51,6 +51,11 @@ func GetCommand() *cli.Command {
 						Aliases: []string{"i"},
 						Usage:   "A network interface to find neighbouring hosts from. When used the entire subnet the interface is in is scanned.",
 					},
+					&cli.StringFlag{
+						Name:    "source",
+						Aliases: []string{"S"},
+						Usage:   "Source IP Address to put in the solicting packets.",
+					},
 					&cli.IntFlag{
 						Name:    "timeout",
 						Value:   2,
