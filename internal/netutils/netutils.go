@@ -111,8 +111,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 		}
 
 		if ip6 && !addr.Addr().Is6() {
-			continue
-		} else if !addr.Addr().Is4() {
+			// if an IP address is needed but the current address is not IPv6
 			continue
 		}
 		networkAddr := addr.Masked()
