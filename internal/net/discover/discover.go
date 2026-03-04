@@ -18,12 +18,24 @@ type DiscoverOptions struct {
 	Timeout   int
 }
 
+type RealNetInterfaceProvider struct{}
+
+func (RealNetInterfaceProvider) Interfaces() ([]net.Interface, error) {
+	return net.Interfaces()
+}
+
+func (RealNetInterfaceProvider) AddrsOf(iface *net.Interface) ([]net.Addr, error) {
+	return iface.Addrs()
+}
+
 func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	var opts DiscoverOptions
 	var target *netip.Prefix
 	var iface *net.Interface
 	ifaceGiven := cmd.String("iface") != ""
 	useIP6 := cmd.Bool("six")
+
+	netInterfaceProvider := RealNetInterfaceProvider{}
 
 	if hostIP := cmd.String("host"); hostIP != "" {
 		var ipwithMask string
@@ -38,7 +50,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		target = &addr
 		if !ifaceGiven {
-			iface, err = netutils.GetIfaceByIP(target.Addr())
+			iface, err = netutils.GetIfaceByIP(netInterfaceProvider, target.Addr())
 			if err != nil {
 				return err
 			}
@@ -50,7 +62,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		target = &net
 		if !ifaceGiven {
-			iface, err = netutils.GetIfaceByIP(target.Addr())
+			iface, err = netutils.GetIfaceByIP(netInterfaceProvider, target.Addr())
 			if err != nil {
 				return err
 			}
@@ -64,7 +76,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		if target == nil {
-			target, err = netutils.GetFirstIfaceIPNet(iface, useIP6)
+			target, err = netutils.GetFirstIfaceIPNet(netInterfaceProvider, iface, useIP6)
 			if err != nil {
 				return err
 			}
@@ -76,7 +88,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	} else if target == nil {
 		return fmt.Errorf("could not determine which address to use. Use the -n or -H or -i options")
 	}
-	opts.Interface, err = netutils.VerifyandGetIfaceDetails(iface, target, useIP6)
+	opts.Interface, err = netutils.VerifyandGetIfaceDetails(netInterfaceProvider, iface, target, useIP6)
 	if err != nil {
 		return err
 	}
