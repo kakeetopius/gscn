@@ -15,22 +15,30 @@ type IfaceDetails struct {
 	*net.Interface
 }
 
+type NetInterfaceProvider interface {
+	// Returns all network interfaces
+	Interfaces() ([]net.Interface, error)
+
+	// Returns IP Addresses of a particular interface.
+	AddrsOf(*net.Interface) ([]net.Addr, error)
+}
+
 // GetIfaceByIP gets an interface on the host machine that has an address which matches IPAddr.
-func GetIfaceByIP(IPAddr netip.Addr) (*net.Interface, error) {
-	allIfaces, err := net.Interfaces()
+func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*net.Interface, error) {
+	allIfaces, err := interfaceProvider.Interfaces()
 	if err != nil {
 		return nil, err
 	}
 
 	for _, iface := range allIfaces {
-		addrs, err := iface.Addrs()
+		addrs, err := interfaceProvider.AddrsOf(&iface)
 		if err != nil {
 			return nil, err
 		}
 		for _, addr := range addrs {
 			addr, ok := addr.(*net.IPNet)
 			if !ok {
-				return nil, err
+				return nil, fmt.Errorf("could not convert to IPNet")
 			}
 
 			if addr.Contains(IPAddr.AsSlice()) {
@@ -44,8 +52,8 @@ func GetIfaceByIP(IPAddr netip.Addr) (*net.Interface, error) {
 
 // GetFirstIfaceIPNet gets the address(netip.Prefix) of the first IP network on the interface iface.
 // The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
-func GetFirstIfaceIPNet(iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
-	addrs, err := iface.Addrs()
+func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
+	addrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +85,7 @@ func GetFirstIfaceIPNet(iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
 // checks if destIP is part of any of the networks the interface is connected to. If it is the interface's IP for that network
 // is returned together with other details of the interface in an IfaceDetails struct. If not the first IP found on the interface
 // is returned in the struct. The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
-func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bool) (*IfaceDetails, error) {
+func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net.Interface, destIP *netip.Prefix, ip6 bool) (*IfaceDetails, error) {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return nil, fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
@@ -90,7 +98,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 	ifaceDetails.Interface = iface
 	ifaceDetails.MacStr = iface.HardwareAddr.String()
 
-	ifaceAddrs, err := iface.Addrs()
+	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +130,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 	}
 
 	if ip6 && ifaceAddr == nil {
-		defaultIP6Addr, err := GetFirstIfaceIPNet(iface, true)
+		defaultIP6Addr, err := GetFirstIfaceIPNet(interfaceProvider, iface, true)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +139,7 @@ func VerifyandGetIfaceDetails(iface *net.Interface, destIP *netip.Prefix, ip6 bo
 		}
 		ifaceAddr = defaultIP6Addr
 	} else if ifaceAddr == nil {
-		defaultIP4Addr, err := GetFirstIfaceIPNet(iface, false)
+		defaultIP4Addr, err := GetFirstIfaceIPNet(interfaceProvider, iface, false)
 		if err != nil {
 			return nil, err
 		}
