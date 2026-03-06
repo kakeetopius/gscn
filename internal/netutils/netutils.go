@@ -7,11 +7,8 @@ import (
 	"net/netip"
 )
 
-type IfaceDetails struct {
-	IfaceIP          netip.Addr
-	IPStrWithMask    string
-	IPStrWithoutMask string
-	MacStr           string
+type IfaceOpts struct {
+	IfaceIPtoUse netip.Addr
 	*net.Interface
 }
 
@@ -85,7 +82,7 @@ func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Inter
 // checks if destIP is part of any of the networks the interface is connected to. If it is the interface's IP for that network
 // is returned together with other details of the interface in an IfaceDetails struct. If not the first IP found on the interface
 // is returned in the struct. The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
-func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net.Interface, destIP *netip.Prefix, ip6 bool) (*IfaceDetails, error) {
+func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net.Interface, destIP *netip.Prefix, ip6 bool) (*IfaceOpts, error) {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return nil, fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
@@ -94,9 +91,8 @@ func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net
 		return nil, fmt.Errorf("interface %v is not running", iface.Name)
 	}
 
-	ifaceDetails := IfaceDetails{}
-	ifaceDetails.Interface = iface
-	ifaceDetails.MacStr = iface.HardwareAddr.String()
+	ifaceOpts := IfaceOpts{}
+	ifaceOpts.Interface = iface
 
 	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
@@ -148,11 +144,9 @@ func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net
 		}
 		ifaceAddr = defaultIP4Addr
 	}
+	ifaceOpts.IfaceIPtoUse = ifaceAddr.Addr()
 
-	ifaceDetails.IfaceIP = ifaceAddr.Addr()
-	ifaceDetails.IPStrWithMask = ifaceAddr.String()
-	ifaceDetails.IPStrWithoutMask = ifaceAddr.Addr().String()
-	return &ifaceDetails, nil
+	return &ifaceOpts, nil
 }
 
 func ipNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {

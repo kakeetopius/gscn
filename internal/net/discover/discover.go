@@ -15,7 +15,7 @@ import (
 type DiscoverOptions struct {
 	Target    *netip.Prefix
 	Source    *netip.Addr
-	Interface *netutils.IfaceDetails
+	Interface *netutils.IfaceOpts
 	Timeout   int
 }
 
@@ -115,7 +115,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		opts.Source = &source
 	} else {
-		opts.Source = &opts.Interface.IfaceIP
+		opts.Source = &opts.Interface.IfaceIPtoUse
 	}
 
 	var results []DiscoverResult
