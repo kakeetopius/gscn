@@ -14,7 +14,6 @@ import (
 	"github.com/kakeetopius/gscn/internal/bits"
 	"github.com/kakeetopius/gscn/internal/netutils"
 	"github.com/pterm/pterm"
-	"github.com/urfave/cli/v3"
 	"golang.org/x/sys/unix"
 )
 
@@ -23,33 +22,7 @@ type socketInfo struct {
 	socketAddr *unix.SockaddrLinklayer
 }
 
-type Results struct {
-	ipAddr   string
-	macAddr  string
-	hostName string
-}
-
-var (
-	packetsSent     = 0
-	packetsReceived = 0
-)
-
-func runArp(opts *DiscoverOptions, cmd *cli.Command) error {
-	resultSet, err := sendArptoHosts(opts)
-	if err != nil {
-		return err
-	}
-
-	printWithHostNames := false
-	if cmd.Bool("reverse") {
-		printWithHostNames = true
-		addHostNames(resultSet, time.Duration(opts.Timeout))
-	}
-	displayResults(resultSet, printWithHostNames)
-	return nil
-}
-
-func sendArptoHosts(opts *DiscoverOptions) ([]Results, error) {
+func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	addHostIP := false
 	networkAddress := opts.Target.Masked()
 
@@ -72,7 +45,7 @@ func sendArptoHosts(opts *DiscoverOptions) ([]Results, error) {
 		socketAddr: addr,
 	}
 
-	resultsChan := make(chan []Results)
+	resultsChan := make(chan []DiscoverResult)
 	startSending := make(chan struct{})
 
 	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits())))
@@ -110,7 +83,7 @@ func sendArptoHosts(opts *DiscoverOptions) ([]Results, error) {
 	results := <-resultsChan
 
 	if addHostIP {
-		results = append(results, Results{
+		results = append(results, DiscoverResult{
 			ipAddr:  opts.Interface.IPStrWithoutMask + " (this host)",
 			macAddr: opts.Interface.MacStr,
 		})
@@ -160,7 +133,7 @@ func sendArpPacket(iface *netutils.IfaceDetails, srcIP *netip.Addr, dstIP *netip
 	return nil
 }
 
-func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPrefix *netip.Prefix, resultsChan chan<- []Results, startSendChan chan<- struct{}) {
+func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPrefix *netip.Prefix, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
@@ -176,7 +149,7 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPr
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetChan := packetSource.Packets()
 
-	results := make([]Results, 0, 15)
+	results := make([]DiscoverResult, 0, 15)
 	receivedFrom := make(map[netip.Addr]struct{}) // to keep track of which IPs we have got replies from
 
 	startSendChan <- struct{}{}
@@ -210,7 +183,7 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPr
 						continue
 					}
 					receivedFrom[ipAddr] = struct{}{}
-					results = append(results, Results{
+					results = append(results, DiscoverResult{
 						ipAddr:  ipAddr.String(),
 						macAddr: net.HardwareAddr(arpPacket.SourceHwAddress).String(),
 					})
@@ -220,7 +193,7 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPr
 	}
 }
 
-func addHostNames(resultSet []Results, timeout time.Duration) {
+func addHostNames(resultSet []DiscoverResult, timeout time.Duration) {
 	fmt.Println()
 	pterm.Info.Println("Trying to resolve hostnames")
 	numHosts := len(resultSet)

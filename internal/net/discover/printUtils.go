@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 )
 
-func displayResults(resultSet []Results, withHostNames bool) {
+func displayResults(resultSet []DiscoverResult, withHostNames bool) {
 	if len(resultSet) == 0 {
 		fmt.Println()
 		pterm.Info.Println("Host(s) not found on that network.")
