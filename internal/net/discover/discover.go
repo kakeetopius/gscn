@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/kakeetopius/gscn/internal/netutils"
 	"github.com/urfave/cli/v3"
@@ -17,6 +18,17 @@ type DiscoverOptions struct {
 	Interface *netutils.IfaceDetails
 	Timeout   int
 }
+
+type DiscoverResult struct {
+	ipAddr   string
+	macAddr  string
+	hostName string
+}
+
+var (
+	packetsSent     = 0
+	packetsReceived = 0
+)
 
 type RealNetInterfaceProvider struct{}
 
@@ -105,16 +117,27 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		opts.Source = &opts.Interface.IfaceIP
 	}
 
+	var results []DiscoverResult
 	if useIP6 {
 		if !target.Addr().Is6() {
 			return fmt.Errorf("the given IP address is not IPv6")
 		}
-		err = runIPv6Disc(&opts)
+		results, err = runIPv6Disc(&opts)
 	} else {
 		if !target.Addr().Is4() {
 			return fmt.Errorf("arp can only be used with IPv4 addresses")
 		}
-		err = runArp(&opts, cmd)
+		results, err = runArp(&opts)
 	}
+	if err != nil {
+		return err
+	}
+
+	doReverseLookup := cmd.Bool("reverse")
+	if doReverseLookup {
+		doReverseLookup = true
+		addHostNames(results, time.Duration(opts.Timeout))
+	}
+	displayResults(results, doReverseLookup)
 	return err
 }
