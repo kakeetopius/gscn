@@ -23,6 +23,7 @@ type DiscoverResult struct {
 	ipAddr   string
 	macAddr  string
 	hostName string
+	vendor   string
 }
 
 var (
@@ -138,6 +139,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		doReverseLookup = true
 		addHostNames(results, time.Duration(opts.Timeout))
 	}
-	displayResults(results, doReverseLookup)
+	addVendors(results)
+	displayDiscoverResults(results, doReverseLookup)
 	return err
 }

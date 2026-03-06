@@ -192,29 +192,3 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPr
 		}
 	}
 }
-
-func addHostNames(resultSet []DiscoverResult, timeout time.Duration) {
-	fmt.Println()
-	pterm.Info.Println("Trying to resolve hostnames")
-	numHosts := len(resultSet)
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout*time.Second)
-	defer cancel()
-
-	resolver := net.Resolver{}
-	resolver.PreferGo = true
-
-	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	for i := range resultSet {
-		names, err := resolver.LookupAddr(ctx, resultSet[i].ipAddr)
-		if err == nil && len(names) > 0 {
-			resultSet[i].hostName = names[0]
-		}
-		bar.Increment()
-	}
-	bar.Stop()
-}
