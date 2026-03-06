@@ -3,6 +3,7 @@ module github.com/kakeetopius/gscn
 go 1.25.5
 
 require (
+	github.com/endobit/oui v0.6.0
 	github.com/google/gopacket v1.1.19
 	github.com/pterm/pterm v0.12.82
 	github.com/urfave/cli/v3 v3.6.2
