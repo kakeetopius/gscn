@@ -26,7 +26,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	addHostIP := false
 	networkAddress := opts.Target.Masked()
 
-	if opts.Target.Contains(opts.Interface.IfaceIP) {
+	if opts.Target.Contains(opts.Interface.IfaceIPtoUse) {
 		addHostIP = true
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -63,7 +63,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	}
 	IPaddr := networkAddress.Addr()
 	for opts.Target.Contains(IPaddr) {
-		if IPaddr == opts.Interface.IfaceIP { // skip interfaces' own ip
+		if IPaddr == opts.Interface.IfaceIPtoUse { // skip interfaces' own ip
 			bar.Increment()
 			IPaddr = IPaddr.Next()
 			continue
@@ -84,14 +84,14 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 
 	if addHostIP {
 		results = append(results, DiscoverResult{
-			ipAddr:  opts.Interface.IPStrWithoutMask + " (this host)",
-			macAddr: opts.Interface.MacStr,
+			ipAddr:  opts.Interface.IfaceIPtoUse.String() + " (this host)",
+			macAddr: opts.Interface.HardwareAddr.String(),
 		})
 	}
 	return results, nil
 }
 
-func sendArpPacket(iface *netutils.IfaceDetails, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -133,7 +133,7 @@ func sendArpPacket(iface *netutils.IfaceDetails, srcIP *netip.Addr, dstIP *netip
 	return nil
 }
 
-func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPrefix *netip.Prefix, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedPrefix *netip.Prefix, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
@@ -173,7 +173,7 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceDetails, expectedPr
 						// skip responses outside the specified network
 						continue
 					}
-					if ipAddr == iface.IfaceIP {
+					if ipAddr == iface.IfaceIPtoUse {
 						// skip responses from the capturing interface to other devices.
 						continue
 					}

@@ -240,8 +240,8 @@ func TestVerifyandGetIfaceDetails(t *testing.T) {
 				t.Fatal(err)
 				return
 			}
-			if expectedIfaceIP.Addr() != got.IfaceIP {
-				t.Errorf("VerifyandGetIfaceDetails() returned %v, but wanted %v", got.IfaceIP, expectedIfaceIP.Addr())
+			if expectedIfaceIP.Addr() != got.IfaceIPtoUse {
+				t.Errorf("VerifyandGetIfaceDetails() returned %v, but wanted %v", got.IfaceIPtoUse, expectedIfaceIP.Addr())
 			}
 		})
 	}

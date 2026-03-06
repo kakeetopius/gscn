@@ -93,7 +93,7 @@ func runIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	return results, nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, iface *netutils.IfaceDetails, expectedAddr netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+func getNeighbourAdvertisements(ctx context.Context, iface *netutils.IfaceOpts, expectedAddr netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
