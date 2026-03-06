@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kakeetopius/gscn/pkg/net/discover"
+	"github.com/kakeetopius/gscn/internal/net/discover"
 	"github.com/urfave/cli/v3"
 )
 
