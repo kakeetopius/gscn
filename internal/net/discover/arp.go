@@ -23,12 +23,8 @@ type socketInfo struct {
 }
 
 func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
-	addHostIP := false
-	networkAddress := opts.Target.Masked()
+	addHostIP := checkIfAddrIsPartOfTarget(opts.Targets, &opts.Interface.IfaceIPtoUse)
 
-	if opts.Target.Contains(opts.Interface.IfaceIPtoUse) {
-		addHostIP = true
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -48,32 +44,34 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	resultsChan := make(chan []DiscoverResult)
 	startSending := make(chan struct{})
 
-	numHosts := int(math.Pow(2, float64(32-networkAddress.Bits())))
-
-	go getARPReplies(ctx, opts.Interface, &networkAddress, resultsChan, startSending)
+	go getARPReplies(ctx, opts.Interface, opts.Targets, resultsChan, startSending)
 	_, ok := <-startSending // wait for packet receiving go routine to finish setup.
 	if !ok {
 		return nil, fmt.Errorf("could not capture packets on the interface")
 	}
 
 	pterm.Info.Println("Probing host(s) on interface: " + opts.Interface.Name)
+	numHosts := TotalNumOfTargets(opts.Targets)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		return nil, err
 	}
-	IPaddr := networkAddress.Addr()
-	for opts.Target.Contains(IPaddr) {
-		if IPaddr == opts.Interface.IfaceIPtoUse { // skip interfaces' own ip
-			bar.Increment()
-			IPaddr = IPaddr.Next()
-			continue
-		} else {
-			err = sendArpPacket(opts.Interface, opts.Source, &IPaddr, &socketinfo)
-			if err != nil {
-				return nil, err
+
+	for _, target := range opts.Targets {
+		IPaddr := target.Masked().Addr() // first IP in range
+		for target.Contains(IPaddr) {
+			if IPaddr == opts.Interface.IfaceIPtoUse { // skip interfaces' own ip
+				bar.Increment()
+				IPaddr = IPaddr.Next()
+				continue
+			} else {
+				err = sendArpPacket(opts.Interface, opts.Source, &IPaddr, &socketinfo)
+				if err != nil {
+					return nil, err
+				}
+				bar.Increment()
+				IPaddr = IPaddr.Next()
 			}
-			bar.Increment()
-			IPaddr = IPaddr.Next()
 		}
 	}
 	bar.Stop()
@@ -133,7 +131,7 @@ func sendArpPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Ad
 	return nil
 }
 
-func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedPrefix *netip.Prefix, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedTargets []netip.Prefix, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
@@ -169,7 +167,7 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedPrefi
 					if !ok {
 						continue
 					}
-					if !expectedPrefix.Contains(ipAddr) {
+					if !checkIfAddrIsPartOfTarget(expectedTargets, &ipAddr) {
 						// skip responses outside the specified network
 						continue
 					}
@@ -191,4 +189,22 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedPrefi
 			}
 		}
 	}
+}
+
+func checkIfAddrIsPartOfTarget(targets []netip.Prefix, addr *netip.Addr) bool {
+	for _, target := range targets {
+		if target.Contains(*addr) {
+			return true
+		}
+	}
+	return false
+}
+
+func TotalNumOfTargets(targets []netip.Prefix) int {
+	numHosts := 0
+	for _, target := range targets {
+		networkAddress := target.Masked()
+		numHosts += int(math.Pow(2, float64(32-networkAddress.Bits())))
+	}
+	return numHosts
 }

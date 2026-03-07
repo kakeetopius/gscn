@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/google/gopacket"
@@ -17,24 +18,50 @@ import (
 )
 
 func runIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
+	resultChan := make(chan []DiscoverResult)
+	startSendChan := make(chan struct{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	targets := prefixToAddr(opts.Targets)
+	go getNeighbourAdvertisements(ctx, opts.Interface, targets, resultChan, startSendChan)
+
+	_, ok := <-startSendChan // wait for packet receving routine to set up
+	if !ok {
+		return nil, fmt.Errorf("error capturing packets on that interface")
+	}
+	pterm.Info.Println("Probing host on interface: " + opts.Interface.Name)
+
+	for _, target := range targets {
+		sendNSPacket(opts.Interface, opts.Source, &target)
+	}
+
+	WaitTimeout(time.Duration(opts.Timeout), "response")
+	cancel() // tell packet receiving routine to stop
+	results := <-resultChan
+	return results, nil
+}
+
+func sendNSPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr) error {
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	addr := &unix.SockaddrLinklayer{
-		Ifindex:  opts.Interface.Index,
+		Ifindex:  iface.Index,
 		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
 	}
 
 	eth := &layers.Ethernet{
-		SrcMAC:       opts.Interface.HardwareAddr,
-		DstMAC:       solicitedNodeMacAddress(opts.Target.Addr()),
+		SrcMAC:       iface.HardwareAddr,
+		DstMAC:       solicitedNodeMacAddress(*dstIP),
 		EthernetType: layers.EthernetTypeIPv6,
 	}
 
 	ip := &layers.IPv6{
-		SrcIP:      opts.Source.AsSlice(),
-		DstIP:      solicitedNodeIPAddress(opts.Target.Addr()),
+		SrcIP:      srcIP.AsSlice(),
+		DstIP:      solicitedNodeIPAddress(*dstIP),
 		Version:    6,
 		NextHeader: layers.IPProtocolICMPv6,
 		HopLimit:   255,
@@ -45,11 +72,11 @@ func runIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	}
 
 	nd := &layers.ICMPv6NeighborSolicitation{
-		TargetAddress: opts.Target.Addr().AsSlice(),
+		TargetAddress: dstIP.AsSlice(),
 		Options: layers.ICMPv6Options{
 			layers.ICMPv6Option{
 				Type: layers.ICMPv6OptSourceAddress,
-				Data: opts.Interface.HardwareAddr,
+				Data: iface.HardwareAddr,
 			},
 		},
 	}
@@ -64,36 +91,20 @@ func runIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	err = gopacket.SerializeLayers(buf, options, eth, ip, icmp, nd)
 	if err != nil {
 		fmt.Println(err)
-		return nil, err
+		return err
 	}
 
 	packetBytes := buf.Bytes()
 
-	resultChan := make(chan []DiscoverResult)
-	startSendChan := make(chan struct{})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go getNeighbourAdvertisements(ctx, opts.Interface, opts.Target.Addr(), resultChan, startSendChan)
-
-	_, ok := <-startSendChan // wait for packet receving routine to set up
-	if !ok {
-		return nil, fmt.Errorf("could not capture packets on that interface")
-	}
-	pterm.Info.Println("Probing host on interface: " + opts.Interface.Name)
-
 	err = unix.Sendto(sockfd, packetBytes, 0, addr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	packetsSent++
-	WaitTimeout(time.Duration(opts.Timeout), "response")
-	cancel() // tell packet receiving routine to stop
-	results := <-resultChan
-	return results, nil
+	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, iface *netutils.IfaceOpts, expectedAddr netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+func getNeighbourAdvertisements(ctx context.Context, iface *netutils.IfaceOpts, expectedAddrs []netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
@@ -128,7 +139,7 @@ func getNeighbourAdvertisements(ctx context.Context, iface *netutils.IfaceOpts, 
 					continue
 				}
 				srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-				if srcIP != expectedAddr {
+				if !checkIfIPIsPartofTargets(expectedAddrs, &srcIP) {
 					continue
 				}
 				packetsReceived++
@@ -179,4 +190,17 @@ func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
 
 	copy(solIP[13:16], last24Bits)
 	return solIP
+}
+
+func checkIfIPIsPartofTargets(targets []netip.Addr, addr *netip.Addr) bool {
+	return slices.Contains(targets, *addr)
+}
+
+func prefixToAddr(prefixes []netip.Prefix) []netip.Addr {
+	addrs := make([]netip.Addr, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		addr := prefix.Addr()
+		addrs = append(addrs, addr)
+	}
+	return addrs
 }

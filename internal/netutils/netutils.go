@@ -2,6 +2,7 @@
 package netutils
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -11,6 +12,8 @@ type IfaceOpts struct {
 	IfaceIPtoUse netip.Addr
 	*net.Interface
 }
+
+var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
 
 type NetInterfaceProvider interface {
 	// Returns all network interfaces
@@ -44,7 +47,7 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*n
 		}
 	}
 
-	return nil, fmt.Errorf("no interface connected to that network")
+	return nil, ErrNoInterfaceConnectedToTarget
 }
 
 // GetFirstIfaceIPNet gets the address(netip.Prefix) of the first IP network on the interface iface.
@@ -82,7 +85,7 @@ func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Inter
 // checks if destIP is part of any of the networks the interface is connected to. If it is the interface's IP for that network
 // is returned together with other details of the interface in an IfaceDetails struct. If not the first IP found on the interface
 // is returned in the struct. The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
-func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net.Interface, destIP *netip.Prefix, ip6 bool) (*IfaceOpts, error) {
+func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net.Interface, targets []netip.Prefix, ip6 bool) (*IfaceOpts, error) {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return nil, fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
@@ -104,6 +107,7 @@ func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net
 
 	var ifaceAddr *netip.Prefix
 
+outer:
 	for _, addr := range ifaceAddrs {
 		ipnet, ok := addr.(*net.IPNet)
 		if !ok {
@@ -119,9 +123,11 @@ func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net
 			continue
 		}
 		networkAddr := addr.Masked()
-		if networkAddr.Contains(destIP.Addr()) {
-			ifaceAddr = &addr
-			break
+		for _, target := range targets {
+			if networkAddr.Contains(target.Addr()) {
+				ifaceAddr = &addr
+				break outer
+			}
 		}
 	}
 

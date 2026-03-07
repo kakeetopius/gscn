@@ -25,31 +25,16 @@ func GetCommand() *cli.Command {
 				Name:    "discover",
 				Aliases: []string{"d"},
 				Usage:   "discover hosts on the local network using ARP for IPv4 or ICMP Neighbour Discovery for IPv6.",
-				MutuallyExclusiveFlags: []cli.MutuallyExclusiveFlags{
-					{
-						Flags: [][]cli.Flag{
-							{
-								&cli.StringFlag{
-									Name:    "network",
-									Aliases: []string{"n"},
-									Usage:   "A network address with subnet mask in CIDR notation eg 10.10.10.1/24. For IPv6 the neighbor table of the host is queried",
-								},
-							},
-							{
-								&cli.StringFlag{
-									Name:    "host",
-									Aliases: []string{"H"},
-									Usage:   "An IPv4 address of a host to find on the network. Same effect as using a /32(for ipv4) with -n option.",
-								},
-							},
-						},
-					},
-				},
 				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "target",
+						Aliases: []string{"t"},
+						Usage:   "IP address(es) of the host to scan.",
+					},
 					&cli.StringFlag{
 						Name:    "iface",
 						Aliases: []string{"i"},
-						Usage:   "A network interface to find neighbouring hosts from. When used the entire subnet the interface is in is scanned.",
+						Usage:   "A network interface to find neighbouring hosts from. When used without a target the entire subnet the interface is in is scanned.",
 					},
 					&cli.StringFlag{
 						Name:    "source",
@@ -59,8 +44,8 @@ func GetCommand() *cli.Command {
 					&cli.IntFlag{
 						Name:    "timeout",
 						Value:   2,
-						Aliases: []string{"t"},
-						Usage:   "Amount of time in seconds to wait for ARP responses.",
+						Aliases: []string{"T"},
+						Usage:   "Amount of time in seconds to wait for responses.",
 					},
 					&cli.BoolFlag{
 						Name:    "reverse",
@@ -77,35 +62,23 @@ func GetCommand() *cli.Command {
 				},
 
 				Action: discover.RunDiscover,
+				Description: "Targets can be provided in the following formats:\n" +
+					"\tgscn discover -t 10.1.1.1 # Single Host\n" +
+					"\tgscn discover -t 10.1.1.1/24 # CIDR Notation\n" +
+					"\tgscn discover -t 10.1.1.1-5 # IP Range\n" +
+					"\tgscn discover -t 10.1.1.1,10.2.2.2/24,10.4.4.4-10 # Comma Separated List\n",
 			},
 
 			{
 				Name:    "scan",
 				Aliases: []string{"s"},
 				Usage:   "determine information about any host on any network for example open ports.",
-				MutuallyExclusiveFlags: []cli.MutuallyExclusiveFlags{
-					{
-						Required: true,
-						Flags: [][]cli.Flag{
-							{
-								&cli.StringFlag{
-									Name:    "network",
-									Aliases: []string{"n"},
-									Usage:   "A network address with subnet mask in CIDR notation eg 10.10.10.1/24",
-								},
-							},
-							{
-								&cli.StringFlag{
-									Name:    "host",
-									Aliases: []string{"H"},
-									Usage:   "An IPv4 address of a host to scan",
-								},
-							},
-						},
-					},
-				},
-
 				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "target",
+						Aliases: []string{"t"},
+						Usage:   "IP address(s) of the host to scan. Can be in CIDR notation eg 10.1.1.1/24 or as a list 10.1.1.1,10.1.1.2 or both 10.1.1.1/24,10.2.2.2",
+					},
 					&cli.StringFlag{
 						Name:    "iface",
 						Aliases: []string{"i"},

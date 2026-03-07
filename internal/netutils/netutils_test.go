@@ -223,7 +223,7 @@ func TestVerifyandGetIfaceDetails(t *testing.T) {
 				t.Fatal(err)
 				return
 			}
-			got, gotErr := VerifyandGetIfaceDetails(mock, iface, &dest, tt.ip6)
+			got, gotErr := VerifyandGetIfaceDetails(mock, iface, []netip.Prefix{dest}, tt.ip6)
 			if gotErr != nil {
 				if !tt.wantErr {
 					t.Errorf("VerifyandGetIfaceDetails() failed: %v", gotErr)
