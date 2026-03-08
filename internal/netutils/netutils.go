@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
+	"strconv"
+	"strings"
 )
 
 type IfaceOpts struct {
-	IfaceIPtoUse netip.Addr
 	*net.Interface
 }
 
@@ -81,22 +83,45 @@ func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Inter
 	return nil, fmt.Errorf("the interface %v has no IPv4 addresses", iface.Name)
 }
 
-// VerifyandGetIfaceDetails first verifies that the iface is up and running and is not a loopback interface and then
-// checks if destIP is part of any of the networks the interface is connected to. If it is the interface's IP for that network
-// is returned together with other details of the interface in an IfaceDetails struct. If not the first IP found on the interface
-// is returned in the struct. The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
-func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net.Interface, targets []netip.Prefix, ip6 bool) (*IfaceOpts, error) {
+func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *net.Interface) error {
 	if iface.Flags&net.FlagLoopback != 0 {
-		return nil, fmt.Errorf("cannot scan on a loopback interface")
+		return fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
-		return nil, fmt.Errorf("interface %v is administratively down", iface.Name)
+		return fmt.Errorf("interface %v is administratively down", iface.Name)
 	} else if iface.Flags&net.FlagRunning == 0 {
-		return nil, fmt.Errorf("interface %v is not running", iface.Name)
+		return fmt.Errorf("interface %v is not running", iface.Name)
 	}
 
-	ifaceOpts := IfaceOpts{}
-	ifaceOpts.Interface = iface
+	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
+	if err != nil {
+		return err
+	}
+	if len(ifaceAddrs) < 1 {
+		return fmt.Errorf("interface %v has no IP addresses", iface.Name)
+	}
 
+	return nil
+}
+
+func ipNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
+	ip := ipnet.IP
+
+	// Check to see if the ipnet is IPv4 and if so change the slice to a 4 byte slice to allow AddrFromSlice to return correct representation
+	if ip4 := ip.To4(); ip4 != nil {
+		ip = ip4
+	}
+
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return netip.Prefix{}, fmt.Errorf("invalid IPNet")
+	}
+
+	ones, _ := ipnet.Mask.Size()
+
+	return netip.PrefixFrom(addr, ones), nil
+}
+
+func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *net.Interface, targets []netip.Prefix, ip6 bool) (*netip.Addr, error) {
 	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
 		return nil, err
@@ -104,9 +129,7 @@ func VerifyandGetIfaceDetails(interfaceProvider NetInterfaceProvider, iface *net
 	if len(ifaceAddrs) < 1 {
 		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
 	}
-
 	var ifaceAddr *netip.Prefix
-
 outer:
 	for _, addr := range ifaceAddrs {
 		ipnet, ok := addr.(*net.IPNet)
@@ -118,11 +141,12 @@ outer:
 			return nil, err
 		}
 
-		if ip6 && !addr.Addr().Is6() {
-			// if an IP address is needed but the current address is not IPv6
+		if ip6 != addr.Addr().Is6() {
+			// if an IPv4 address is needed but the current address is not IPv6 and vice versa
 			continue
 		}
 		networkAddr := addr.Masked()
+		// checking to see if any of the targets is on the same network as any of the interfaces' addresses.
 		for _, target := range targets {
 			if networkAddr.Contains(target.Addr()) {
 				ifaceAddr = &addr
@@ -150,25 +174,115 @@ outer:
 		}
 		ifaceAddr = defaultIP4Addr
 	}
-	ifaceOpts.IfaceIPtoUse = ifaceAddr.Addr()
-
-	return &ifaceOpts, nil
+	srcAddr := ifaceAddr.Addr()
+	return &srcAddr, nil
 }
 
-func ipNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
-	ip := ipnet.IP
+func TargetsFromString(s string) ([]netip.Prefix, error) {
+	// Example: 10.1.1.1/24,10.1.1.1,10.1.1.1-2
+	commaSeparatedTargets := strings.Split(s, ",")
+	targets := make([]netip.Prefix, 0, 5)
 
-	// Check to see if the ipnet is IPv4 and if so change the slice to a 4 byte slice to allow AddrFromSlice to return correct representation
-	if ip4 := ip.To4(); ip4 != nil {
-		ip = ip4
+	for _, targetString := range commaSeparatedTargets {
+		if strings.ContainsRune(targetString, '/') {
+			addr, err := netip.ParsePrefix(targetString)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+			}
+			targets = append(targets, addr)
+		} else if strings.ContainsRune(targetString, '-') {
+			dashIndex := strings.LastIndex(targetString, "-")
+			if dashIndex >= len(targetString) {
+				return nil, fmt.Errorf("error parsing target -> %v", targetString)
+			}
+			lastDotIndex := strings.LastIndex(targetString, ".")
+			if lastDotIndex == -1 {
+				return nil, fmt.Errorf("error parsing -> %v", targetString)
+			}
+			baseIP := targetString[:lastDotIndex+1]
+			lower, err := strconv.Atoi(targetString[lastDotIndex+1 : dashIndex])
+			if err != nil {
+				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+			}
+			upper, err := strconv.Atoi(targetString[dashIndex+1:])
+			if err != nil {
+				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+			}
+			if lower > upper {
+				return nil, fmt.Errorf("error parsing target %v -> invalid range", targetString)
+			} else if upper >= 256 {
+				return nil, fmt.Errorf("error parsing target %v -> range cannot go above 255", targetString)
+			} else if lower < 0 {
+				return nil, fmt.Errorf("error parsing target %v -> range cannot be below zero", targetString)
+			}
+
+			for i := lower; i <= upper; i++ {
+				targetStr := fmt.Sprintf("%v%v/32", baseIP, i)
+				addr, err := netip.ParsePrefix(targetStr)
+				if err != nil {
+					return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+				}
+				targets = append(targets, addr)
+			}
+		} else {
+			targetStr := fmt.Sprintf("%v/%v", targetString, 32)
+			addr, err := netip.ParsePrefix(targetStr)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+			}
+			targets = append(targets, addr)
+		}
 	}
 
-	addr, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return netip.Prefix{}, fmt.Errorf("invalid IPNet")
+	return Unique(targets), nil
+}
+
+func PortsFromString(s string) ([]uint, error) {
+	commaSeparatedPorts := strings.Split(s, ",")
+	targetPorts := make([]uint, 0, 5)
+
+	for _, portSpecString := range commaSeparatedPorts {
+		if strings.ContainsRune(portSpecString, '-') {
+			dashIndex := strings.LastIndex(portSpecString, "-")
+			if dashIndex >= len(portSpecString) {
+				return nil, fmt.Errorf("error parsing port range -> %v", portSpecString)
+			}
+			lower, err := strconv.Atoi(portSpecString[:dashIndex])
+			if err != nil {
+				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
+			}
+			upper, err := strconv.Atoi(portSpecString[dashIndex+1:])
+			if err != nil {
+				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
+			}
+			if lower > upper {
+				return nil, fmt.Errorf("error parsing target %v -> invalid range", portSpecString)
+			}
+			for i := lower; i <= upper; i++ {
+				targetPorts = append(targetPorts, uint(i))
+			}
+		} else {
+			portNum, err := strconv.Atoi(portSpecString)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing port specification %v -> %v", portSpecString, err)
+			}
+			targetPorts = append(targetPorts, uint(portNum))
+		}
 	}
 
-	ones, _ := ipnet.Mask.Size()
+	slices.Sort(targetPorts)
+	return Unique(targetPorts), nil
+}
 
-	return netip.PrefixFrom(addr, ones), nil
+func Unique[T comparable](slice []T) []T {
+	seen := make(map[T]struct{})
+	results := make([]T, 0, len(slice))
+
+	for _, v := range slice {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			results = append(results, v)
+		}
+	}
+	return results
 }

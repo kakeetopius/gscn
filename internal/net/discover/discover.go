@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/netutils"
@@ -56,7 +54,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	opts.Timeout = cmd.Int("timeout")
 
 	if targetStr := cmd.String("target"); targetStr != "" {
-		targets, err = TargetsFromString(cmd.String("target"))
+		targets, err = netutils.TargetsFromString(targetStr)
 		if err != nil {
 			return err
 		}
@@ -99,11 +97,16 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	} else if len(targets) == 0 {
 		return fmt.Errorf("could not determine which targets to scan. Use the gscn discover --help for more information")
 	}
-	opts.Targets = targets
-	opts.Interface, err = netutils.VerifyandGetIfaceDetails(netInterfaceProvider, iface, targets, useIP6)
+	err = netutils.VerifyInterface(netInterfaceProvider, iface)
 	if err != nil {
 		return err
 	}
+
+	opts.Targets = targets
+	ifaceOpts := netutils.IfaceOpts{
+		Interface: iface,
+	}
+	opts.Interface = &ifaceOpts
 
 	if source := cmd.String("source"); source != "" {
 		source, parseerr := netip.ParseAddr(source)
@@ -112,7 +115,11 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		opts.Source = &source
 	} else {
-		opts.Source = &opts.Interface.IfaceIPtoUse
+		source, nerr := netutils.GetSourceIPFromInterface(netInterfaceProvider, iface, targets, useIP6)
+		if nerr != nil {
+			return err
+		}
+		opts.Source = source
 	}
 
 	var results []DiscoverResult
@@ -139,63 +146,4 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	addVendors(results)
 	displayDiscoverResults(results, doReverseLookup)
 	return err
-}
-
-func TargetsFromString(s string) ([]netip.Prefix, error) {
-	// Example: 10.1.1.1/24,10.1.1.1,10.1.1.1-2
-	commaSeparatedTargets := strings.Split(s, ",")
-	targets := make([]netip.Prefix, 0, 5)
-
-	for _, targetString := range commaSeparatedTargets {
-		if strings.ContainsRune(targetString, '/') {
-			addr, err := netip.ParsePrefix(targetString)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-			}
-			targets = append(targets, addr)
-		} else if strings.ContainsRune(targetString, '-') {
-			dashIndex := strings.LastIndex(targetString, "-")
-			if dashIndex >= len(targetString) {
-				return nil, fmt.Errorf("error parsing target -> %v", targetString)
-			}
-			lastDotIndex := strings.LastIndex(targetString, ".")
-			if lastDotIndex == -1 {
-				return nil, fmt.Errorf("error parsing -> %v", targetString)
-			}
-			baseIP := targetString[:lastDotIndex+1]
-			lower, err := strconv.Atoi(targetString[lastDotIndex+1 : dashIndex])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-			}
-			upper, err := strconv.Atoi(targetString[dashIndex+1:])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-			}
-			if lower > upper {
-				return nil, fmt.Errorf("error parsing target %v -> invalid range", targetString)
-			} else if upper >= 256 {
-				return nil, fmt.Errorf("error parsing target %v -> range cannot go above 255", targetString)
-			} else if lower < 0 {
-				return nil, fmt.Errorf("error parsing target %v -> range cannot be below zero", targetString)
-			}
-
-			for i := lower; i <= upper; i++ {
-				targetStr := fmt.Sprintf("%v%v/32", baseIP, i)
-				addr, err := netip.ParsePrefix(targetStr)
-				if err != nil {
-					return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-				}
-				targets = append(targets, addr)
-			}
-		} else {
-			targetStr := fmt.Sprintf("%v/%v", targetString, 32)
-			addr, err := netip.ParsePrefix(targetStr)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-			}
-			targets = append(targets, addr)
-		}
-	}
-
-	return targets, nil
 }

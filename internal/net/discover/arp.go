@@ -23,8 +23,6 @@ type socketInfo struct {
 }
 
 func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
-	addHostIP := checkIfAddrIsPartOfTarget(opts.Targets, &opts.Interface.IfaceIPtoUse)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -44,7 +42,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	resultsChan := make(chan []DiscoverResult)
 	startSending := make(chan struct{})
 
-	go getARPReplies(ctx, opts.Interface, opts.Targets, resultsChan, startSending)
+	go getARPReplies(ctx, opts, resultsChan, startSending)
 	_, ok := <-startSending // wait for packet receiving go routine to finish setup.
 	if !ok {
 		return nil, fmt.Errorf("could not capture packets on the interface")
@@ -60,7 +58,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
 		for target.Contains(IPaddr) {
-			if IPaddr == opts.Interface.IfaceIPtoUse { // skip interfaces' own ip
+			if IPaddr == *opts.Source { // skip interfaces' own ip
 				bar.Increment()
 				IPaddr = IPaddr.Next()
 				continue
@@ -80,12 +78,6 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
-	if addHostIP {
-		results = append(results, DiscoverResult{
-			ipAddr:  opts.Interface.IfaceIPtoUse.String() + " (this host)",
-			macAddr: opts.Interface.HardwareAddr.String(),
-		})
-	}
 	return results, nil
 }
 
@@ -131,8 +123,8 @@ func sendArpPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Ad
 	return nil
 }
 
-func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedTargets []netip.Prefix, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
-	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
+func getARPReplies(ctx context.Context, opts *DiscoverOptions, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+	handle, err := pcap.OpenLive(opts.Interface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
 	}
@@ -167,11 +159,11 @@ func getARPReplies(ctx context.Context, iface *netutils.IfaceOpts, expectedTarge
 					if !ok {
 						continue
 					}
-					if !checkIfAddrIsPartOfTarget(expectedTargets, &ipAddr) {
+					if !checkIfAddrIsPartOfTarget(opts.Targets, &ipAddr) {
 						// skip responses outside the specified network
 						continue
 					}
-					if ipAddr == iface.IfaceIPtoUse {
+					if ipAddr == *opts.Source {
 						// skip responses from the capturing interface to other devices.
 						continue
 					}

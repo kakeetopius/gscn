@@ -19,16 +19,25 @@ func displayDiscoverResults(resultSet []DiscoverResult, withHostNames bool) {
 		var tableData [][]string
 		if withHostNames {
 			tableData = pterm.TableData{{"IP Address", "Mac Address", "Vendor", "Host Name"}}
-			for _, result := range resultSet {
-				tableData = append(tableData, []string{result.ipAddr, result.macAddr, result.vendor, result.hostName})
-			}
 		} else {
 			tableData = pterm.TableData{{"IP Address", "Mac Address", "Vendor"}}
-			for _, result := range resultSet {
-				tableData = append(tableData, []string{result.ipAddr, result.macAddr, result.vendor})
-			}
 		}
 
+		for _, result := range resultSet {
+			vendor := result.vendor
+			if vendor == "" {
+				vendor = "(unknown)"
+			}
+			if withHostNames {
+				hostName := result.hostName
+				if hostName == "" {
+					hostName = "(unknown)"
+				}
+				tableData = append(tableData, []string{result.ipAddr, result.macAddr, vendor, hostName})
+				continue
+			}
+			tableData = append(tableData, []string{result.ipAddr, result.macAddr, vendor})
+		}
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 	}
 	fmt.Println("\nPackets Sent: ", packetsSent)
@@ -77,9 +86,6 @@ func addHostNames(resultSet []DiscoverResult, timeout time.Duration) {
 func addVendors(resultSet []DiscoverResult) {
 	for i := range resultSet {
 		vendor := oui.Vendor(resultSet[i].macAddr)
-		if vendor == "" {
-			vendor = "(unknown)"
-		}
 		resultSet[i].vendor = vendor
 	}
 }
