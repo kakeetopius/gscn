@@ -2,11 +2,10 @@
 package argparser
 
 import (
-	"context"
 	"errors"
-	"fmt"
 
 	"github.com/kakeetopius/gscn/internal/net/discover"
+	"github.com/kakeetopius/gscn/internal/net/scan"
 	"github.com/urfave/cli/v3"
 )
 
@@ -77,33 +76,26 @@ func GetCommand() *cli.Command {
 					&cli.StringFlag{
 						Name:    "target",
 						Aliases: []string{"t"},
-						Usage:   "IP address(s) of the host to scan. Can be in CIDR notation eg 10.1.1.1/24 or as a list 10.1.1.1,10.1.1.2 or both 10.1.1.1/24,10.2.2.2",
+						Usage:   "IP address(es) of the host to scan.",
 					},
 					&cli.StringFlag{
-						Name:    "iface",
-						Aliases: []string{"i"},
-						Usage:   "A network interface to scan hosts from.",
+						Name:    "ports",
+						Aliases: []string{"p"},
+						Usage:   "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080",
 					},
 					&cli.IntFlag{
 						Name:    "timeout",
-						Aliases: []string{"t"},
+						Value:   2,
+						Aliases: []string{"T"},
 						Usage:   "Amount of time in seconds to scan for.",
 					},
-					&cli.IntFlag{
-						Name:    "port",
-						Aliases: []string{"p"},
-						Usage:   "A port to check if open",
-					},
-					&cli.StringFlag{
-						Name:    "port-range",
-						Aliases: []string{"port-range"},
-						Usage:   "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080",
-					},
 				},
-				Action: func(ctx context.Context, c *cli.Command) error {
-					fmt.Println("Running a scan")
-					return nil
-				},
+				Description: "Targets can be provided in the following formats:\n" +
+					"\tgscn scan -t 10.1.1.1 -p 80    # Single Host\n" +
+					"\tgscn scan -t 10.1.1.1/24 -p 80,90,100    # CIDR Notation\n" +
+					"\tgscn scan -t 10.1.1.1-5 -p 1-100    # IP Range\n" +
+					"\tgscn scan -t 10.1.1.1,10.2.2.2/24,10.4.4.4-10 -p 1-100,433,8096 	# Comma Separated List\n",
+				Action: scan.RunScan,
 			},
 		},
 	}
