@@ -54,7 +54,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	opts.Timeout = cmd.Int("timeout")
 
 	if targetStr := cmd.String("target"); targetStr != "" {
-		targets, err = netutils.TargetsFromString(targetStr)
+		targets, err = netutils.DiscoverTargetsFromString(targetStr)
 		if err != nil {
 			return err
 		}

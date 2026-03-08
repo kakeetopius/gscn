@@ -83,11 +83,22 @@ func GetCommand() *cli.Command {
 						Aliases: []string{"p"},
 						Usage:   "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080",
 					},
+					&cli.BoolFlag{
+						Name:    "udp",
+						Aliases: []string{"u"},
+						Usage:   "Carry out a UDP scan instead of default TCP scan",
+					},
 					&cli.IntFlag{
 						Name:    "timeout",
 						Value:   2,
 						Aliases: []string{"T"},
 						Usage:   "Amount of time in seconds to scan for.",
+					},
+					&cli.IntFlag{
+						Name:    "workers",
+						Aliases: []string{"w"},
+						Value:   64,
+						Usage:   "Number of workers to run concurrently when scanning with a maximum of 500",
 					},
 				},
 				Description: "Targets can be provided in the following formats:\n" +
