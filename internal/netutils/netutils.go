@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -178,7 +177,7 @@ outer:
 	return &srcAddr, nil
 }
 
-func TargetsFromString(s string) ([]netip.Prefix, error) {
+func DiscoverTargetsFromString(s string) ([]netip.Prefix, error) {
 	// Example: 10.1.1.1/24,10.1.1.1,10.1.1.1-2
 	commaSeparatedTargets := strings.Split(s, ",")
 	targets := make([]netip.Prefix, 0, 5)
@@ -235,43 +234,6 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 	}
 
 	return Unique(targets), nil
-}
-
-func PortsFromString(s string) ([]uint, error) {
-	commaSeparatedPorts := strings.Split(s, ",")
-	targetPorts := make([]uint, 0, 5)
-
-	for _, portSpecString := range commaSeparatedPorts {
-		if strings.ContainsRune(portSpecString, '-') {
-			dashIndex := strings.LastIndex(portSpecString, "-")
-			if dashIndex >= len(portSpecString) {
-				return nil, fmt.Errorf("error parsing port range -> %v", portSpecString)
-			}
-			lower, err := strconv.Atoi(portSpecString[:dashIndex])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
-			}
-			upper, err := strconv.Atoi(portSpecString[dashIndex+1:])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
-			}
-			if lower > upper {
-				return nil, fmt.Errorf("error parsing target %v -> invalid range", portSpecString)
-			}
-			for i := lower; i <= upper; i++ {
-				targetPorts = append(targetPorts, uint(i))
-			}
-		} else {
-			portNum, err := strconv.Atoi(portSpecString)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port specification %v -> %v", portSpecString, err)
-			}
-			targetPorts = append(targetPorts, uint(portNum))
-		}
-	}
-
-	slices.Sort(targetPorts)
-	return Unique(targetPorts), nil
 }
 
 func Unique[T comparable](slice []T) []T {
