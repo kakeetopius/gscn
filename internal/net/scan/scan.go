@@ -134,17 +134,16 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 
 func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult) {
 	for target := range jobs {
-		tcpAddr := net.TCPAddr{
-			IP:   target.Addr().AsSlice(),
-			Port: int(target.Port()),
-		}
 		proto := ""
 		if target.Addr().Is4() {
 			proto = "tcp"
 		} else {
 			proto = "tcp6"
 		}
-		_, err := net.DialTCP(proto, nil, &tcpAddr)
+		dialer := net.Dialer{
+			Timeout: 2 * time.Second,
+		}
+		_, err := dialer.Dial(proto, target.String())
 
 		result := WorkerResult{
 			HostIP: target.Addr(),
@@ -167,10 +166,6 @@ func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.Addr
 
 func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult) {
 	for target := range jobs {
-		udpAddr := net.UDPAddr{
-			IP:   target.Addr().AsSlice(),
-			Port: int(target.Port()),
-		}
 		proto := ""
 		if target.Addr().Is4() {
 			proto = "udp"
@@ -184,8 +179,10 @@ func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.Addr
 				Protocol: proto,
 			},
 		}
-
-		conn, err := net.DialUDP(proto, nil, &udpAddr)
+		dialer := net.Dialer{
+			Timeout: 2 * time.Second,
+		}
+		conn, err := dialer.Dial(proto, target.String())
 		if err != nil {
 			result.Port.State = PortStateClosed
 			resultsChan <- result
@@ -199,11 +196,13 @@ func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.Addr
 			continue
 		}
 		buf := make([]byte, 1)
-		conn.Write(buf) // first write to the connection so we can het responses if any
+		conn.Write(buf) // first write to the connection so we can get responses if any
 		_, err = conn.Read(buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				// if we got a timeout, it can be because the port is filtered or open but silent
+				// BUG: This logic only works for hosts that are up. If a host is down, it will also timeout.
+				// Possible Fix is to first do a ping scan before actually doing port Scanning
 				result.Port.State = PortStatePossibleFilter
 				result.Port.Name = serviceFromGoPacketString(layers.UDPPort(target.Port()).String())
 			} else {
