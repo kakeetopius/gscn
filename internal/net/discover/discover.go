@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/netutils"
+	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v3"
 )
@@ -17,7 +18,7 @@ import (
 type DiscoverOptions struct {
 	Targets   []netip.Prefix
 	Source    *netip.Addr
-	Interface *netutils.IfaceOpts
+	Interface *util.IfaceOpts
 	Timeout   int
 }
 
@@ -54,7 +55,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	opts.Timeout = cmd.Int("timeout")
 
 	if targetStr := cmd.String("target"); targetStr != "" {
-		targets, err = netutils.DiscoverTargetsFromString(targetStr)
+		targets, err = discoverTargetsFromString(targetStr)
 		if err != nil {
 			return err
 		}
@@ -69,7 +70,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		if len(targets) == 0 {
 			var target *netip.Prefix
-			target, err = netutils.GetFirstIfaceIPNet(netInterfaceProvider, iface, useIP6)
+			target, err = util.GetFirstIfaceIPNet(netInterfaceProvider, iface, useIP6)
 			if err != nil {
 				return err
 			}
@@ -82,13 +83,14 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("could not determine which hosts scan. Use gscn discover --help for mor information")
 		}
 		for _, target := range targets {
-			iface, err = netutils.GetIfaceByIP(netInterfaceProvider, target.Addr())
+			iface, err = util.GetIfaceByIP(netInterfaceProvider, target.Addr())
 			if err != nil {
-				if errors.Is(err, netutils.ErrNoInterfaceConnectedToTarget) {
+				if errors.Is(err, util.ErrNoInterfaceConnectedToTarget) {
 					continue
 				}
 				return err
 			}
+			break
 		}
 	}
 
@@ -97,13 +99,13 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	} else if len(targets) == 0 {
 		return fmt.Errorf("could not determine which targets to scan. Use the gscn discover --help for more information")
 	}
-	err = netutils.VerifyInterface(netInterfaceProvider, iface)
+	err = util.VerifyInterface(netInterfaceProvider, iface)
 	if err != nil {
 		return err
 	}
 
 	opts.Targets = targets
-	ifaceOpts := netutils.IfaceOpts{
+	ifaceOpts := util.IfaceOpts{
 		Interface: iface,
 	}
 	opts.Interface = &ifaceOpts
@@ -115,7 +117,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}
 		opts.Source = &source
 	} else {
-		source, nerr := netutils.GetSourceIPFromInterface(netInterfaceProvider, iface, targets, useIP6)
+		source, nerr := util.GetSourceIPFromInterface(netInterfaceProvider, iface, targets, useIP6)
 		if nerr != nil {
 			return err
 		}
@@ -146,4 +148,35 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	addVendors(results)
 	displayDiscoverResults(results, doReverseLookup)
 	return err
+}
+
+func discoverTargetsFromString(s string) ([]netip.Prefix, error) {
+	// Example: 10.1.1.1/24,10.1.1.1,10.1.1.1-2
+	commaSeparatedTargets := strings.Split(s, ",")
+	targets := make([]netip.Prefix, 0, 5)
+
+	for _, targetString := range commaSeparatedTargets {
+		if strings.ContainsRune(targetString, '/') {
+			addr, err := netip.ParsePrefix(targetString)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+			}
+			targets = append(targets, addr)
+		} else if strings.ContainsRune(targetString, '-') {
+			IPRange, err := util.ParseIPRange(targetString)
+			if err != nil {
+				return nil, err
+			}
+			targets = append(targets, IPRange...)
+		} else {
+			targetStr := fmt.Sprintf("%v/%v", targetString, 32)
+			addr, err := netip.ParsePrefix(targetStr)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
+			}
+			targets = append(targets, addr)
+		}
+	}
+
+	return util.Unique(targets), nil
 }

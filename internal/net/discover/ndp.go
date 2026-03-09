@@ -12,7 +12,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
-	"github.com/kakeetopius/gscn/internal/netutils"
+	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 	"golang.org/x/sys/unix"
 )
@@ -43,7 +43,7 @@ func runIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	return results, nil
 }
 
-func sendNSPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr) error {
+func sendNSPacket(iface *util.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr) error {
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
 		return err
@@ -104,7 +104,7 @@ func sendNSPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Add
 	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, iface *netutils.IfaceOpts, expectedAddrs []netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+func getNeighbourAdvertisements(ctx context.Context, iface *util.IfaceOpts, expectedAddrs []netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return

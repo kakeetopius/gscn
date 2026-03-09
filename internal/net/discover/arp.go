@@ -3,7 +3,6 @@ package discover
 import (
 	"context"
 	"fmt"
-	"math"
 	"net"
 	"net/netip"
 	"time"
@@ -12,7 +11,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
-	"github.com/kakeetopius/gscn/internal/netutils"
+	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 	"golang.org/x/sys/unix"
 )
@@ -49,7 +48,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	}
 
 	pterm.Info.Println("Probing host(s) on interface: " + opts.Interface.Name)
-	numHosts := TotalNumOfTargets(opts.Targets)
+	numHosts := util.HostsInNetworks(opts.Targets)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		return nil, err
@@ -81,7 +80,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	return results, nil
 }
 
-func sendArpPacket(iface *netutils.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *util.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -159,7 +158,7 @@ func getARPReplies(ctx context.Context, opts *DiscoverOptions, resultsChan chan<
 					if !ok {
 						continue
 					}
-					if !checkIfAddrIsPartOfTarget(opts.Targets, &ipAddr) {
+					if !util.CheckIfAddrIsPartOfNetworks(opts.Targets, &ipAddr) {
 						// skip responses outside the specified network
 						continue
 					}
@@ -181,22 +180,4 @@ func getARPReplies(ctx context.Context, opts *DiscoverOptions, resultsChan chan<
 			}
 		}
 	}
-}
-
-func checkIfAddrIsPartOfTarget(targets []netip.Prefix, addr *netip.Addr) bool {
-	for _, target := range targets {
-		if target.Contains(*addr) {
-			return true
-		}
-	}
-	return false
-}
-
-func TotalNumOfTargets(targets []netip.Prefix) int {
-	numHosts := 0
-	for _, target := range targets {
-		networkAddress := target.Masked()
-		numHosts += int(math.Pow(2, float64(32-networkAddress.Bits())))
-	}
-	return numHosts
 }

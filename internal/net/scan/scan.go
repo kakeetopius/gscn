@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/gopacket/layers"
-	"github.com/kakeetopius/gscn/internal/netutils"
+	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v3"
 )
@@ -86,7 +84,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	}
 	opts.TargetHosts = targets
 	if portStr := cmd.String("ports"); portStr != "" {
-		ports, err = portsFromString(portStr)
+		ports, err = util.PortsFromString(portStr)
 		if err != nil {
 			return err
 		}
@@ -112,7 +110,8 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		go opts.Scanner(&opts, wg, jobs, workerResultsChan)
 	}
 
-	spinner, err := pterm.DefaultSpinner.Start("Scanning Host(s)")
+	totalNumOfHosts := totalNumOfScanTargets(targets)
+	spinner, err := pterm.DefaultSpinner.Start(fmt.Sprintf("Scanning %v Host(s)", totalNumOfHosts))
 	if err != nil {
 		return err
 	}
@@ -256,7 +255,7 @@ func PrintScanResults(results ScanResults) {
 func sendJobs(jobChan chan netip.AddrPort, opts ScanOptions) {
 	for _, target := range opts.TargetHosts {
 		for _, port := range opts.TargetPorts {
-			if onlyIPInRange(target.Prefix) {
+			if util.OnlyIPInRange(target.Prefix) {
 				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
 				jobChan <- addrPort
 				continue
@@ -291,15 +290,6 @@ func getScanResults(ctx context.Context, workerResultsChan chan WorkerResult, sc
 			scanResults[hostIP] = hostResults
 		}
 	}
-}
-
-func onlyIPInRange(addr netip.Prefix) bool {
-	if addr.Bits() == 32 && addr.Addr().Is4() {
-		return true
-	} else if addr.Bits() == 128 && addr.Addr().Is6() {
-		return true
-	}
-	return false
 }
 
 func serviceFromGoPacketString(s string) string {
@@ -356,7 +346,7 @@ func scanTargetsFromString(s string) ([]ScanTarget, error) {
 		} else if strings.ContainsRune(targetString, '-') {
 			// IP Range provided eg 10.1.1.1-10
 			var IPsInRange []netip.Prefix
-			IPsInRange, err = TryParseIPRange(targetString)
+			IPsInRange, err = util.ParseIPRange(targetString)
 			if err == nil {
 				for _, ip := range IPsInRange {
 					targets = append(targets, ScanTarget{Prefix: ip})
@@ -391,91 +381,13 @@ func scanTargetsFromString(s string) ([]ScanTarget, error) {
 
 	}
 
-	return netutils.Unique(targets), nil
+	return util.Unique(targets), nil
 }
 
-func TryParseIPRange(s string) ([]netip.Prefix, error) {
-	if s == "" {
-		return nil, fmt.Errorf("error parsing target %v -> Invalid range", s)
+func totalNumOfScanTargets(targets []ScanTarget) int {
+	total := 0
+	for _, targetNet := range targets {
+		total += util.HostsInNetworks([]netip.Prefix{targetNet.Prefix})
 	}
-
-	IPPrefixes := make([]netip.Prefix, 0)
-	dashIndex := strings.LastIndex(s, "-")
-	if dashIndex >= len(s) {
-		return nil, fmt.Errorf("error parsing target -> %v", s)
-	}
-	lastDotIndex := strings.LastIndex(s, ".")
-	if lastDotIndex == -1 {
-		return nil, fmt.Errorf("error parsing -> %v", s)
-	}
-	baseIP := s[:lastDotIndex+1]
-	lower, err := strconv.Atoi(s[lastDotIndex+1 : dashIndex])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
-	}
-	upper, err := strconv.Atoi(s[dashIndex+1:])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
-	}
-	if lower > upper {
-		return nil, fmt.Errorf("error parsing target %v -> invalid range", s)
-	} else if upper >= 256 {
-		return nil, fmt.Errorf("error parsing target %v -> range cannot go above 255", s)
-	} else if lower < 0 {
-		return nil, fmt.Errorf("error parsing target %v -> range cannot be below zero", s)
-	}
-
-	for i := lower; i <= upper; i++ {
-		targetStr := fmt.Sprintf("%v%v", baseIP, i)
-		addr, err := netip.ParseAddr(targetStr)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
-		}
-		bitlen := 32
-		if addr.Is6() {
-			bitlen = 128
-		}
-		IPPrefixes = append(IPPrefixes, netip.PrefixFrom(addr, bitlen))
-	}
-
-	return IPPrefixes, nil
-}
-
-func portsFromString(s string) ([]uint, error) {
-	commaSeparatedPorts := strings.Split(s, ",")
-	targetPorts := make([]uint, 0, 5)
-
-	for _, portSpecString := range commaSeparatedPorts {
-		if strings.ContainsRune(portSpecString, '-') {
-			// Port Range Provided eg 10-20
-			dashIndex := strings.LastIndex(portSpecString, "-")
-			if dashIndex >= len(portSpecString) {
-				return nil, fmt.Errorf("error parsing port range -> %v", portSpecString)
-			}
-			lower, err := strconv.Atoi(portSpecString[:dashIndex])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
-			}
-			upper, err := strconv.Atoi(portSpecString[dashIndex+1:])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
-			}
-			if lower > upper {
-				return nil, fmt.Errorf("error parsing target %v -> invalid range", portSpecString)
-			}
-			for i := lower; i <= upper; i++ {
-				targetPorts = append(targetPorts, uint(i))
-			}
-		} else {
-			// Single port presumed
-			portNum, err := strconv.Atoi(portSpecString)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port specification %v -> %v", portSpecString, err)
-			}
-			targetPorts = append(targetPorts, uint(portNum))
-		}
-	}
-
-	slices.Sort(targetPorts)
-	return netutils.Unique(targetPorts), nil
+	return total
 }

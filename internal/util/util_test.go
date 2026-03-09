@@ -1,4 +1,4 @@
-package netutils
+package util
 
 import (
 	"fmt"
