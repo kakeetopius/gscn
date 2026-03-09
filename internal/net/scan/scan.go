@@ -19,18 +19,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-type ScanTarget struct {
-	Address netip.Addr
-	Port    Port
-}
-
-type ScanOptions struct {
-	TargetHosts []ScanTarget
-	TargetPorts []uint
-	Timeout     int
-	Scanner     func(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget, resultsChan chan<- WorkerResult)
-}
-
 type PortState uint8
 
 const (
@@ -46,17 +34,31 @@ type Port struct {
 	State    PortState
 }
 
+type ScanTarget struct {
+	netip.Prefix
+}
+
+type ScanOptions struct {
+	TargetHosts []ScanTarget
+	TargetPorts []uint
+	Timeout     int
+	Scanner     func(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult)
+}
+
+// HostResult is the result of a single host after scanning
 type HostResult struct {
-	Ports       []Port
+	Ports       map[uint]Port
 	OpenPorts   int
 	ClosedPorts int
 }
 
+// WorkerResult is the tesult returned by Scanning workers
 type WorkerResult struct {
 	HostIP netip.Addr
 	Port   Port
 }
 
+// ScanResults is results of all the scanned hosts
 type ScanResults map[netip.Addr]HostResult
 
 var HostNames = make(map[netip.Addr]string)
@@ -73,7 +75,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	}
 
 	if targetStr := cmd.String("target"); targetStr != "" {
-		targets, err = scanTargetFromString(targetStr)
+		targets, err = scanTargetsFromString(targetStr)
 		if err != nil {
 			return err
 		}
@@ -103,7 +105,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		opts.Scanner = ScanHostTCPPort
 	}
 
-	jobs := make(chan ScanTarget, numWorkers)
+	jobs := make(chan netip.AddrPort, numWorkers)
 	workerResultsChan := make(chan WorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
@@ -115,12 +117,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	for _, target := range targets {
-		for _, port := range ports {
-			target.Port = Port{Number: port}
-			jobs <- target
-		}
-	}
+	sendJobs(jobs, opts)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	scanResultsChan := make(chan ScanResults)
@@ -132,12 +129,42 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 
 	spinner.Success("Done")
 	scanResults := <-scanResultsChan
-	addScanStats(scanResults)
+	addScanStatsToResults(scanResults)
 	PrintScanResults(scanResults)
 	return nil
 }
 
+func sendJobs(jobChan chan netip.AddrPort, opts ScanOptions) {
+	for _, target := range opts.TargetHosts {
+		for _, port := range opts.TargetPorts {
+			if onlyIPInRange(target.Prefix) {
+				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
+				jobChan <- addrPort
+				continue
+			}
+			netAddr := target.Masked()
+			addr := netAddr.Addr().Next()
+			for netAddr.Contains(addr) {
+				// loop over range of IPs
+				addrPort := netip.AddrPortFrom(addr, uint16(port))
+				jobChan <- addrPort
+				addr = addr.Next()
+			}
+		}
+	}
+}
+
+func onlyIPInRange(addr netip.Prefix) bool {
+	if addr.Bits() == 32 && addr.Addr().Is4() {
+		return true
+	} else if addr.Bits() == 128 && addr.Addr().Is6() {
+		return true
+	}
+	return false
+}
+
 func getScanResults(ctx context.Context, workerResultsChan chan WorkerResult, scanResultsChan chan ScanResults) {
+	// To Be Run By Main Worker
 	scanResults := make(ScanResults)
 	for {
 		select {
@@ -147,20 +174,23 @@ func getScanResults(ctx context.Context, workerResultsChan chan WorkerResult, sc
 		case result := <-workerResultsChan:
 			hostIP := result.HostIP
 			hostResults := scanResults[hostIP]
-			hostResults.Ports = append(hostResults.Ports, result.Port)
+			if hostResults.Ports == nil {
+				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
+			}
+			hostResults.Ports[result.Port.Number] = result.Port
 			scanResults[hostIP] = hostResults
 		}
 	}
 }
 
-func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget, resultsChan chan<- WorkerResult) {
+func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult) {
 	for target := range jobs {
 		tcpAddr := net.TCPAddr{
-			IP:   target.Address.AsSlice(),
-			Port: int(target.Port.Number),
+			IP:   target.Addr().AsSlice(),
+			Port: int(target.Port()),
 		}
 		proto := ""
-		if target.Address.Is4() {
+		if target.Addr().Is4() {
 			proto = "tcp"
 		} else {
 			proto = "tcp6"
@@ -168,9 +198,9 @@ func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget
 		_, err := net.DialTCP(proto, nil, &tcpAddr)
 
 		result := WorkerResult{
-			HostIP: target.Address,
+			HostIP: target.Addr(),
 			Port: Port{
-				Number:   uint(target.Port.Number),
+				Number:   uint(target.Port()),
 				Protocol: proto,
 			},
 		}
@@ -178,7 +208,7 @@ func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget
 			result.Port.State = PortStateClosed
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = serviceFromString(layers.TCPPort(target.Port.Number).String())
+			result.Port.Name = serviceFromGoPacketString(layers.TCPPort(target.Port()).String())
 		}
 
 		resultsChan <- result
@@ -186,22 +216,22 @@ func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget
 	wg.Done()
 }
 
-func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget, resultsChan chan<- WorkerResult) {
+func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult) {
 	for target := range jobs {
 		udpAddr := net.UDPAddr{
-			IP:   target.Address.AsSlice(),
-			Port: int(target.Port.Number),
+			IP:   target.Addr().AsSlice(),
+			Port: int(target.Port()),
 		}
 		proto := ""
-		if target.Address.Is4() {
+		if target.Addr().Is4() {
 			proto = "udp"
 		} else {
 			proto = "udp6"
 		}
 		result := WorkerResult{
-			HostIP: target.Address,
+			HostIP: target.Addr(),
 			Port: Port{
-				Number:   uint(target.Port.Number),
+				Number:   uint(target.Port()),
 				Protocol: proto,
 			},
 		}
@@ -220,20 +250,20 @@ func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan ScanTarget
 			continue
 		}
 		buf := make([]byte, 1)
-		conn.Write(buf) // first write to the connection so we can responses if any
+		conn.Write(buf) // first write to the connection so we can het responses if any
 		_, err = conn.Read(buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				// if we got a timeout, it can be because the port is filtered or open but silent
 				result.Port.State = PortStatePossibleFilter
-				result.Port.Name = serviceFromString(layers.UDPPort(target.Port.Number).String())
+				result.Port.Name = serviceFromGoPacketString(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed
 				result.Port.State = PortStateClosed
 			}
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = serviceFromString(layers.UDPPort(target.Port.Number).String())
+			result.Port.Name = serviceFromGoPacketString(layers.UDPPort(target.Port()).String())
 		}
 
 		resultsChan <- result
@@ -261,7 +291,7 @@ func PrintScanResults(results ScanResults) {
 				state = "closed"
 				continue // no need to add closed ports to the table to print
 			}
-			tcpService := serviceFromString(layers.TCPPort(port.Number).String())
+			tcpService := serviceFromGoPacketString(layers.TCPPort(port.Number).String())
 			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), state, tcpService})
 		}
 		if hostResults.OpenPorts > 0 {
@@ -273,7 +303,7 @@ func PrintScanResults(results ScanResults) {
 	}
 }
 
-func serviceFromString(s string) string {
+func serviceFromGoPacketString(s string) string {
 	// format: number(name) eg 80(http)
 	if s == "" {
 		return s
@@ -287,7 +317,7 @@ func serviceFromString(s string) string {
 	return s[firstBracket+1 : secondBracket]
 }
 
-func addScanStats(results ScanResults) {
+func addScanStatsToResults(results ScanResults) {
 	for host, hostResult := range results {
 		closed := 0
 		open := 0
@@ -310,13 +340,14 @@ func addScanStats(results ScanResults) {
 	}
 }
 
-func scanTargetFromString(s string) ([]ScanTarget, error) {
+func scanTargetsFromString(s string) ([]ScanTarget, error) {
 	// Example: 10.1.1.1/24,10.1.1.1,bing.com,10.1.1.1-2,google.com
 	commaSeparatedTargets := strings.Split(s, ",")
 	targets := make([]ScanTarget, 0, 5)
 
 	for _, targetString := range commaSeparatedTargets {
 		if unicode.IsLetter([]rune(targetString)[0]) {
+			// HOSTNAME provided eg google.com
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
 
@@ -328,23 +359,21 @@ func scanTargetFromString(s string) ([]ScanTarget, error) {
 					return nil, fmt.Errorf("error looking up IP for target %v", targetString)
 				}
 				targets = append(targets, ScanTarget{
-					Address: addr,
+					Prefix: netip.PrefixFrom(addr, 32),
 				})
 				HostNames[addr] = targetString
 			} else if err != nil {
 				return nil, fmt.Errorf("error looking up IP for target %v -> %v", targetString, err)
 			}
 		} else if strings.ContainsRune(targetString, '/') {
+			// CIDR Notation Provided eg 10.1.1.1/24
 			network, err := netip.ParsePrefix(targetString)
-			addr := network.Masked().Addr().Next()
-			for network.Contains(addr) {
-				targets = append(targets, ScanTarget{Address: addr})
-				addr = addr.Next()
-			}
 			if err != nil {
 				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
 			}
+			targets = append(targets, ScanTarget{Prefix: network})
 		} else if strings.ContainsRune(targetString, '-') {
+			// IP Range provided eg 10.1.1.1-10
 			dashIndex := strings.LastIndex(targetString, "-")
 			if dashIndex >= len(targetString) {
 				return nil, fmt.Errorf("error parsing target -> %v", targetString)
@@ -376,14 +405,23 @@ func scanTargetFromString(s string) ([]ScanTarget, error) {
 				if err != nil {
 					return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
 				}
-				targets = append(targets, ScanTarget{Address: addr})
+				bitlen := 32
+				if addr.Is6() {
+					bitlen = 128
+				}
+				targets = append(targets, ScanTarget{Prefix: netip.PrefixFrom(addr, bitlen)})
 			}
 		} else {
+			// Single IP Presumed eg 10.1.1.1
 			addr, err := netip.ParseAddr(targetString)
+			bitlen := 32
+			if addr.Is6() {
+				bitlen = 128
+			}
 			if err != nil {
 				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
 			}
-			targets = append(targets, ScanTarget{Address: addr})
+			targets = append(targets, ScanTarget{Prefix: netip.PrefixFrom(addr, bitlen)})
 		}
 	}
 
@@ -396,6 +434,7 @@ func portsFromString(s string) ([]uint, error) {
 
 	for _, portSpecString := range commaSeparatedPorts {
 		if strings.ContainsRune(portSpecString, '-') {
+			// Port Range Provided eg 10-20
 			dashIndex := strings.LastIndex(portSpecString, "-")
 			if dashIndex >= len(portSpecString) {
 				return nil, fmt.Errorf("error parsing port range -> %v", portSpecString)
@@ -415,6 +454,7 @@ func portsFromString(s string) ([]uint, error) {
 				targetPorts = append(targetPorts, uint(i))
 			}
 		} else {
+			// Single port presumed
 			portNum, err := strconv.Atoi(portSpecString)
 			if err != nil {
 				return nil, fmt.Errorf("error parsing port specification %v -> %v", portSpecString, err)
