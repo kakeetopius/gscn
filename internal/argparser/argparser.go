@@ -105,7 +105,8 @@ func GetCommand() *cli.Command {
 					"\tgscn scan -t 10.1.1.1 -p 80    # Single Host\n" +
 					"\tgscn scan -t 10.1.1.1/24 -p 80,90,100    # CIDR Notation\n" +
 					"\tgscn scan -t 10.1.1.1-5 -p 1-100    # IP Range\n" +
-					"\tgscn scan -t 10.1.1.1,10.2.2.2/24,10.4.4.4-10 -p 1-100,433,8096 	# Comma Separated List\n",
+					"\tgscn scan -t bing.com -p 1-100    # Domain Name\n" +
+					"\tgscn scan -t 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096 	# Comma Separated List\n",
 				Action: scan.RunScan,
 			},
 		},
