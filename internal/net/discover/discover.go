@@ -8,30 +8,11 @@ import (
 	"net"
 	"net/netip"
 	"strings"
-	"time"
 
 	"github.com/kakeetopius/gscn/internal/util"
+	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v3"
-)
-
-type DiscoverOptions struct {
-	Targets   []netip.Prefix
-	Source    *netip.Addr
-	Interface *util.IfaceOpts
-	Timeout   int
-}
-
-type DiscoverResult struct {
-	ipAddr   string
-	macAddr  string
-	hostName string
-	vendor   string
-}
-
-var (
-	packetsSent     = 0
-	packetsReceived = 0
 )
 
 type RealNetInterfaceProvider struct{}
@@ -45,14 +26,14 @@ func (RealNetInterfaceProvider) AddrsOf(iface *net.Interface) ([]net.Addr, error
 }
 
 func RunDiscover(ctx context.Context, cmd *cli.Command) error {
-	var opts DiscoverOptions
 	var iface *net.Interface
 	var err error
+
 	targets := make([]netip.Prefix, 0)
 
 	useIP6 := cmd.Bool("six")
 
-	opts.Timeout = cmd.Int("timeout")
+	timeout := cmd.Duration("timeout")
 
 	if targetStr := cmd.String("target"); targetStr != "" {
 		targets, err = discoverTargetsFromString(targetStr)
@@ -104,50 +85,90 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	opts.Targets = targets
-	ifaceOpts := util.IfaceOpts{
+	ifaceOpts := scanner.IfaceOpts{
 		Interface: iface,
 	}
-	opts.Interface = &ifaceOpts
 
+	var sourceAddr netip.Addr
 	if source := cmd.String("source"); source != "" {
 		source, parseerr := netip.ParseAddr(source)
 		if parseerr != nil {
 			return fmt.Errorf("error parsing source address :%v", parseerr)
 		}
-		opts.Source = &source
+		sourceAddr = source
 	} else {
 		source, nerr := util.GetSourceIPFromInterface(netInterfaceProvider, iface, targets, useIP6)
 		if nerr != nil {
 			return err
 		}
-		opts.Source = source
+		sourceAddr = *source
 	}
 
-	var results []DiscoverResult
+	doReverseLookup := cmd.Bool("reverse")
 	if useIP6 {
 		if !targets[0].Addr().Is6() {
 			return fmt.Errorf("the given IP address is not IPv6")
 		}
-		results, err = RunIPv6Disc(&opts)
+		ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
+			Targets:   targets,
+			Source:    sourceAddr,
+			Interface: ifaceOpts,
+		}).WithTimeout(timeout).WithVendors()
+
+		if doReverseLookup {
+			ndpScanner = ndpScanner.WithReverseLookups()
+		}
+		err = ndpScanner.Scan()
+		if err != nil {
+			return err
+		}
+		var ndpResults scanner.NDPScanResults
+		if results, ok := ndpScanner.Results().(scanner.NDPScanResults); ok {
+			ndpResults = results
+		} else {
+			return fmt.Errorf("error getting ndp results")
+		}
+		var ndpStats scanner.NDPScanStats
+		if stats, ok := ndpScanner.Stats().(scanner.NDPScanStats); ok {
+			ndpStats = stats
+		} else {
+			return fmt.Errorf("error getting ndp stats")
+		}
+		displayNDPResults(&ndpResults, &ndpStats)
+
 	} else {
 		if !targets[0].Addr().Is4() {
 			return fmt.Errorf("arp can only be used with IPv4 addresses")
 		}
-		results, err = RunArp(&opts)
-	}
-	if err != nil {
-		return err
+
+		arpScanner := scanner.NewARPScanner(&scanner.ARPScanOptions{
+			Targets:   targets,
+			Source:    sourceAddr,
+			Interface: ifaceOpts,
+		}).WithTimeout(timeout).WithVendors()
+		if doReverseLookup {
+			arpScanner = arpScanner.WithReverseLookups()
+		}
+		err = arpScanner.Scan()
+		if err != nil {
+			return err
+		}
+		var arpResults scanner.ARPScanResults
+		if results, ok := arpScanner.Results().(scanner.ARPScanResults); ok {
+			arpResults = results
+		} else {
+			return fmt.Errorf("error getting ARP results")
+		}
+		var arpStats scanner.ARPScanStats
+		if stats, ok := arpScanner.Stats().(scanner.ARPScanStats); ok {
+			arpStats = stats
+		} else {
+			return fmt.Errorf("error getting ARP stats")
+		}
+		displayARPResults(&arpResults, &arpStats)
 	}
 
-	doReverseLookup := cmd.Bool("reverse")
-	if doReverseLookup {
-		doReverseLookup = true
-		addHostNames(results, time.Duration(opts.Timeout))
-	}
-	addVendors(results)
-	displayDiscoverResults(results, doReverseLookup)
-	return err
+	return nil
 }
 
 func discoverTargetsFromString(s string) ([]netip.Prefix, error) {

@@ -1,11 +1,10 @@
-package discover
+package scanner
 
 import (
 	"context"
 	"fmt"
 	"net"
 	"net/netip"
-	"slices"
 	"time"
 
 	"github.com/google/gopacket"
@@ -17,42 +16,153 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// RunIPv6Disc discovers IPv6 neighbors by sending Neighbor Solicitation (NS)
-// probes and collecting Neighbor Advertisement (NA) responses on opts.Interface.
-//
-// After opts.Timeout elapses, capture is canceled and accumulated results are
-// returned.
-func RunIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
-	resultChan := make(chan []DiscoverResult)
+type NDPScanOptions struct {
+	Targets   []netip.Prefix
+	Source    netip.Addr
+	Interface IfaceOpts
+	generalScanOptions
+}
+
+type NDPScanResult struct {
+	IPAddr   string
+	MacAddr  string
+	HostName string
+	Vendor   string
+}
+
+type NDPScanStats struct {
+	PacketsSent     int
+	PacketsReceived int
+}
+
+type NDPScanResults struct {
+	ResultSet    []NDPScanResult
+	hasHostNames bool
+	hasVendors   bool
+}
+
+func (NDPScanResults) ResultType() ScanResultType {
+	return NDPScanResultType
+}
+
+func (s NDPScanResults) HasHostNames() bool {
+	return s.hasHostNames
+}
+
+func (s NDPScanResults) HasVendors() bool {
+	return s.hasVendors
+}
+
+type NDPScanner struct {
+	opts             *NDPScanOptions
+	results          NDPScanResults
+	stats            NDPScanStats
+	doReverseLookups bool
+	addVendors       bool
+}
+
+func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
+	return &NDPScanner{
+		opts:             opts,
+		results:          NDPScanResults{},
+		stats:            NDPScanStats{},
+		addVendors:       false,
+		doReverseLookups: false,
+	}
+}
+
+func (s *NDPScanner) WithTimeout(timeout time.Duration) *NDPScanner {
+	s.opts.Timeout = timeout
+	return s
+}
+
+func (s *NDPScanner) WithReverseLookups() *NDPScanner {
+	s.doReverseLookups = true
+	return s
+}
+
+func (s *NDPScanner) WithVendors() *NDPScanner {
+	s.addVendors = true
+	return s
+}
+
+func (s *NDPScanner) Scan() error {
+	if s.opts == nil {
+		return fmt.Errorf("no ndp options set yet")
+	}
+	results, err := runIPv6Disc(s)
+	if err != nil {
+		return err
+	}
+	s.results = results
+	return nil
+}
+
+func (s *NDPScanner) Results() ScanResults {
+	resultSet := s.results.ResultSet
+	if s.doReverseLookups {
+		s.results.hasHostNames = true
+		fmt.Println()
+		pterm.Info.Println("Trying to resolve hostnames")
+		numHosts := len(resultSet)
+		bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
+		if err != nil {
+			fmt.Println(err)
+			return nil
+		}
+
+		for i := range resultSet {
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.Timeout)
+			bar.Increment()
+		}
+		bar.Stop()
+	}
+	if s.addVendors {
+		s.results.hasVendors = true
+		for i := range resultSet {
+			resultSet[i].Vendor = MACVendor(resultSet[i].MacAddr)
+		}
+	}
+	return s.results
+}
+
+func (s *NDPScanner) Stats() ScanStats {
+	return s.stats
+}
+
+func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
+	opts := scanner.opts
+	resultChan := make(chan NDPScanResults)
 	startSendChan := make(chan struct{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	targets := prefixToAddr(opts.Targets)
-	go getNeighbourAdvertisements(ctx, opts.Interface, targets, resultChan, startSendChan)
+	go getNeighbourAdvertisements(ctx, scanner, resultChan, startSendChan)
 
 	_, ok := <-startSendChan // wait for packet receving routine to set up
 	if !ok {
-		return nil, fmt.Errorf("error capturing packets on that interface")
+		return NDPScanResults{}, fmt.Errorf("error capturing packets on that interface")
 	}
 	pterm.Info.Println("Probing host on interface: " + opts.Interface.Name)
 
 	for _, target := range targets {
-		sendNSPacket(opts.Interface, opts.Source, &target)
+		sendNSPacket(scanner, &target)
 	}
 
-	WaitTimeout(time.Duration(opts.Timeout), "response")
+	util.WaitTimeout(opts.Timeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultChan
 	return results, nil
 }
 
-func sendNSPacket(iface *util.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr) error {
+func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
 		return err
 	}
+	iface := scanner.opts.Interface
 	addr := &unix.SockaddrLinklayer{
 		Ifindex:  iface.Index,
 		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
@@ -65,7 +175,7 @@ func sendNSPacket(iface *util.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr) e
 	}
 
 	ip := &layers.IPv6{
-		SrcIP:      srcIP.AsSlice(),
+		SrcIP:      scanner.opts.Source.AsSlice(),
 		DstIP:      solicitedNodeIPAddress(*dstIP),
 		Version:    6,
 		NextHeader: layers.IPProtocolICMPv6,
@@ -105,11 +215,12 @@ func sendNSPacket(iface *util.IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr) e
 	if err != nil {
 		return err
 	}
-	packetsSent++
+	scanner.stats.PacketsSent++
 	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, iface *util.IfaceOpts, expectedAddrs []netip.Addr, resultsChan chan<- []DiscoverResult, startSendChan chan<- struct{}) {
+func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- NDPScanResults, startSendChan chan<- struct{}) {
+	iface := scanner.opts.Interface
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
@@ -125,7 +236,7 @@ func getNeighbourAdvertisements(ctx context.Context, iface *util.IfaceOpts, expe
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetChan := packetSource.Packets()
 
-	results := make([]DiscoverResult, 0)
+	results := NDPScanResults{}
 	startSendChan <- struct{}{}
 
 	for {
@@ -144,10 +255,10 @@ func getNeighbourAdvertisements(ctx context.Context, iface *util.IfaceOpts, expe
 					continue
 				}
 				srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-				if !checkIfIPIsPartofTargets(expectedAddrs, &srcIP) {
+				if !util.CheckIfAddrIsPartOfNetworks(scanner.opts.Targets, &srcIP) {
 					continue
 				}
-				packetsReceived++
+				scanner.stats.PacketsReceived++
 				icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
 				var hwAddr net.HardwareAddr
 				for _, icmpOption := range icmpPacket.Options {
@@ -157,13 +268,13 @@ func getNeighbourAdvertisements(ctx context.Context, iface *util.IfaceOpts, expe
 					}
 				}
 
-				result := DiscoverResult{}
-				result.ipAddr = srcIP.String()
-				result.macAddr = hwAddr.String()
+				var result NDPScanResult
+				result.IPAddr = srcIP.String()
+				result.MacAddr = hwAddr.String()
 				if icmpPacket.Router() {
-					result.macAddr = fmt.Sprintf("%v (router)", hwAddr)
+					result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
 				}
-				results = append(results, result)
+				results.ResultSet = append(results.ResultSet, result)
 			}
 		}
 	}
@@ -195,10 +306,6 @@ func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
 
 	copy(solIP[13:16], last24Bits)
 	return solIP
-}
-
-func checkIfIPIsPartofTargets(targets []netip.Addr, addr *netip.Addr) bool {
-	return slices.Contains(targets, *addr)
 }
 
 func prefixToAddr(prefixes []netip.Prefix) []netip.Addr {
