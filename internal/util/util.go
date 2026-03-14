@@ -379,3 +379,17 @@ func WaitTimeout(duration time.Duration, timeoutReason string) {
 	time.Sleep(duration)
 	spinner.Success("Timeout Reached.")
 }
+
+func ServiceFromGoPacketString(s string) string {
+	// format: number(name) eg 80(http)
+	if s == "" {
+		return s
+	}
+	firstBracket := strings.Index(s, "(")
+	secondBracket := strings.Index(s, ")")
+	if firstBracket == -1 || secondBracket == -1 {
+		// if gopacket just returned number alone without service
+		return ""
+	}
+	return s[firstBracket+1 : secondBracket]
+}
