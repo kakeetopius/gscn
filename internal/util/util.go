@@ -26,7 +26,11 @@ type NetInterfaceProvider interface {
 	AddrsOf(*net.Interface) ([]net.Addr, error)
 }
 
-// GetIfaceByIP gets an interface on the host machine that has an address which matches IPAddr.
+// GetIfaceByIP finds the first network interface whose assigned IP network
+// contains IPAddr
+//
+// It returns ErrNoInterfaceConnectedToTarget
+// when no matching interface is found.
 func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*net.Interface, error) {
 	allIfaces, err := interfaceProvider.Interfaces()
 	if err != nil {
@@ -53,8 +57,12 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*n
 	return nil, ErrNoInterfaceConnectedToTarget
 }
 
-// GetFirstIfaceIPNet gets the address(netip.Prefix) of the first IP network on the interface iface.
-// The boolean ip6 if true only IPv6 addresses are considered else only IPv4 addresses.
+// GetFirstIfaceIPNet returns the first interface address that matches the
+// requested IP family and converts it to netip.Prefix.
+//
+// When ip6 is true, it searches for an IPv6 address; otherwise it searches for
+// IPv4. An error is returned if address lookup fails, the interface has no addresses, conversion fails, or no address
+// of the requested family is found.
 func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
 	addrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
@@ -84,6 +92,11 @@ func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Inter
 	return nil, fmt.Errorf("the interface %v has no IPv4 addresses", iface.Name)
 }
 
+// VerifyInterface validates whether iface is suitable for scanning operations.
+//
+// The interface must not be loopback, must be administratively up, must be
+// running, and must have at least one assigned address as reported by
+// interfaceProvider. It returns an error describing the first failed check.
 func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *net.Interface) error {
 	if iface.Flags&net.FlagLoopback != 0 {
 		return fmt.Errorf("cannot scan on a loopback interface")
@@ -104,6 +117,10 @@ func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *net.Interfac
 	return nil
 }
 
+// IPNetToPrefix converts a net.IPNet value into its netip.Prefix equivalent.
+//
+// It returns an error when the IP in ipnet cannot be converted to a valid
+// netip.Addr.
 func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	ip := ipnet.IP
 
@@ -122,6 +139,10 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	return netip.PrefixFrom(addr, ones), nil
 }
 
+// CheckIfAddrIsPartOfNetworks reports whether addr is contained in at least one
+// prefix from targets.
+//
+// The check stops on the first match.
 func CheckIfAddrIsPartOfNetworks(targets []netip.Prefix, addr *netip.Addr) bool {
 	for _, target := range targets {
 		if target.Contains(*addr) {
@@ -131,7 +152,10 @@ func CheckIfAddrIsPartOfNetworks(targets []netip.Prefix, addr *netip.Addr) bool 
 	return false
 }
 
-func HostsInNetworks(targets []netip.Prefix) int {
+// HostsInIP4Network returns the total number of IPv4 addresses represented by
+// the provided prefixes.
+// The calculation is IPv4-specific.
+func HostsInIP4Network(targets []netip.Prefix) int {
 	numHosts := 0
 	for _, target := range targets {
 		networkAddress := target.Masked()
@@ -140,6 +164,10 @@ func HostsInNetworks(targets []netip.Prefix) int {
 	return numHosts
 }
 
+// OnlyIPInRange reports whether addr represents exactly one host address.
+//
+// It returns true for IPv4 /32 and IPv6 /128 prefixes, and false for all
+// broader network prefixes.
 func OnlyIPInRange(addr netip.Prefix) bool {
 	if addr.Bits() == 32 && addr.Addr().Is4() {
 		return true
@@ -149,6 +177,19 @@ func OnlyIPInRange(addr netip.Prefix) bool {
 	return false
 }
 
+// GetSourceIPFromInterface returns the source IP address from the given network interface that matches the provided targets.
+// It attempts to find an IP address (IPv4 or IPv6 as specified by ip6) on the interface that is in the same network as any of the targets.
+// If no matching address is found, it falls back to the first available address of the requested IP version.
+//
+// Parameters:
+//   - interfaceProvider: Provides methods to retrieve addresses from interfaces.
+//   - iface: The network interface to search for addresses.
+//   - targets: A slice of netip.Prefix representing target networks to match.
+//   - ip6: If true, searches for IPv6 addresses; otherwise, searches for IPv4.
+//
+// Returns:
+//   - *netip.Addr: The selected source IP address.
+//   - error: Any error encountered during address selection.
 func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *net.Interface, targets []netip.Prefix, ip6 bool) (*netip.Addr, error) {
 	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
@@ -206,6 +247,14 @@ outer:
 	return &srcAddr, nil
 }
 
+// ParseIPRange parses a compact IPv4 range in the form "a.b.c.x-y" and returns
+// one host prefix per address in the inclusive range [x, y].
+//
+// Example: "10.1.1.1-50" expands to 50 /32 prefixes from 10.1.1.1 to 10.1.1.50.
+//
+// The function validates that the input is non-empty, that a final-octet range
+// is present, and that bounds satisfy 0 <= x <= y <= 255. It returns an error
+// for malformed ranges or invalid IP addresses.
 func ParseIPRange(s string) ([]netip.Prefix, error) {
 	// format: 10.1.1.1-50
 	if s == "" {
@@ -254,6 +303,17 @@ func ParseIPRange(s string) ([]netip.Prefix, error) {
 	return IPPrefixes, nil
 }
 
+// PortsFromString parses a comma-separated list of ports and port ranges into
+// a sorted, de-duplicated slice of ports.
+//
+// Input format examples:
+//   - "80"
+//   - "22,80,443"
+//   - "1-5,22,80-81"
+//
+// Range entries must be in ascending order (e.g. "10-20"), and each token must
+// be a valid integer. The function returns an error for malformed tokens,
+// invalid ranges, or non-numeric values.
 func PortsFromString(s string) ([]uint, error) {
 	// format: 10,1,3,9-15
 	commaSeparatedPorts := strings.Split(s, ",")
@@ -294,6 +354,11 @@ func PortsFromString(s string) ([]uint, error) {
 	return Unique(targetPorts), nil
 }
 
+// Unique returns a new slice containing the first occurrence of each distinct
+// value from slice, preserving the original input order.
+//
+// T must be comparable because values are tracked in a map for O(1) membership
+// checks. The returned slice does not share backing storage with the input.
 func Unique[T comparable](slice []T) []T {
 	seen := make(map[T]struct{})
 	results := make([]T, 0, len(slice))
