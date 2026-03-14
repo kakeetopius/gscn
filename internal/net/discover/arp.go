@@ -48,7 +48,7 @@ func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	}
 
 	pterm.Info.Println("Probing host(s) on interface: " + opts.Interface.Name)
-	numHosts := util.HostsInNetworks(opts.Targets)
+	numHosts := util.HostsInIP4Network(opts.Targets)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		return nil, err

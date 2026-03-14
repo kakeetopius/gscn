@@ -122,7 +122,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	go getScanResults(ctx, workerResultsChan, scanResultsChan)
 
 	close(jobs) // stops the for loop in workers
-	wg.Wait()   // wait for all to workers to exit
+	wg.Wait()   // wait for all to workers to finish
 	cancel()    // tell the main Woker to stop and send results
 
 	spinner.Success("Done")
@@ -141,7 +141,7 @@ func ScanHostTCPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.Addr
 			proto = "tcp6"
 		}
 		dialer := net.Dialer{
-			Timeout: 2 * time.Second,
+			Timeout: 1 * time.Second,
 		}
 		_, err := dialer.Dial(proto, target.String())
 
@@ -180,7 +180,7 @@ func ScanHostUDPPort(opts *ScanOptions, wg *sync.WaitGroup, jobs chan netip.Addr
 			},
 		}
 		dialer := net.Dialer{
-			Timeout: 2 * time.Second,
+			Timeout: 1 * time.Second,
 		}
 		conn, err := dialer.Dial(proto, target.String())
 		if err != nil {
@@ -229,18 +229,11 @@ func PrintScanResults(results ScanResults) {
 		}
 		fmt.Printf("\nScan Report for %v %v\n", host, name)
 		for _, port := range hostResults.Ports {
-			var state string
-			switch port.State {
-			case PortStateOpen:
-				state = "open"
-			case PortStatePossibleFilter:
-				state = "open|filtered"
-			case PortStateClosed:
-				state = "closed"
-				continue // no need to add closed ports to the table to print
+			if port.State == PortStateClosed {
+				continue // no need to add closed port to table
 			}
 			tcpService := serviceFromGoPacketString(layers.TCPPort(port.Number).String())
-			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), state, tcpService})
+			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), tcpService})
 		}
 		if hostResults.OpenPorts > 0 {
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
@@ -333,6 +326,9 @@ func scanTargetsFromString(s string) ([]ScanTarget, error) {
 	commaSeparatedTargets := strings.Split(s, ",")
 	targets := make([]ScanTarget, 0, 5)
 
+	// For dns lookup incase ip address parsing fails.
+	resolver := net.Resolver{}
+
 	for _, targetString := range commaSeparatedTargets {
 		var err error
 		if strings.ContainsRune(targetString, '/') {
@@ -365,8 +361,7 @@ func scanTargetsFromString(s string) ([]ScanTarget, error) {
 		}
 		if err != nil {
 			// if some errors occured while Parsing assume it is domain name
-			resolver := net.Resolver{}
-			IPs, resolverr := resolver.LookupIP(context.Background(), "ip4", targetString)
+			IPs, resolverr := resolver.LookupIP(context.Background(), "ip4", strings.Trim(targetString, " "))
 			if resolverr != nil {
 				return nil, resolverr
 			}
@@ -377,7 +372,6 @@ func scanTargetsFromString(s string) ([]ScanTarget, error) {
 			HostNames[addr] = targetString
 			targets = append(targets, ScanTarget{Prefix: netip.PrefixFrom(addr, 32)})
 		}
-
 	}
 
 	return util.Unique(targets), nil
@@ -386,7 +380,21 @@ func scanTargetsFromString(s string) ([]ScanTarget, error) {
 func totalNumOfScanTargets(targets []ScanTarget) int {
 	total := 0
 	for _, targetNet := range targets {
-		total += util.HostsInNetworks([]netip.Prefix{targetNet.Prefix})
+		total += util.HostsInIP4Network([]netip.Prefix{targetNet.Prefix})
 	}
 	return total
+}
+
+func (p PortState) String() string {
+	var s string
+	switch p {
+	case PortStateOpen:
+		s = "open"
+	case PortStateClosed:
+		s = "closed"
+	case PortStatePossibleFilter:
+		s = "open | filtered"
+	}
+
+	return s
 }
