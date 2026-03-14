@@ -3,6 +3,7 @@ package argparser
 
 import (
 	"errors"
+	"time"
 
 	"github.com/kakeetopius/gscn/internal/net/discover"
 	"github.com/kakeetopius/gscn/internal/net/scan"
@@ -40,9 +41,9 @@ func GetCommand() *cli.Command {
 						Aliases: []string{"S"},
 						Usage:   "Source IP Address to put in the solicting packets.",
 					},
-					&cli.IntFlag{
+					&cli.DurationFlag{
 						Name:    "timeout",
-						Value:   2,
+						Value:   2 * time.Second,
 						Aliases: []string{"T"},
 						Usage:   "Amount of time in seconds to wait for responses.",
 					},

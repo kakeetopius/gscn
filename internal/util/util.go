@@ -10,11 +10,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-)
+	"time"
 
-type IfaceOpts struct {
-	*net.Interface
-}
+	"github.com/pterm/pterm"
+)
 
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
 
@@ -370,4 +369,13 @@ func Unique[T comparable](slice []T) []T {
 		}
 	}
 	return results
+}
+
+func WaitTimeout(duration time.Duration, timeoutReason string) {
+	spinner, err := pterm.DefaultSpinner.Start("Waiting for "+timeoutReason, " timeout")
+	if err != nil {
+		fmt.Println(err)
+	}
+	time.Sleep(duration)
+	spinner.Success("Timeout Reached.")
 }
