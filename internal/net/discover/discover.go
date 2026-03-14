@@ -129,12 +129,12 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		if !targets[0].Addr().Is6() {
 			return fmt.Errorf("the given IP address is not IPv6")
 		}
-		results, err = runIPv6Disc(&opts)
+		results, err = RunIPv6Disc(&opts)
 	} else {
 		if !targets[0].Addr().Is4() {
 			return fmt.Errorf("arp can only be used with IPv4 addresses")
 		}
-		results, err = runArp(&opts)
+		results, err = RunArp(&opts)
 	}
 	if err != nil {
 		return err
