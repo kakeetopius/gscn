@@ -21,7 +21,12 @@ type socketInfo struct {
 	socketAddr *unix.SockaddrLinklayer
 }
 
-func runArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
+// RunArp probes the target IPv4 prefixes on opts.Interface using ARP requests
+// and returns discovered hosts from captured ARP replies.
+//
+// After waiting for opts.Timeout, capture is canceled and collected results are
+// returned.
+func RunArp(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

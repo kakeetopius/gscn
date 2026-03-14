@@ -17,7 +17,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func runIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
+// RunIPv6Disc discovers IPv6 neighbors by sending Neighbor Solicitation (NS)
+// probes and collecting Neighbor Advertisement (NA) responses on opts.Interface.
+//
+// After opts.Timeout elapses, capture is canceled and accumulated results are
+// returned.
+func RunIPv6Disc(opts *DiscoverOptions) ([]DiscoverResult, error) {
 	resultChan := make(chan []DiscoverResult)
 	startSendChan := make(chan struct{})
 
