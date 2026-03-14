@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/net/discover"
-	"github.com/kakeetopius/gscn/internal/net/scan"
+	"github.com/kakeetopius/gscn/internal/cli/discover"
+	"github.com/kakeetopius/gscn/internal/cli/scan"
 	"github.com/urfave/cli/v3"
 )
 
