@@ -48,9 +48,9 @@ func GetCommand() *cli.Command {
 						Usage:   "Amount of time in seconds to wait for responses.",
 					},
 					&cli.BoolFlag{
-						Name:    "reverse",
+						Name:    "hostnames",
 						Value:   false,
-						Aliases: []string{"r"},
+						Aliases: []string{"H"},
 						Usage:   "Carry out a reverse lookup on the IP addresses discovered on the network.",
 					},
 					&cli.BoolFlag{

@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -14,10 +15,11 @@ import (
 )
 
 type UDPScanOptions struct {
-	TargetHosts []netip.Prefix
+	Targets     []netip.Prefix
 	TargetPorts []uint
 	workers     uint
-	generalScanOptions
+	logger      io.Writer
+	timeout     time.Duration
 }
 
 type UDPScanResults struct {
@@ -37,7 +39,7 @@ type UDPScanner struct {
 	hostNames map[netip.Addr]string
 }
 
-func NewUDPScanner(opts *UDPScanOptions) *UDPScanner {
+func NewUDPScanner(opts *UDPScanOptions) Scanner {
 	resultMap := make(map[netip.Addr]HostResult)
 	return &UDPScanner{
 		opts: opts,
@@ -49,13 +51,21 @@ func NewUDPScanner(opts *UDPScanOptions) *UDPScanner {
 	}
 }
 
-func (s *UDPScanner) WithWorkers(numOfWorkers uint) *UDPScanner {
-	s.opts.workers = numOfWorkers
+func (s *UDPScanner) WithHostNames() Scanner {
 	return s
 }
 
-func (s *UDPScanner) WithTimeout(timeout time.Duration) *UDPScanner {
-	s.opts.Timeout = timeout
+func (s *UDPScanner) WithVendorInfo() Scanner {
+	return s
+}
+
+func (s *UDPScanner) WithWorkers(numOfWorkers int) Scanner {
+	s.opts.workers = uint(numOfWorkers)
+	return s
+}
+
+func (s *UDPScanner) WithTimeout(timeout time.Duration) Scanner {
+	s.opts.timeout = timeout
 	return s
 }
 
@@ -79,7 +89,7 @@ func (s *UDPScanner) Stats() ScanStats {
 
 func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	opts := scanner.opts
-	targets := opts.TargetHosts
+	targets := opts.Targets
 	ports := opts.TargetPorts
 
 	numWorkers := opts.workers
@@ -175,7 +185,7 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 }
 
 func sendUDPJobs(jobChan chan netip.AddrPort, opts *UDPScanOptions) {
-	for _, target := range opts.TargetHosts {
+	for _, target := range opts.Targets {
 		for _, port := range opts.TargetPorts {
 			if util.OnlyIPInRange(target) {
 				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))

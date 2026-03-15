@@ -3,21 +3,13 @@
 package scanner
 
 import (
-	"io"
 	"net"
 	"time"
 )
 
-type generalScanOptions struct {
-	Logger  io.Writer
-	Timeout time.Duration
-}
-
-type IfaceOpts struct {
+type Interface struct {
 	*net.Interface
 }
-
-type ScanOptions any
 
 type ScanResults interface {
 	ResultType() ScanResultType
@@ -26,9 +18,13 @@ type ScanResults interface {
 type ScanStats any
 
 type Scanner interface {
-	Scan(opts *ScanOptions) error
+	Scan() error
 	Results() ScanResults
 	Stats() ScanStats
+	WithTimeout(d time.Duration) Scanner
+	WithHostNames() Scanner
+	WithVendorInfo() Scanner
+	WithWorkers(w int) Scanner
 }
 
 type ScanResultType int
