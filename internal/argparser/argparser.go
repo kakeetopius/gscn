@@ -95,11 +95,11 @@ func GetCommand() *cli.Command {
 						Aliases: []string{"H"},
 						Usage:   "Carry out a reverse lookup to get host names on the IP addresses given.",
 					},
-					&cli.IntFlag{
+					&cli.DurationFlag{
 						Name:    "timeout",
-						Value:   2,
+						Value:   2 * time.Second,
 						Aliases: []string{"T"},
-						Usage:   "Amount of time in seconds to scan for.",
+						Usage:   "Amount of time in seconds to wait for responses.",
 					},
 					&cli.IntFlag{
 						Name:    "workers",
