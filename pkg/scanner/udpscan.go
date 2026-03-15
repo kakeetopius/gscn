@@ -34,11 +34,11 @@ func (UDPScanResults) ResultType() ScanResultType {
 type UDPScanStats struct{}
 
 type UDPScanner struct {
-	opts             *UDPScanOptions
-	results          UDPScanResults
-	stats            UDPScanStats
-	resolveHostNames bool
-	hostNames        map[netip.Addr]string
+	opts                    *UDPScanOptions
+	results                 UDPScanResults
+	stats                   UDPScanStats
+	resolveUnknownHostNames bool
+	hostNames               map[netip.Addr]string
 }
 
 func NewUDPScanner(opts *UDPScanOptions) Scanner {
@@ -48,9 +48,9 @@ func NewUDPScanner(opts *UDPScanOptions) Scanner {
 		results: UDPScanResults{
 			ResultMap: resultMap,
 		},
-		stats:            UDPScanStats{},
-		hostNames:        make(map[netip.Addr]string),
-		resolveHostNames: false,
+		stats:                   UDPScanStats{},
+		hostNames:               make(map[netip.Addr]string),
+		resolveUnknownHostNames: false,
 	}
 }
 
@@ -59,7 +59,7 @@ func (s *UDPScanner) WithHostNames(h map[netip.Addr]string, addUnknown bool) Sca
 		maps.Copy(s.hostNames, h)
 	}
 	if addUnknown {
-		s.resolveHostNames = true
+		s.resolveUnknownHostNames = true
 	}
 	return s
 }
@@ -88,6 +88,20 @@ func (s *UDPScanner) Scan() error {
 }
 
 func (s *UDPScanner) Results() ScanResults {
+	if s.resolveUnknownHostNames {
+		spinner, spinererr := pterm.DefaultSpinner.Start("Resolving Host Names")
+		for host, results := range s.results.ResultMap {
+			if results.HostName != "" {
+				continue
+			}
+			name := ReverseLookup(host.String(), 2*time.Second)
+			results.HostName = name
+			s.results.ResultMap[host] = results
+		}
+		if spinererr == nil {
+			spinner.Success("Done")
+		}
+	}
 	return s.results
 }
 
@@ -126,7 +140,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	scanResultsChan := make(chan UDPScanResults)
-	go getUDPScanResults(ctx, workerResultsChan, scanResultsChan)
+	go getUDPScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
 	close(jobs) // stops the for loop in workers
 	wg.Wait()   // wait for all to workers to finish
@@ -192,7 +206,7 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 	wg.Done()
 }
 
-func getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan UDPScanResults) {
+func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan UDPScanResults) {
 	// To Be Run By Main Worker
 	scanResults := UDPScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
@@ -209,6 +223,7 @@ func getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorke
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
+			hostResults.HostName = scanner.hostNames[hostIP] // put the hostname of the address in the HostResult struct
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++

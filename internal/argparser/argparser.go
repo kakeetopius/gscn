@@ -51,7 +51,7 @@ func GetCommand() *cli.Command {
 						Name:    "hostnames",
 						Value:   false,
 						Aliases: []string{"H"},
-						Usage:   "Carry out a reverse lookup on the IP addresses discovered on the network.",
+						Usage:   "Carry out a reverse lookup on the IP addresses discovered on the network to get their host names",
 					},
 					&cli.BoolFlag{
 						Name:    "six",
@@ -88,6 +88,12 @@ func GetCommand() *cli.Command {
 						Name:    "udp",
 						Aliases: []string{"u"},
 						Usage:   "Carry out a UDP scan instead of default TCP scan",
+					},
+					&cli.BoolFlag{
+						Name:    "hostnames",
+						Value:   false,
+						Aliases: []string{"H"},
+						Usage:   "Carry out a reverse lookup to get host names on the IP addresses given.",
 					},
 					&cli.IntFlag{
 						Name:    "timeout",
