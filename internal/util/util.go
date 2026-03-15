@@ -371,6 +371,9 @@ func Unique[T comparable](slice []T) []T {
 	return results
 }
 
+// WaitTimeout displays a spinner indicating a wait for the given reason,
+// sleeps for the provided duration, and marks the spinner as successful
+// when the timeout is reached.
 func WaitTimeout(duration time.Duration, timeoutReason string) {
 	spinner, err := pterm.DefaultSpinner.Start("Waiting for "+timeoutReason, " timeout")
 	if err != nil {
@@ -380,6 +383,10 @@ func WaitTimeout(duration time.Duration, timeoutReason string) {
 	spinner.Success("Timeout Reached.")
 }
 
+// ServiceFromGoPacketString extracts the service name from a gopacket-style
+// string in the format "port(service)" (for example, "80(http)").
+// It returns an empty string when the input is empty, malformed, or does not
+// include both opening and closing parentheses.
 func ServiceFromGoPacketString(s string) string {
 	// format: number(name) eg 80(http)
 	if s == "" {

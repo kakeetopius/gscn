@@ -85,7 +85,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	ifaceOpts := scanner.IfaceOpts{
+	ifaceOpts := scanner.Interface{
 		Interface: iface,
 	}
 
@@ -104,7 +104,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		sourceAddr = *source
 	}
 
-	doReverseLookup := cmd.Bool("reverse")
+	doReverseLookup := cmd.Bool("hostnames")
 	if useIP6 {
 		if !targets[0].Addr().Is6() {
 			return fmt.Errorf("the given IP address is not IPv6")
@@ -113,10 +113,10 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			Targets:   targets,
 			Source:    sourceAddr,
 			Interface: ifaceOpts,
-		}).WithTimeout(timeout).WithVendors()
+		}).WithTimeout(timeout).WithVendorInfo()
 
 		if doReverseLookup {
-			ndpScanner = ndpScanner.WithReverseLookups()
+			ndpScanner = ndpScanner.WithHostNames()
 		}
 		err = ndpScanner.Scan()
 		if err != nil {
@@ -145,9 +145,9 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			Targets:   targets,
 			Source:    sourceAddr,
 			Interface: ifaceOpts,
-		}).WithTimeout(timeout).WithVendors()
+		}).WithTimeout(timeout).WithVendorInfo()
 		if doReverseLookup {
-			arpScanner = arpScanner.WithReverseLookups()
+			arpScanner = arpScanner.WithHostNames()
 		}
 		err = arpScanner.Scan()
 		if err != nil {

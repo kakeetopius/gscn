@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -14,10 +15,11 @@ import (
 )
 
 type TCPFullScanOptions struct {
-	TargetHosts []netip.Prefix
+	Targets     []netip.Prefix
 	TargetPorts []uint
 	workers     uint
-	generalScanOptions
+	timeout     time.Duration
+	logger      io.Writer
 }
 
 // HostResult is the result of a single host after scanning
@@ -51,7 +53,7 @@ type TCPFullScanner struct {
 	hostNames map[netip.Addr]string
 }
 
-func NewTCPFullScanner(opts *TCPFullScanOptions) *TCPFullScanner {
+func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
 	resultMap := make(map[netip.Addr]HostResult)
 	return &TCPFullScanner{
 		opts: opts,
@@ -63,13 +65,21 @@ func NewTCPFullScanner(opts *TCPFullScanOptions) *TCPFullScanner {
 	}
 }
 
-func (s *TCPFullScanner) WithWorkers(numOfWorkers uint) *TCPFullScanner {
-	s.opts.workers = numOfWorkers
+func (s *TCPFullScanner) WithHostNames() Scanner {
 	return s
 }
 
-func (s *TCPFullScanner) WithTimeout(timeout time.Duration) *TCPFullScanner {
-	s.opts.Timeout = timeout
+func (s *TCPFullScanner) WithVendorInfo() Scanner {
+	return s
+}
+
+func (s *TCPFullScanner) WithWorkers(numOfWorkers int) Scanner {
+	s.opts.workers = uint(numOfWorkers)
+	return s
+}
+
+func (s *TCPFullScanner) WithTimeout(timeout time.Duration) Scanner {
+	s.opts.timeout = timeout
 	return s
 }
 
@@ -93,7 +103,7 @@ func (s *TCPFullScanner) Stats() ScanStats {
 
 func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	opts := scanner.opts
-	targets := opts.TargetHosts
+	targets := opts.Targets
 	ports := opts.TargetPorts
 
 	numWorkers := opts.workers
@@ -166,7 +176,7 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 }
 
 func sendJobs(jobChan chan netip.AddrPort, opts *TCPFullScanOptions) {
-	for _, target := range opts.TargetHosts {
+	for _, target := range opts.Targets {
 		for _, port := range opts.TargetPorts {
 			if util.OnlyIPInRange(target) {
 				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))

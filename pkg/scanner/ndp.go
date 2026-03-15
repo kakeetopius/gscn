@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"time"
@@ -19,8 +20,9 @@ import (
 type NDPScanOptions struct {
 	Targets   []netip.Prefix
 	Source    netip.Addr
-	Interface IfaceOpts
-	generalScanOptions
+	Interface Interface
+	logger    io.Writer
+	timeout   time.Duration
 }
 
 type NDPScanResult struct {
@@ -61,7 +63,7 @@ type NDPScanner struct {
 	addVendors       bool
 }
 
-func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
+func NewNDPScanner(opts *NDPScanOptions) Scanner {
 	return &NDPScanner{
 		opts:             opts,
 		results:          NDPScanResults{},
@@ -71,17 +73,21 @@ func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
 	}
 }
 
-func (s *NDPScanner) WithTimeout(timeout time.Duration) *NDPScanner {
-	s.opts.Timeout = timeout
+func (s *NDPScanner) WithWorkers(w int) Scanner {
 	return s
 }
 
-func (s *NDPScanner) WithReverseLookups() *NDPScanner {
+func (s *NDPScanner) WithTimeout(timeout time.Duration) Scanner {
+	s.opts.timeout = timeout
+	return s
+}
+
+func (s *NDPScanner) WithHostNames() Scanner {
 	s.doReverseLookups = true
 	return s
 }
 
-func (s *NDPScanner) WithVendors() *NDPScanner {
+func (s *NDPScanner) WithVendorInfo() Scanner {
 	s.addVendors = true
 	return s
 }
@@ -112,7 +118,7 @@ func (s *NDPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.Timeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.timeout)
 			bar.Increment()
 		}
 		bar.Stop()
@@ -151,7 +157,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 		sendNSPacket(scanner, &target)
 	}
 
-	util.WaitTimeout(opts.Timeout, "response")
+	util.WaitTimeout(opts.timeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultChan
 	return results, nil

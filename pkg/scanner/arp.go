@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"time"
@@ -17,11 +18,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type socketInfo struct {
+	socketFD   int
+	socketAddr *unix.SockaddrLinklayer
+}
+
 type ARPScanOptions struct {
 	Targets   []netip.Prefix
 	Source    netip.Addr
-	Interface IfaceOpts
-	generalScanOptions
+	Interface Interface
+	timeout   time.Duration
+	logger    io.Writer
 }
 
 type ARPScanResult struct {
@@ -49,11 +56,6 @@ func (ARPScanResults) ResultType() ScanResultType {
 	return ARPScanResultType
 }
 
-type socketInfo struct {
-	socketFD   int
-	socketAddr *unix.SockaddrLinklayer
-}
-
 type ARPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
@@ -66,7 +68,7 @@ type ARPScanner struct {
 	addVendors       bool
 }
 
-func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
+func NewARPScanner(opts *ARPScanOptions) Scanner {
 	return &ARPScanner{
 		opts:             opts,
 		results:          ARPScanResults{},
@@ -76,17 +78,21 @@ func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
 	}
 }
 
-func (s *ARPScanner) WithTimeout(timeout time.Duration) *ARPScanner {
-	s.opts.Timeout = timeout
+func (s *ARPScanner) WithWorkers(w int) Scanner {
 	return s
 }
 
-func (s *ARPScanner) WithReverseLookups() *ARPScanner {
+func (s *ARPScanner) WithTimeout(d time.Duration) Scanner {
+	s.opts.timeout = d
+	return s
+}
+
+func (s *ARPScanner) WithHostNames() Scanner {
 	s.doReverseLookups = true
 	return s
 }
 
-func (s *ARPScanner) WithVendors() *ARPScanner {
+func (s *ARPScanner) WithVendorInfo() Scanner {
 	s.addVendors = true
 	return s
 }
@@ -117,7 +123,7 @@ func (s *ARPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.Timeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.timeout)
 			bar.Increment()
 		}
 		bar.Stop()
@@ -188,14 +194,14 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	}
 	bar.Stop()
 
-	util.WaitTimeout(opts.Timeout, "response")
+	util.WaitTimeout(opts.timeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
 	return ARPScanResults{ResultSet: results}, nil
 }
 
-func sendArpPacket(iface *IfaceOpts, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *Interface, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
