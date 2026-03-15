@@ -34,11 +34,11 @@ func (TCPFullScanResults) ResultType() ScanResultType {
 type TCPFullScanStats struct{}
 
 type TCPFullScanner struct {
-	opts             *TCPFullScanOptions
-	results          TCPFullScanResults
-	stats            TCPFullScanStats
-	resolveHostNames bool
-	hostNames        map[netip.Addr]string
+	opts                    *TCPFullScanOptions
+	results                 TCPFullScanResults
+	stats                   TCPFullScanStats
+	resolveUnknownHostNames bool
+	hostNames               map[netip.Addr]string
 }
 
 func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
@@ -48,9 +48,9 @@ func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
 		results: TCPFullScanResults{
 			ResultMap: resultMap,
 		},
-		stats:            TCPFullScanStats{},
-		hostNames:        make(map[netip.Addr]string),
-		resolveHostNames: false,
+		stats:                   TCPFullScanStats{},
+		hostNames:               make(map[netip.Addr]string),
+		resolveUnknownHostNames: false,
 	}
 }
 
@@ -59,7 +59,7 @@ func (s *TCPFullScanner) WithHostNames(h map[netip.Addr]string, addUnknown bool)
 		maps.Copy(s.hostNames, h)
 	}
 	if addUnknown {
-		s.resolveHostNames = true
+		s.resolveUnknownHostNames = true
 	}
 	return s
 }
@@ -88,13 +88,18 @@ func (s *TCPFullScanner) Scan() error {
 }
 
 func (s *TCPFullScanner) Results() ScanResults {
-	if s.resolveHostNames {
+	if s.resolveUnknownHostNames {
+		spinner, spinererr := pterm.DefaultSpinner.Start("Resolving Host Names")
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
 			}
 			name := ReverseLookup(host.String(), 2*time.Second)
 			results.HostName = name
+			s.results.ResultMap[host] = results
+		}
+		if spinererr == nil {
+			spinner.Success("Done")
 		}
 	}
 	return s.results
@@ -163,7 +168,7 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.hostNames[hostIP]
+			hostResults.HostName = scanner.hostNames[hostIP] // put the hostname of the address in the HostResult struct
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++

@@ -7,7 +7,6 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"strconv"
 	"strings"
 	"time"
 
@@ -243,62 +242,6 @@ outer:
 	}
 	srcAddr := ifaceAddr.Addr()
 	return &srcAddr, nil
-}
-
-// ParseIPRange parses a compact IPv4 range in the form "a.b.c.x-y" and returns
-// one host prefix per address in the inclusive range [x, y].
-//
-// Example: "10.1.1.1-50" expands to 50 /32 prefixes from 10.1.1.1 to 10.1.1.50.
-//
-// The function validates that the input is non-empty, that a final-octet range
-// is present, and that bounds satisfy 0 <= x <= y <= 255. It returns an error
-// for malformed ranges or invalid IP addresses.
-func ParseIPRange(s string) ([]netip.Prefix, error) {
-	// format: 10.1.1.1-50
-	if s == "" {
-		return nil, fmt.Errorf("error parsing target %v -> Invalid range", s)
-	}
-
-	IPPrefixes := make([]netip.Prefix, 0)
-	dashIndex := strings.LastIndex(s, "-")
-	if dashIndex >= len(s) {
-		return nil, fmt.Errorf("error parsing target -> %v", s)
-	}
-	lastDotIndex := strings.LastIndex(s, ".")
-	if lastDotIndex == -1 {
-		return nil, fmt.Errorf("error parsing -> %v", s)
-	}
-	baseIP := s[:lastDotIndex+1]
-	lower, err := strconv.Atoi(s[lastDotIndex+1 : dashIndex])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
-	}
-	upper, err := strconv.Atoi(s[dashIndex+1:])
-	if err != nil {
-		return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
-	}
-	if lower > upper {
-		return nil, fmt.Errorf("error parsing target %v -> invalid range", s)
-	} else if upper >= 256 {
-		return nil, fmt.Errorf("error parsing target %v -> range cannot go above 255", s)
-	} else if lower < 0 {
-		return nil, fmt.Errorf("error parsing target %v -> range cannot be below zero", s)
-	}
-
-	for i := lower; i <= upper; i++ {
-		targetStr := fmt.Sprintf("%v%v", baseIP, i)
-		addr, err := netip.ParseAddr(targetStr)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
-		}
-		bitlen := 32
-		if addr.Is6() {
-			bitlen = 128
-		}
-		IPPrefixes = append(IPPrefixes, netip.PrefixFrom(addr, bitlen))
-	}
-
-	return IPPrefixes, nil
 }
 
 // Unique returns a new slice containing the first occurrence of each distinct

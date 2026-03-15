@@ -43,11 +43,12 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no ports to scan provided")
 	}
 
+	lookUpHostNames := cmd.Bool("hostnames")
 	if cmd.Bool("udp") {
 		scannerObj := scanner.NewUDPScanner(&scanner.UDPScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
-		}).WithWorkers(numWorkers).WithHostNames(hostNames, false)
+		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames)
 
 		udpScanner := scannerObj.(*scanner.UDPScanner)
 		err := udpScanner.Scan()
@@ -59,7 +60,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		tcpFullScanner := scanner.NewTCPFullScanner(&scanner.TCPFullScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
-		}).WithWorkers(numWorkers).WithHostNames(hostNames, false)
+		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames)
 		err := tcpFullScanner.Scan()
 		if err != nil {
 			return err

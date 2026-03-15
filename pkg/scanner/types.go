@@ -18,13 +18,24 @@ type ScanResults interface {
 
 type ScanStats any
 
+// Scanner defines the interface for network scanning operations.
+//
+// It provides methods to configure and execute network scans, retrieve results and statistics,
+// and customize scanning behavior.
 type Scanner interface {
+	// Scan executes the network scan and returns an error if the scan fails.
 	Scan() error
+	// Results returns the results of the completed scan.
 	Results() ScanResults
+	// Stats returns statistics about the completed scan.
 	Stats() ScanStats
+	// WithTimeout sets a timeout duration for the scan and returns the Scanner for method chaining.
 	WithTimeout(d time.Duration) Scanner
+	// WithHostNames sets known hostname mappings for IP addresses and controls whether to add unknown hostnames.
 	WithHostNames(known map[netip.Addr]string, addUnknown bool) Scanner
+	// WithVendorInfo enables vendor information retrieval during the scan.
 	WithVendorInfo() Scanner
+	// WithWorkers sets the number of concurrent workers for the scan.
 	WithWorkers(w int) Scanner
 }
 
