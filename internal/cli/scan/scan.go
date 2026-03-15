@@ -4,9 +4,7 @@ package scan
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/netip"
-	"strings"
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/util"
@@ -19,6 +17,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	var err error
 	targets := make([]netip.Prefix, 0)
 	ports := make([]uint, 0)
+	var hostNames map[netip.Addr]string
 
 	numWorkers := cmd.Int("workers")
 	if numWorkers > 500 {
@@ -26,7 +25,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	}
 
 	if targetStr := cmd.String("target"); targetStr != "" {
-		targets, err = scanTargetsFromString(targetStr)
+		targets, hostNames, err = scanner.TargetsFromStringWithDNSLookup(targetStr)
 		if err != nil {
 			return err
 		}
@@ -35,7 +34,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no hosts to scan provided")
 	}
 	if portStr := cmd.String("ports"); portStr != "" {
-		ports, err = util.PortsFromString(portStr)
+		ports, err = scanner.PortsFromString(portStr)
 		if err != nil {
 			return err
 		}
@@ -48,7 +47,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		scannerObj := scanner.NewUDPScanner(&scanner.UDPScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
-		})
+		}).WithWorkers(numWorkers).WithHostNames(hostNames, false)
 
 		udpScanner := scannerObj.(*scanner.UDPScanner)
 		err := udpScanner.Scan()
@@ -60,7 +59,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		tcpFullScanner := scanner.NewTCPFullScanner(&scanner.TCPFullScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
-		}).WithWorkers(numWorkers)
+		}).WithWorkers(numWorkers).WithHostNames(hostNames, false)
 		err := tcpFullScanner.Scan()
 		if err != nil {
 			return err
@@ -68,58 +67,6 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		PrintTCPFullScanResults(tcpFullScanner.(*scanner.TCPFullScanner))
 	}
 	return nil
-}
-
-func scanTargetsFromString(s string) ([]netip.Prefix, error) {
-	// Example: 10.1.1.1/24,10.1.1.1,bing.com,10.1.1.1-2,google.com
-	commaSeparatedTargets := strings.Split(s, ",")
-	targets := make([]netip.Prefix, 0, 5)
-
-	// For dns lookup incase ip address parsing fails.
-	resolver := net.Resolver{}
-
-	for _, targetString := range commaSeparatedTargets {
-		var err error
-		if strings.ContainsRune(targetString, '/') {
-			// CIDR Notation Provided eg 10.1.1.1/24
-			var network netip.Prefix
-			network, err = netip.ParsePrefix(targetString)
-			if err == nil {
-				targets = append(targets, network)
-			}
-		} else if strings.ContainsRune(targetString, '-') {
-			// IP Range provided eg 10.1.1.1-10
-			var IPsInRange []netip.Prefix
-			IPsInRange, err = util.ParseIPRange(targetString)
-			targets = append(targets, IPsInRange...)
-		} else {
-			// Single IP Presumed eg 10.1.1.1
-			var addr netip.Addr
-			addr, err = netip.ParseAddr(targetString)
-			bitlen := 32
-			if addr.Is6() {
-				bitlen = 128
-			}
-			if err == nil {
-				targets = append(targets, netip.PrefixFrom(addr, bitlen))
-			}
-		}
-		if err != nil {
-			// if some errors occured while Parsing assume it is domain name
-			IPs, resolverr := resolver.LookupIP(context.Background(), "ip4", strings.Trim(targetString, " "))
-			if resolverr != nil {
-				return nil, resolverr
-			}
-			addr, ok := netip.AddrFromSlice(IPs[0])
-			if !ok {
-				return nil, fmt.Errorf("could not resolve: %v", targetString)
-			}
-			// HostNames[addr] = targetString
-			targets = append(targets, netip.PrefixFrom(addr, 32))
-		}
-	}
-
-	return util.Unique(targets), nil
 }
 
 func PrintTCPFullScanResults(tcpFullScanner *scanner.TCPFullScanner) {

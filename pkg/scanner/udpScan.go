@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/netip"
 	"sync"
@@ -33,10 +34,11 @@ func (UDPScanResults) ResultType() ScanResultType {
 type UDPScanStats struct{}
 
 type UDPScanner struct {
-	opts      *UDPScanOptions
-	results   UDPScanResults
-	stats     UDPScanStats
-	hostNames map[netip.Addr]string
+	opts             *UDPScanOptions
+	results          UDPScanResults
+	stats            UDPScanStats
+	resolveHostNames bool
+	hostNames        map[netip.Addr]string
 }
 
 func NewUDPScanner(opts *UDPScanOptions) Scanner {
@@ -46,12 +48,19 @@ func NewUDPScanner(opts *UDPScanOptions) Scanner {
 		results: UDPScanResults{
 			ResultMap: resultMap,
 		},
-		stats:     UDPScanStats{},
-		hostNames: make(map[netip.Addr]string),
+		stats:            UDPScanStats{},
+		hostNames:        make(map[netip.Addr]string),
+		resolveHostNames: false,
 	}
 }
 
-func (s *UDPScanner) WithHostNames() Scanner {
+func (s *UDPScanner) WithHostNames(h map[netip.Addr]string, addUnknown bool) Scanner {
+	if h != nil {
+		maps.Copy(s.hostNames, h)
+	}
+	if addUnknown {
+		s.resolveHostNames = true
+	}
 	return s
 }
 
@@ -79,7 +88,6 @@ func (s *UDPScanner) Scan() error {
 }
 
 func (s *UDPScanner) Results() ScanResults {
-	addScanStatsToUDPResults(s.results)
 	return s.results
 }
 
@@ -102,7 +110,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	}
 
 	jobs := make(chan netip.AddrPort, numWorkers)
-	workerResultsChan := make(chan WorkerResult, numWorkers)
+	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
 		wg.Add(1)
@@ -114,7 +122,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	if err != nil {
 		return UDPScanResults{}, err
 	}
-	sendUDPJobs(jobs, opts)
+	sendPortScanningJobs(jobs, opts.Targets, opts.TargetPorts)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	scanResultsChan := make(chan UDPScanResults)
@@ -129,7 +137,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	return scanResults, nil
 }
 
-func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult) {
+func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- PortScanWorkerResult) {
 	for target := range jobs {
 		proto := ""
 		if target.Addr().Is4() {
@@ -137,7 +145,7 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 		} else {
 			proto = "udp6"
 		}
-		result := WorkerResult{
+		result := PortScanWorkerResult{
 			HostIP: target.Addr(),
 			Port: Port{
 				Number:   uint(target.Port()),
@@ -184,27 +192,7 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 	wg.Done()
 }
 
-func sendUDPJobs(jobChan chan netip.AddrPort, opts *UDPScanOptions) {
-	for _, target := range opts.Targets {
-		for _, port := range opts.TargetPorts {
-			if util.OnlyIPInRange(target) {
-				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
-				jobChan <- addrPort
-				continue
-			}
-			netAddr := target.Masked()
-			addr := netAddr.Addr().Next()
-			for netAddr.Contains(addr) {
-				// loop over range of IPs
-				addrPort := netip.AddrPortFrom(addr, uint16(port))
-				jobChan <- addrPort
-				addr = addr.Next()
-			}
-		}
-	}
-}
-
-func getUDPScanResults(ctx context.Context, workerResultsChan chan WorkerResult, scanResultsChan chan UDPScanResults) {
+func getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan UDPScanResults) {
 	// To Be Run By Main Worker
 	scanResults := UDPScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
@@ -221,30 +209,13 @@ func getUDPScanResults(ctx context.Context, workerResultsChan chan WorkerResult,
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
+			switch result.Port.State {
+			case PortStateOpen:
+				hostResults.OpenPorts++
+			case PortStateClosed:
+				hostResults.ClosedPorts++
+			}
 			scanResults.ResultMap[hostIP] = hostResults
 		}
-	}
-}
-
-func addScanStatsToUDPResults(results UDPScanResults) {
-	for host, hostResult := range results.ResultMap {
-		closed := 0
-		open := 0
-		for _, port := range hostResult.Ports {
-			switch port.State {
-			case PortStateOpen:
-				open++
-			case PortStateClosed:
-				closed++
-			case PortStatePossibleFilter:
-				open++
-			}
-		}
-		stats := HostResult{
-			Ports:       hostResult.Ports,
-			ClosedPorts: closed,
-			OpenPorts:   open,
-		}
-		results.ResultMap[host] = stats
 	}
 }

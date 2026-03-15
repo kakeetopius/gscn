@@ -4,6 +4,7 @@ package scanner
 
 import (
 	"net"
+	"net/netip"
 	"time"
 )
 
@@ -22,7 +23,7 @@ type Scanner interface {
 	Results() ScanResults
 	Stats() ScanStats
 	WithTimeout(d time.Duration) Scanner
-	WithHostNames() Scanner
+	WithHostNames(known map[netip.Addr]string, addUnknown bool) Scanner
 	WithVendorInfo() Scanner
 	WithWorkers(w int) Scanner
 }
@@ -63,4 +64,12 @@ type Port struct {
 	Name     string
 	Protocol string
 	State    PortState
+}
+
+// HostResult is the result of a single host after port scanning
+type HostResult struct {
+	Ports       map[uint]Port
+	HostName    string
+	OpenPorts   int
+	ClosedPorts int
 }

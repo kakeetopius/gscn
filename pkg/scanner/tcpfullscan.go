@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/netip"
 	"sync"
@@ -22,20 +23,6 @@ type TCPFullScanOptions struct {
 	logger      io.Writer
 }
 
-// HostResult is the result of a single host after scanning
-type HostResult struct {
-	Ports       map[uint]Port
-	HostName    string
-	OpenPorts   int
-	ClosedPorts int
-}
-
-// WorkerResult is the tesult returned by Scanning workers
-type WorkerResult struct {
-	HostIP netip.Addr
-	Port   Port
-}
-
 type TCPFullScanResults struct {
 	ResultMap map[netip.Addr]HostResult
 }
@@ -47,10 +34,11 @@ func (TCPFullScanResults) ResultType() ScanResultType {
 type TCPFullScanStats struct{}
 
 type TCPFullScanner struct {
-	opts      *TCPFullScanOptions
-	results   TCPFullScanResults
-	stats     TCPFullScanStats
-	hostNames map[netip.Addr]string
+	opts             *TCPFullScanOptions
+	results          TCPFullScanResults
+	stats            TCPFullScanStats
+	resolveHostNames bool
+	hostNames        map[netip.Addr]string
 }
 
 func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
@@ -60,12 +48,19 @@ func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
 		results: TCPFullScanResults{
 			ResultMap: resultMap,
 		},
-		stats:     TCPFullScanStats{},
-		hostNames: make(map[netip.Addr]string),
+		stats:            TCPFullScanStats{},
+		hostNames:        make(map[netip.Addr]string),
+		resolveHostNames: false,
 	}
 }
 
-func (s *TCPFullScanner) WithHostNames() Scanner {
+func (s *TCPFullScanner) WithHostNames(h map[netip.Addr]string, addUnknown bool) Scanner {
+	if h != nil {
+		maps.Copy(s.hostNames, h)
+	}
+	if addUnknown {
+		s.resolveHostNames = true
+	}
 	return s
 }
 
@@ -93,7 +88,15 @@ func (s *TCPFullScanner) Scan() error {
 }
 
 func (s *TCPFullScanner) Results() ScanResults {
-	addScanStatsToResults(s.results)
+	if s.resolveHostNames {
+		for host, results := range s.results.ResultMap {
+			if results.HostName != "" {
+				continue
+			}
+			name := ReverseLookup(host.String(), 2*time.Second)
+			results.HostName = name
+		}
+	}
 	return s.results
 }
 
@@ -116,7 +119,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	}
 
 	jobs := make(chan netip.AddrPort, numWorkers)
-	workerResultsChan := make(chan WorkerResult, numWorkers)
+	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
 		wg.Add(1)
@@ -128,11 +131,11 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	if err != nil {
 		return TCPFullScanResults{}, err
 	}
-	sendJobs(jobs, opts)
+	sendPortScanningJobs(jobs, opts.Targets, opts.TargetPorts)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	scanResultsChan := make(chan TCPFullScanResults)
-	go getScanResults(ctx, workerResultsChan, scanResultsChan)
+	go getTCPFullScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
 	close(jobs) // stops the for loop in workers
 	wg.Wait()   // wait for all to workers to finish
@@ -143,59 +146,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	return scanResults, nil
 }
 
-func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- WorkerResult) {
-	for target := range jobs {
-		proto := ""
-		if target.Addr().Is4() {
-			proto = "tcp"
-		} else {
-			proto = "tcp6"
-		}
-		dialer := net.Dialer{
-			Timeout: 1 * time.Second,
-		}
-		_, err := dialer.Dial(proto, target.String())
-
-		result := WorkerResult{
-			HostIP: target.Addr(),
-			Port: Port{
-				Number:   uint(target.Port()),
-				Protocol: proto,
-			},
-		}
-		if err != nil {
-			result.Port.State = PortStateClosed
-		} else {
-			result.Port.State = PortStateOpen
-			result.Port.Name = util.ServiceFromGoPacketString(layers.TCPPort(target.Port()).String())
-		}
-
-		resultsChan <- result
-	}
-	wg.Done()
-}
-
-func sendJobs(jobChan chan netip.AddrPort, opts *TCPFullScanOptions) {
-	for _, target := range opts.Targets {
-		for _, port := range opts.TargetPorts {
-			if util.OnlyIPInRange(target) {
-				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
-				jobChan <- addrPort
-				continue
-			}
-			netAddr := target.Masked()
-			addr := netAddr.Addr().Next()
-			for netAddr.Contains(addr) {
-				// loop over range of IPs
-				addrPort := netip.AddrPortFrom(addr, uint16(port))
-				jobChan <- addrPort
-				addr = addr.Next()
-			}
-		}
-	}
-}
-
-func getScanResults(ctx context.Context, workerResultsChan chan WorkerResult, scanResultsChan chan TCPFullScanResults) {
+func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan TCPFullScanResults) {
 	// To Be Run By Main Worker
 	scanResults := TCPFullScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
@@ -212,30 +163,46 @@ func getScanResults(ctx context.Context, workerResultsChan chan WorkerResult, sc
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
+			hostResults.HostName = scanner.hostNames[hostIP]
+			switch result.Port.State {
+			case PortStateOpen:
+				hostResults.OpenPorts++
+			case PortStateClosed:
+				hostResults.ClosedPorts++
+			}
 			scanResults.ResultMap[hostIP] = hostResults
 		}
 	}
 }
 
-func addScanStatsToResults(results TCPFullScanResults) {
-	for host, hostResult := range results.ResultMap {
-		closed := 0
-		open := 0
-		for _, port := range hostResult.Ports {
-			switch port.State {
-			case PortStateOpen:
-				open++
-			case PortStateClosed:
-				closed++
-			case PortStatePossibleFilter:
-				open++
-			}
+func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- PortScanWorkerResult) {
+	for target := range jobs {
+		proto := ""
+		if target.Addr().Is4() {
+			proto = "tcp"
+		} else {
+			proto = "tcp6"
 		}
-		stats := HostResult{
-			Ports:       hostResult.Ports,
-			ClosedPorts: closed,
-			OpenPorts:   open,
+		dialer := net.Dialer{
+			Timeout: 1 * time.Second,
 		}
-		results.ResultMap[host] = stats
+		_, err := dialer.Dial(proto, target.String())
+
+		result := PortScanWorkerResult{
+			HostIP: target.Addr(),
+			Port: Port{
+				Number:   uint(target.Port()),
+				Protocol: proto,
+			},
+		}
+		if err != nil {
+			result.Port.State = PortStateClosed
+		} else {
+			result.Port.State = PortStateOpen
+			result.Port.Name = util.ServiceFromGoPacketString(layers.TCPPort(target.Port()).String())
+		}
+
+		resultsChan <- result
 	}
+	wg.Done()
 }

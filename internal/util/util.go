@@ -7,7 +7,6 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -300,57 +299,6 @@ func ParseIPRange(s string) ([]netip.Prefix, error) {
 	}
 
 	return IPPrefixes, nil
-}
-
-// PortsFromString parses a comma-separated list of ports and port ranges into
-// a sorted, de-duplicated slice of ports.
-//
-// Input format examples:
-//   - "80"
-//   - "22,80,443"
-//   - "1-5,22,80-81"
-//
-// Range entries must be in ascending order (e.g. "10-20"), and each token must
-// be a valid integer. The function returns an error for malformed tokens,
-// invalid ranges, or non-numeric values.
-func PortsFromString(s string) ([]uint, error) {
-	// format: 10,1,3,9-15
-	commaSeparatedPorts := strings.Split(s, ",")
-	targetPorts := make([]uint, 0, 5)
-
-	for _, portSpecString := range commaSeparatedPorts {
-		if strings.ContainsRune(portSpecString, '-') {
-			// Port Range Provided eg 10-20
-			dashIndex := strings.LastIndex(portSpecString, "-")
-			if dashIndex >= len(portSpecString) {
-				return nil, fmt.Errorf("error parsing port range -> %v", portSpecString)
-			}
-			lower, err := strconv.Atoi(portSpecString[:dashIndex])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
-			}
-			upper, err := strconv.Atoi(portSpecString[dashIndex+1:])
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port range %v -> %v", portSpecString, err)
-			}
-			if lower > upper {
-				return nil, fmt.Errorf("error parsing target %v -> invalid range", portSpecString)
-			}
-			for i := lower; i <= upper; i++ {
-				targetPorts = append(targetPorts, uint(i))
-			}
-		} else {
-			// Single port presumed
-			portNum, err := strconv.Atoi(portSpecString)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing port specification %v -> %v", portSpecString, err)
-			}
-			targetPorts = append(targetPorts, uint(portNum))
-		}
-	}
-
-	slices.Sort(targetPorts)
-	return Unique(targetPorts), nil
 }
 
 // Unique returns a new slice containing the first occurrence of each distinct

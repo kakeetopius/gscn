@@ -87,7 +87,7 @@ func (s *ARPScanner) WithTimeout(d time.Duration) Scanner {
 	return s
 }
 
-func (s *ARPScanner) WithHostNames() Scanner {
+func (s *ARPScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
 	s.doReverseLookups = true
 	return s
 }
@@ -304,7 +304,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 }
 
 func ReverseLookup(addr string, timeout time.Duration) string {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	resolver := net.Resolver{}

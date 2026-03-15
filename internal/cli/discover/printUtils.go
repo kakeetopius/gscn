@@ -2,7 +2,6 @@ package discover
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
@@ -76,16 +75,4 @@ func displayNDPResults(ndpResults *scanner.NDPScanResults, ndpStats *scanner.NDP
 	fmt.Println("\nPackets Sent: ", ndpStats.PacketsSent)
 	fmt.Println("Packets Received: ", ndpStats.PacketsReceived)
 	fmt.Println("Hosts Found: ", len(ndpResults.ResultSet))
-}
-
-func WaitTimeout(seconds time.Duration, timeoutReason string) {
-	if seconds < 1 {
-		return
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Waiting for "+timeoutReason, " timeout")
-	if err != nil {
-		fmt.Println(err)
-	}
-	time.Sleep(seconds * time.Second)
-	spinner.Success("Timeout Reached.")
 }
