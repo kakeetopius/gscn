@@ -82,7 +82,7 @@ func (s *NDPScanner) WithTimeout(timeout time.Duration) Scanner {
 	return s
 }
 
-func (s *NDPScanner) WithHostNames() Scanner {
+func (s *NDPScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
 	s.doReverseLookups = true
 	return s
 }

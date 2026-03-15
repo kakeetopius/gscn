@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
@@ -36,7 +35,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	timeout := cmd.Duration("timeout")
 
 	if targetStr := cmd.String("target"); targetStr != "" {
-		targets, err = discoverTargetsFromString(targetStr)
+		targets, err = scanner.TargetsFromString(targetStr)
 		if err != nil {
 			return err
 		}
@@ -116,7 +115,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		}).WithTimeout(timeout).WithVendorInfo()
 
 		if doReverseLookup {
-			ndpScanner = ndpScanner.WithHostNames()
+			ndpScanner = ndpScanner.WithHostNames(nil, true)
 		}
 		err = ndpScanner.Scan()
 		if err != nil {
@@ -147,7 +146,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			Interface: ifaceOpts,
 		}).WithTimeout(timeout).WithVendorInfo()
 		if doReverseLookup {
-			arpScanner = arpScanner.WithHostNames()
+			arpScanner = arpScanner.WithHostNames(nil, true)
 		}
 		err = arpScanner.Scan()
 		if err != nil {
@@ -169,35 +168,4 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return nil
-}
-
-func discoverTargetsFromString(s string) ([]netip.Prefix, error) {
-	// Example: 10.1.1.1/24,10.1.1.1,10.1.1.1-2
-	commaSeparatedTargets := strings.Split(s, ",")
-	targets := make([]netip.Prefix, 0, 5)
-
-	for _, targetString := range commaSeparatedTargets {
-		if strings.ContainsRune(targetString, '/') {
-			addr, err := netip.ParsePrefix(targetString)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-			}
-			targets = append(targets, addr)
-		} else if strings.ContainsRune(targetString, '-') {
-			IPRange, err := util.ParseIPRange(targetString)
-			if err != nil {
-				return nil, err
-			}
-			targets = append(targets, IPRange...)
-		} else {
-			targetStr := fmt.Sprintf("%v/%v", targetString, 32)
-			addr, err := netip.ParsePrefix(targetStr)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing target %v -> %v", targetString, err)
-			}
-			targets = append(targets, addr)
-		}
-	}
-
-	return util.Unique(targets), nil
 }
