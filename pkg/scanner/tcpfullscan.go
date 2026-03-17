@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/util"
-	"github.com/pterm/pterm"
 )
 
 type TCPFullScanOptions struct {
@@ -31,7 +30,9 @@ func (TCPFullScanResults) ResultType() ScanResultType {
 	return TCPFullScanScanResultType
 }
 
-type TCPFullScanStats struct{}
+type TCPFullScanStats struct {
+	TotalNumOfHosts int
+}
 
 type TCPFullScanner struct {
 	opts                    *TCPFullScanOptions
@@ -89,7 +90,6 @@ func (s *TCPFullScanner) Scan() error {
 
 func (s *TCPFullScanner) Results() ScanResults {
 	if s.resolveUnknownHostNames {
-		spinner, spinererr := pterm.DefaultSpinner.Start("Resolving Host Names")
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
@@ -97,9 +97,6 @@ func (s *TCPFullScanner) Results() ScanResults {
 			name := ReverseLookup(host.String(), 2*time.Second)
 			results.HostName = name
 			s.results.ResultMap[host] = results
-		}
-		if spinererr == nil {
-			spinner.Success("Done")
 		}
 	}
 	return s.results
@@ -132,13 +129,11 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	}
 
 	totalNumOfHosts := util.HostsInIP4Network(targets)
-	spinner, err := pterm.DefaultSpinner.Start(fmt.Sprintf("Scanning %v Host(s)", totalNumOfHosts))
-	if err != nil {
-		return TCPFullScanResults{}, err
-	}
+	scanner.stats.TotalNumOfHosts = totalNumOfHosts
 	sendPortScanningJobs(jobs, opts.Targets, opts.TargetPorts)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), scanner.opts.timeout)
+	defer cancel()
 	scanResultsChan := make(chan TCPFullScanResults)
 	go getTCPFullScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
@@ -146,7 +141,6 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	wg.Wait()   // wait for all to workers to finish
 	cancel()    // tell the main Woker to stop and send results
 
-	spinner.Success("Done")
 	scanResults := <-scanResultsChan
 	return scanResults, nil
 }
