@@ -187,6 +187,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 				if err != nil {
 					return ARPScanResults{}, err
 				}
+				scanner.stats.PacketsSent++
 				bar.Increment()
 				IPaddr = IPaddr.Next()
 			}
