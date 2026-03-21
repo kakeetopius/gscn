@@ -7,7 +7,9 @@ A simple and flexible command-line tool for network operations such as host disc
 - **Host Discovery**: Find hosts on your local network using ARP (IPv4) or ICMP Neighbor Discovery (IPv6).
 - **Port Scanning**: Scan hosts for open TCP/UDP ports, with customizable port ranges and concurrency.
 - **Reverse DNS Lookup**: Optionally resolve discovered IP addresses to hostnames.
+- **MAC Address Vendor Lookup**: Supports lookup of vendors for discovered hosts based on their MAC Addresses.
 - **Flexible Target Specification**: Supports single IPs, CIDR notation, IP ranges, domain names, and comma-separated lists.
+
 
 ## Installation
 
