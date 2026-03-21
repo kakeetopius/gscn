@@ -31,7 +31,8 @@ sudo make install
 ./gscn discover [flags]
 ```
 
-#### Examples
+<details>
+<summary>Examples</summary>
 
 - Discover a single host:
   ```
@@ -45,14 +46,15 @@ sudo make install
   ```
   ./gscn discover -t 10.1.1.1-5
   ```
-- Use a specific network interface:
+- Discover hosts on the network an interface is connected to:
   ```
   ./gscn discover -i eth0
   ```
 - Use IPv6 neighbor discovery:
   ```
-  ./gscn discover -s
+  ./gscn discover --six -t 2001:abcd:db22::1
   ```
+  </details>
 
 ### Scan Hosts
 
@@ -60,7 +62,8 @@ sudo make install
 ./gscn scan [flags]
 ```
 
-#### Examples
+<deatils>
+<summary>Examples</summary>
 
 - Scan a single host for specific ports:
   ```
@@ -78,6 +81,7 @@ sudo make install
   ```
   ./gscn scan -u
   ```
+  </deatils>
 
 ## Planned Features
 
