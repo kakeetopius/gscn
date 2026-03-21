@@ -62,7 +62,7 @@ sudo make install
 ./gscn scan [flags]
 ```
 
-<deatils>
+<details>
 <summary>Examples</summary>
 
 - Scan a single host for specific ports:
@@ -81,7 +81,7 @@ sudo make install
   ```
   ./gscn scan -u
   ```
-  </deatils>
+  </details>
 
 ## Planned Features
 
