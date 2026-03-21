@@ -30,7 +30,7 @@ sudo make install
 ### Discover Hosts
 
 ```sh
-./gscn discover [flags]
+gscn discover [flags]
 ```
 
 <details>
@@ -38,30 +38,30 @@ sudo make install
 
 - Discover a single host:
   ```
-  ./gscn discover -t 10.1.1.1
+   gscn discover -t 10.1.1.1
   ```
 - Discover all hosts in a subnet:
   ```
-  ./gscn discover -t 10.1.1.1/24
+  gscn discover -t 10.1.1.1/24
   ```
 - Discover a range of IPs:
   ```
-  ./gscn discover -t 10.1.1.1-5
+  gscn discover -t 10.1.1.1-5
   ```
 - Discover hosts on the network an interface is connected to:
   ```
-  ./gscn discover -i eth0
+  gscn discover -i eth0
   ```
 - Use IPv6 neighbor discovery:
   ```
-  ./gscn discover --six -t 2001:abcd:db22::1
+  gscn discover --six -t 2001:abcd:db22::1
   ```
   </details>
 
 ### Scan Hosts
 
 ```sh
-./gscn scan [flags]
+gscn scan [flags]
 ```
 
 <details>
@@ -69,19 +69,19 @@ sudo make install
 
 - Scan a single host for specific ports:
   ```
-  ./gscn scan -t 10.1.1.1 -p 80,443
+  gscn scan -t 10.1.1.1 -p 80,443
   ```
 - Scan a subnet for a port range:
   ```
-  ./gscn scan -t 10.1.1.1/24 -p 1-100
+  gscn scan -t 10.1.1.1/24 -p 1-100
   ```
 - Scan multiple targets:
   ```
-  ./gscn scan -t 10.1.1.1,bing.com,10.4.4.4-10 -p 1-100,443,8080
+  gscn scan -t 10.1.1.1,bing.com,10.4.4.4-10 -p 1-100,443,8080
   ```
 - Use UDP scan:
   ```
-  ./gscn scan -u
+  gscn scan -u
   ```
   </details>
 
