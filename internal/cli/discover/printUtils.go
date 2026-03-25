@@ -35,11 +35,14 @@ func displayARPResults(arpResults *scanner.ARPScanResults, arpStats *scanner.ARP
 			}
 			tableData = append(tableData, []string{result.IPAddr, result.MacAddr, vendor})
 		}
-		pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
 	}
-	fmt.Println("\nPackets Sent: ", arpStats.PacketsSent)
-	fmt.Println("Packets Received: ", arpStats.PacketsReceived)
-	fmt.Println("Hosts Found: ", len(arpResults.ResultSet))
+	if arpStats != nil {
+		fmt.Println("\nPackets Sent: ", arpStats.PacketsSent)
+		fmt.Println("Packets Received: ", arpStats.PacketsReceived)
+		fmt.Println("Hosts Found: ", len(arpResults.ResultSet))
+
+	}
 }
 
 func displayNDPResults(ndpResults *scanner.NDPScanResults, ndpStats *scanner.NDPScanStats) {
@@ -70,9 +73,12 @@ func displayNDPResults(ndpResults *scanner.NDPScanResults, ndpStats *scanner.NDP
 			}
 			tableData = append(tableData, []string{result.IPAddr, result.MacAddr, vendor})
 		}
-		pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
 	}
-	fmt.Println("\nPackets Sent: ", ndpStats.PacketsSent)
-	fmt.Println("Packets Received: ", ndpStats.PacketsReceived)
-	fmt.Println("Hosts Found: ", len(ndpResults.ResultSet))
+
+	if ndpStats != nil {
+		fmt.Println("\nPackets Sent: ", ndpStats.PacketsSent)
+		fmt.Println("Packets Received: ", ndpStats.PacketsReceived)
+		fmt.Println("Hosts Found: ", len(ndpResults.ResultSet))
+	}
 }
