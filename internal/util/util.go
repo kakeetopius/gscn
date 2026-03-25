@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/endobit/oui"
 	"github.com/pterm/pterm"
 )
 
@@ -136,11 +137,11 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	return netip.PrefixFrom(addr, ones), nil
 }
 
-// CheckIfAddrIsPartOfNetworks reports whether addr is contained in at least one
+// AddrIsPartOfNetworks reports whether addr is contained in at least one
 // prefix from targets.
 //
 // The check stops on the first match.
-func CheckIfAddrIsPartOfNetworks(targets []netip.Prefix, addr *netip.Addr) bool {
+func AddrIsPartOfNetworks(targets []netip.Prefix, addr *netip.Addr) bool {
 	for _, target := range targets {
 		if target.Contains(*addr) {
 			return true
@@ -285,4 +286,8 @@ func ServiceFromGoPacketString(s string) string {
 		return ""
 	}
 	return s[firstBracket+1 : secondBracket]
+}
+
+func MACVendor(mac string) string {
+	return oui.Vendor(mac)
 }
