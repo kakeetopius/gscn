@@ -105,8 +105,14 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 
 	doReverseLookup := cmd.Bool("hostnames")
 	if useIP6 {
-		if !targets[0].Addr().Is6() {
-			return fmt.Errorf("the given IP address is not IPv6")
+		for _, target := range targets {
+			if !target.Addr().Is6() {
+				return fmt.Errorf("%v is not an IPv6 address", target)
+			}
+			fmt.Println("Bits: ", target.Bits())
+			if target.Bits() != 128 {
+				fmt.Println("Some IPv6 have non single address: ", target.Bits())
+			}
 		}
 		ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
 			Targets:   targets,
