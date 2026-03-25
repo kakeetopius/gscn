@@ -144,7 +144,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	targets := prefixToAddr(opts.Targets)
+	targets := prefixToAddr(opts.Targets) // this is done to convert all netip.Prefixes to netip.Addrs to prevent scanning of entire large IPv6 subnets but instead scan a single host no matter the netmask given by the user.
 	go getNeighbourAdvertisements(ctx, scanner, resultChan, startSendChan)
 
 	_, ok := <-startSendChan // wait for packet receving routine to set up

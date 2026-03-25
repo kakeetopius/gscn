@@ -166,12 +166,7 @@ func HostsInIP4Network(targets []netip.Prefix) int {
 // It returns true for IPv4 /32 and IPv6 /128 prefixes, and false for all
 // broader network prefixes.
 func OnlyIPInRange(addr netip.Prefix) bool {
-	if addr.Bits() == 32 && addr.Addr().Is4() {
-		return true
-	} else if addr.Bits() == 128 && addr.Addr().Is6() {
-		return true
-	}
-	return false
+	return addr.IsSingleIP()
 }
 
 // GetSourceIPFromInterface returns the source IP address from the given network interface that matches the provided targets.

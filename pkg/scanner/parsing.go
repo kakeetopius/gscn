@@ -16,7 +16,7 @@ import (
 // a deduplicated slice of netip.Prefix values.
 //
 // The input string format supports multiple target types:
-//   - CIDR notation: "10.1.1.1/24"
+//   - CIDR notation: "10.1.1.1/24, 2001:abcd::1/64"
 //   - Single IP addresses: "10.1.1.1"
 //   - IP ranges: "10.1.1.1-2"
 //
@@ -42,7 +42,7 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 // and performs DNS lookups for unresolvable addresses, treating them as domain names.
 //
 // The input string format supports multiple target types:
-//   - CIDR notation: "10.1.1.1/24"
+//   - CIDR notation: "10.1.1.1/24, 2001:abcd::1/64"
 //   - Single IP addresses: "10.1.1.1"
 //   - IP ranges: "10.1.1.1-2"
 //   - Domain names: "bing.com", "google.com"
@@ -72,7 +72,11 @@ func TargetsFromStringWithDNSLookup(s string) ([]netip.Prefix, map[netip.Addr]st
 			if !ok {
 				return nil, nil, fmt.Errorf("could not resolve: %v", targetString)
 			}
-			targets = append(targets, netip.PrefixFrom(addr, 32))
+			prefixLen := 32
+			if addr.Is6() {
+				prefixLen = 128
+			}
+			targets = append(targets, netip.PrefixFrom(addr, prefixLen))
 			hostNames[addr] = targetString
 		} else {
 			targets = append(targets, targetAddr...)
@@ -109,6 +113,10 @@ func parseTargetString(s string) ([]netip.Prefix, error) {
 		addr, err := netip.ParsePrefix(targetStr)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing target %v -> %v", s, err)
+		}
+		if addr.Addr().Is6() {
+			prefixLen := 128
+			addr = netip.PrefixFrom(addr.Addr(), prefixLen)
 		}
 		targets = append(targets, addr)
 	}
