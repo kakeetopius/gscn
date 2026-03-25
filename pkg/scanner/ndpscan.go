@@ -126,7 +126,7 @@ func (s *NDPScanner) Results() ScanResults {
 	if s.addVendors {
 		s.results.hasVendors = true
 		for i := range resultSet {
-			resultSet[i].Vendor = MACVendor(resultSet[i].MacAddr)
+			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
 		}
 	}
 	return s.results
@@ -261,7 +261,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 					continue
 				}
 				srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-				if !util.CheckIfAddrIsPartOfNetworks(scanner.opts.Targets, &srcIP) {
+				if !util.AddrIsPartOfNetworks(scanner.opts.Targets, &srcIP) {
 					continue
 				}
 				scanner.stats.PacketsReceived++

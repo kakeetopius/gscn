@@ -59,6 +59,11 @@ func GetCommand() *cli.Command {
 						Aliases: []string{"s"},
 						Usage:   "Use IPv6's ICMP Neighbor discovery instead of ARP.",
 					},
+					&cli.BoolFlag{
+						Name:  "from-cache",
+						Value: false,
+						Usage: "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.",
+					},
 				},
 
 				Action: discover.RunDiscover,

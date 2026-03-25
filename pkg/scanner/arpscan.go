@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/endobit/oui"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -131,7 +130,7 @@ func (s *ARPScanner) Results() ScanResults {
 	if s.addVendors {
 		s.results.hasVendors = true
 		for i := range resultSet {
-			resultSet[i].Vendor = MACVendor(resultSet[i].MacAddr)
+			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
 		}
 	}
 	return s.results
@@ -280,7 +279,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 					if !ok {
 						continue
 					}
-					if !util.CheckIfAddrIsPartOfNetworks(opts.Targets, &ipAddr) {
+					if !util.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
 						// skip responses outside the specified network
 						continue
 					}
@@ -316,8 +315,4 @@ func ReverseLookup(addr string, timeout time.Duration) string {
 		return names[0]
 	}
 	return ""
-}
-
-func MACVendor(mac string) string {
-	return oui.Vendor(mac)
 }
