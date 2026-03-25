@@ -109,9 +109,20 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			if !target.Addr().Is6() {
 				return fmt.Errorf("%v is not an IPv6 address", target)
 			}
-			fmt.Println("Bits: ", target.Bits())
 			if target.Bits() != 128 {
-				fmt.Println("Some IPv6 have non single address: ", target.Bits())
+				useCache := cmd.Bool("from-cache")
+				if !useCache {
+					fmt.Printf("Scanning of an IPv6 network %v using ICMPv6 NDP is not supported.\n", target)
+					fmt.Println("To discover hosts from the kernel's neighbour table use the option --from-cache.")
+					return nil
+				}
+				fmt.Printf("Retrieving IPv6 neighbour information for interface %v from the kernel...................\n", iface.Name)
+				results, nerr := NDPResultsUsingNetlink(iface, targets)
+				if nerr != nil {
+					return nerr
+				}
+				displayNDPResults(results, nil)
+				return nil
 			}
 		}
 		ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
@@ -142,8 +153,10 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		displayNDPResults(&ndpResults, &ndpStats)
 
 	} else {
-		if !targets[0].Addr().Is4() {
-			return fmt.Errorf("arp can only be used with IPv4 addresses")
+		for _, target := range targets {
+			if !target.Addr().Is4() {
+				return fmt.Errorf("%v is not an IPv4 address", target)
+			}
 		}
 
 		arpScanner := scanner.NewARPScanner(&scanner.ARPScanOptions{
