@@ -91,7 +91,7 @@ func PrintTCPFullScanResults(tcpFullScanner *scanner.TCPFullScanner) {
 			if port.State == scanner.PortStateClosed {
 				continue // no need to add closed port to table
 			}
-			tcpService := util.ServiceFromGoPacketString(layers.TCPPort(port.Number).String())
+			tcpService := util.Service(layers.TCPPort(port.Number).String())
 			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), tcpService})
 		}
 		if hostResults.OpenPorts > 0 {
@@ -123,7 +123,7 @@ func PrintUDPScanResults(udpScanner *scanner.UDPScanner) {
 			if port.State == scanner.PortStateClosed {
 				continue // no need to add closed port to table
 			}
-			tcpService := util.ServiceFromGoPacketString(layers.TCPPort(port.Number).String())
+			tcpService := util.Service(layers.TCPPort(port.Number).String())
 			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), tcpService})
 		}
 		if hostResults.OpenPorts > 0 {

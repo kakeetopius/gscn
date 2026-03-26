@@ -7,11 +7,15 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"os"
+	"os/user"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/endobit/oui"
 	"github.com/pterm/pterm"
+	"github.com/spf13/viper"
 )
 
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
@@ -270,11 +274,11 @@ func WaitTimeout(duration time.Duration, timeoutReason string) {
 	spinner.Success("Timeout Reached.")
 }
 
-// ServiceFromGoPacketString extracts the service name from a gopacket-style
+// Service extracts the service name from a gopacket-style
 // string in the format "port(service)" (for example, "80(http)").
 // It returns an empty string when the input is empty, malformed, or does not
 // include both opening and closing parentheses.
-func ServiceFromGoPacketString(s string) string {
+func Service(s string) string {
 	// format: number(name) eg 80(http)
 	if s == "" {
 		return s
@@ -290,4 +294,39 @@ func ServiceFromGoPacketString(s string) string {
 
 func MACVendor(mac string) string {
 	return oui.Vendor(mac)
+}
+
+func SetUpConfig() (*viper.Viper, error) {
+	home := ""
+	if os.Geteuid() == 0 {
+		// running as root
+		sudoUser := os.Getenv("SUDO_USER")
+		if sudoUser == "" {
+			return nil, fmt.Errorf("could not get sudo user variable")
+		}
+		u, err := user.Lookup(sudoUser)
+		if err != nil {
+			return nil, err
+		}
+		home = u.HomeDir
+	} else {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		home = h
+	}
+
+	config := viper.New()
+	config.SetConfigName("gscn")
+	config.SetConfigType("toml")
+	config.AddConfigPath(path.Join(home, ".config"))
+	config.AddConfigPath(".")
+
+	confErr := config.ReadInConfig()
+	if confErr != nil {
+		return nil, confErr
+	}
+
+	return config, nil
 }

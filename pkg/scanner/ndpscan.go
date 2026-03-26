@@ -22,7 +22,7 @@ import (
 type NDPScanOptions struct {
 	Targets   []netip.Prefix
 	Source    netip.Addr
-	Interface Interface
+	Interface net.Interface
 	logger    io.Writer
 	timeout   time.Duration
 }
@@ -51,7 +51,7 @@ func (NDPScanResults) ResultType() ScanResultType {
 
 func (r NDPScanResults) String() string {
 	stringBuilder := strings.Builder{}
-	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
+	fmt.Fprintln(&stringBuilder, "NDP Scan Results")
 
 	for _, result := range r.ResultSet {
 		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
@@ -74,6 +74,7 @@ type NDPScanner struct {
 	stats            NDPScanStats
 	doReverseLookups bool
 	addVendors       bool
+	messageNotifier  notifier.Notifier
 }
 
 func NewNDPScanner(opts *NDPScanOptions) Scanner {
@@ -105,7 +106,8 @@ func (s *NDPScanner) WithVendorInfo() Scanner {
 	return s
 }
 
-func (s *NDPScanner) WithNotifier(notifier.Notifier) Scanner {
+func (s *NDPScanner) WithNotifier(n notifier.Notifier) Scanner {
+	s.messageNotifier = n
 	return s
 }
 
@@ -147,6 +149,19 @@ func (s *NDPScanner) Results() ScanResults {
 		}
 	}
 	return s.results
+}
+
+func (s *NDPScanner) SendResultsViaNotifier() error {
+	if s.messageNotifier == nil {
+		return nil
+	}
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+	defer spinner.Stop()
+
+	return s.messageNotifier.SendMessage(s.results.String())
 }
 
 func (s *NDPScanner) Stats() ScanStats {

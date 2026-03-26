@@ -3,16 +3,11 @@
 package scanner
 
 import (
-	"net"
 	"net/netip"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/notifier"
 )
-
-type Interface struct {
-	*net.Interface
-}
 
 type ScanResults interface {
 	ResultType() ScanResultType
@@ -31,6 +26,8 @@ type Scanner interface {
 	Results() ScanResults
 	// Stats returns statistics about the completed scan.
 	Stats() ScanStats
+	// SendResultsViaNotifier sends scan results using the configured notifier
+	SendResultsViaNotifier() error
 	// WithTimeout sets a timeout duration for the scan and returns the Scanner for method chaining.
 	WithTimeout(d time.Duration) Scanner
 	// WithHostNames sets known hostname mappings for IP addresses and controls whether to add unknown hostnames.

@@ -13,6 +13,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
+	"github.com/pterm/pterm"
 )
 
 type TCPFullScanOptions struct {
@@ -41,6 +42,7 @@ type TCPFullScanner struct {
 	stats                   TCPFullScanStats
 	resolveUnknownHostNames bool
 	hostNames               map[netip.Addr]string
+	messageNotifier         notifier.Notifier
 }
 
 func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
@@ -82,6 +84,19 @@ func (s *TCPFullScanner) WithTimeout(timeout time.Duration) Scanner {
 
 func (s *TCPFullScanner) WithNotifier(notifier.Notifier) Scanner {
 	return s
+}
+
+func (s *TCPFullScanner) SendResultsViaNotifier() error {
+	if s.messageNotifier == nil {
+		return nil
+	}
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+	defer spinner.Stop()
+
+	return s.messageNotifier.SendMessage("")
 }
 
 func (s *TCPFullScanner) Scan() error {
@@ -203,7 +218,7 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 			result.Port.State = PortStateClosed
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = util.ServiceFromGoPacketString(layers.TCPPort(target.Port()).String())
+			result.Port.Name = util.Service(layers.TCPPort(target.Port()).String())
 		}
 
 		resultsChan <- result
