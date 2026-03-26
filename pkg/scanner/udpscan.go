@@ -149,22 +149,35 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	}
 
 	totalNumOfHosts := util.HostsInIP4Network(targets)
-	scanner.stats.TotalNumOfHosts = totalNumOfHosts
-	sendPortScanningJobs(jobs, opts.Targets, opts.TargetPorts)
+	spinner, err := pterm.DefaultSpinner.Start("Scanning ", totalNumOfHosts, " hosts")
+	if err != nil {
+		return UDPScanResults{}, err
+	}
+	defer spinner.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	senderDone := make(chan struct{})
+
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts)
+	scanner.stats.TotalNumOfHosts = totalNumOfHosts
+
 	scanResultsChan := make(chan UDPScanResults)
 	go getUDPScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
-	close(jobs) // stops the for loop in workers
-	wg.Wait()   // wait for all to workers to finish
-	cancel()    // tell the main Woker to stop and send results
+	<-senderDone             // wait for sender to send all jobs
+	wg.Wait()                // wait for all to workers to finish
+	close(workerResultsChan) // tell the main Woker to stop and send results
 
 	scanResults := <-scanResultsChan
 	return scanResults, nil
 }
 
 func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- PortScanWorkerResult) {
+	defer func() {
+		wg.Done()
+	}()
+
 	for target := range jobs {
 		proto := ""
 		if target.Addr().Is4() {
@@ -203,7 +216,9 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 				// if we got a timeout, it can be because the port is filtered or open but silent
 				// BUG: This logic only works for hosts that are up. If a host is down, it will also timeout.
 				// Possible Fix is to first do a ping scan before actually doing port Scanning
-				result.Port.State = PortStatePossibleFilter
+
+				// result.Port.State = PortStatePossibleFilter
+				result.Port.State = PortStateClosed
 				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed
@@ -216,7 +231,6 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 
 		resultsChan <- result
 	}
-	wg.Done()
 }
 
 func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan UDPScanResults) {
@@ -224,12 +238,18 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 	scanResults := UDPScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
 	}
+	defer func() {
+		scanResultsChan <- scanResults
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
-			scanResultsChan <- scanResults
 			return
-		case result := <-workerResultsChan:
+		case result, ok := <-workerResultsChan:
+			if !ok {
+				return
+			}
 			hostIP := result.HostIP
 			hostResults := scanResults.ResultMap[hostIP]
 			if hostResults.Ports == nil {
