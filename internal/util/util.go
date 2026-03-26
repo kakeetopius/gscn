@@ -266,7 +266,7 @@ func WaitTimeout(duration time.Duration, timeoutReason string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	time.Sleep(duration)
+	<-time.After(duration)
 	spinner.Success("Timeout Reached.")
 }
 

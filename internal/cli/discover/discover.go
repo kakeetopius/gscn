@@ -54,7 +54,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 			if err != nil {
 				return err
 			}
-			pterm.Info.Println("No targets Provided. Scanning for hosts on network: ", target.Masked())
+			pterm.Info.Println("No targets Provided. Scanning for hosts on the interface's network: ", target.Masked())
 			fmt.Println()
 			targets = append(targets, *target)
 		}
@@ -105,25 +105,33 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 
 	doReverseLookup := cmd.Bool("hostnames")
 	if useIP6 {
+		useCache := cmd.Bool("from-cache")
+		forceScan := cmd.Bool("force-scan")
 		for _, target := range targets {
 			if !target.Addr().Is6() {
 				return fmt.Errorf("%v is not an IPv6 address", target)
 			}
 			if target.Bits() != 128 {
-				useCache := cmd.Bool("from-cache")
-				if !useCache {
-					fmt.Printf("Scanning of an IPv6 network %v using ICMPv6 NDP is not supported.\n", target)
-					fmt.Println("To discover hosts from the kernel's neighbour table use the option --from-cache.")
+				if !useCache && !forceScan {
+					fmt.Println()
+					pterm.Warning.Printf("Scanning of an IPv6 network %v using ICMPv6 NDP is impractical due to its large subnets\n", target.Masked())
+					pterm.Info.Println("To discover hosts using the kernel's neighbour table use the option --from-cache.")
+					pterm.Info.Println("To force scanning of the IPv6 subnet use the option --force-scan.")
 					return nil
 				}
-				fmt.Printf("Retrieving IPv6 neighbour information for interface %v from the kernel...................\n", iface.Name)
-				results, nerr := NDPResultsUsingNetlink(iface, targets)
-				if nerr != nil {
-					return nerr
-				}
-				displayNDPResults(results, nil)
-				return nil
 			}
+		}
+		if useCache {
+			pterm.Info.Println("Discovering Host(s) using kernel's neighbour table for interface ", iface.Name)
+			results, nerr := NDPResultsUsingNetlink(iface, targets)
+			if nerr != nil {
+				return nerr
+			}
+			displayNDPResults(results, nil)
+			return nil
+		}
+		if forceScan {
+			pterm.Warning.Println("Scanning of IPv6 networks may take alot of time and use alot of system resources due to their large size.")
 		}
 		ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
 			Targets:   targets,
