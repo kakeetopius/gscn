@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket/layers"
+	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 )
 
@@ -76,6 +77,10 @@ func (s *TCPFullScanner) WithWorkers(numOfWorkers int) Scanner {
 
 func (s *TCPFullScanner) WithTimeout(timeout time.Duration) Scanner {
 	s.opts.timeout = timeout
+	return s
+}
+
+func (s *TCPFullScanner) WithNotifier(notifier.Notifier) Scanner {
 	return s
 }
 

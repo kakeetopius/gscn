@@ -6,12 +6,14 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
+	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 	"golang.org/x/sys/unix"
@@ -47,12 +49,23 @@ func (NDPScanResults) ResultType() ScanResultType {
 	return NDPScanResultType
 }
 
-func (s NDPScanResults) HasHostNames() bool {
-	return s.hasHostNames
+func (r NDPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
+
+	for _, result := range r.ResultSet {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	}
+
+	return stringBuilder.String()
 }
 
-func (s NDPScanResults) HasVendors() bool {
-	return s.hasVendors
+func (r NDPScanResults) HasHostNames() bool {
+	return r.hasHostNames
+}
+
+func (r NDPScanResults) HasVendors() bool {
+	return r.hasVendors
 }
 
 type NDPScanner struct {
@@ -89,6 +102,10 @@ func (s *NDPScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
 
 func (s *NDPScanner) WithVendorInfo() Scanner {
 	s.addVendors = true
+	return s
+}
+
+func (s *NDPScanner) WithNotifier(notifier.Notifier) Scanner {
 	return s
 }
 
@@ -144,18 +161,28 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	targets := prefixToAddr(opts.Targets) // this is done to convert all netip.Prefixes to netip.Addrs to prevent scanning of entire large IPv6 subnets but instead scan a single host no matter the netmask given by the user.
 	go getNeighbourAdvertisements(ctx, scanner, resultChan, startSendChan)
 
 	_, ok := <-startSendChan // wait for packet receving routine to set up
 	if !ok {
 		return NDPScanResults{}, fmt.Errorf("error capturing packets on that interface")
 	}
-	pterm.Info.Println("Probing host on interface: " + opts.Interface.Name)
-
-	for _, target := range targets {
-		sendNSPacket(scanner, &target)
+	spinner, err := pterm.DefaultSpinner.Start("Probing host on interface: " + opts.Interface.Name)
+	if err != nil {
+		return NDPScanResults{}, err
 	}
+
+	for _, target := range opts.Targets {
+		IPaddr := target.Masked().Addr() // first IP in range
+		for target.Contains(IPaddr) {
+			err := sendNSPacket(scanner, &IPaddr)
+			if err != nil {
+				return NDPScanResults{}, err
+			}
+			IPaddr = IPaddr.Next()
+		}
+	}
+	spinner.Stop()
 
 	util.WaitTimeout(opts.timeout, "response")
 	cancel() // tell packet receiving routine to stop
@@ -312,13 +339,4 @@ func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
 
 	copy(solIP[13:16], last24Bits)
 	return solIP
-}
-
-func prefixToAddr(prefixes []netip.Prefix) []netip.Addr {
-	addrs := make([]netip.Addr, 0, len(prefixes))
-	for _, prefix := range prefixes {
-		addr := prefix.Addr()
-		addrs = append(addrs, addr)
-	}
-	return addrs
 }

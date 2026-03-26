@@ -64,6 +64,11 @@ func GetCommand() *cli.Command {
 						Value: false,
 						Usage: "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.",
 					},
+					&cli.BoolFlag{
+						Name:  "force-scan",
+						Value: false,
+						Usage: "Force scanning of IPv6 networks using ICMPv6 Neighbour Discovery Protocol.",
+					},
 				},
 
 				Action: discover.RunDiscover,
