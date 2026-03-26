@@ -150,16 +150,25 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 
 	totalNumOfHosts := util.HostsInIP4Network(targets)
 	scanner.stats.TotalNumOfHosts = totalNumOfHosts
-	sendPortScanningJobs(jobs, opts.Targets, opts.TargetPorts)
+	spinner, err := pterm.DefaultSpinner.Start("Scanning ", totalNumOfHosts, " hosts")
+	if err != nil {
+		return TCPFullScanResults{}, err
+	}
+	defer spinner.Stop()
 
-	ctx, cancel := context.WithTimeout(context.Background(), scanner.opts.timeout)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	senderDone := make(chan struct{})
+
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts)
+
 	scanResultsChan := make(chan TCPFullScanResults)
 	go getTCPFullScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
-	close(jobs) // stops the for loop in workers
-	wg.Wait()   // wait for all to workers to finish
-	cancel()    // tell the main Woker to stop and send results
+	<-senderDone             // wait for sender to send all jobs
+	wg.Wait()                // wait for all to workers to finish
+	close(workerResultsChan) // tell main worker to stop
 
 	scanResults := <-scanResultsChan
 	return scanResults, nil
@@ -170,12 +179,17 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 	scanResults := TCPFullScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
 	}
+	defer func() {
+		scanResultsChan <- scanResults
+	}()
 	for {
 		select {
 		case <-ctx.Done():
-			scanResultsChan <- scanResults
 			return
-		case result := <-workerResultsChan:
+		case result, ok := <-workerResultsChan:
+			if !ok {
+				return
+			}
 			hostIP := result.HostIP
 			hostResults := scanResults.ResultMap[hostIP]
 			if hostResults.Ports == nil {
@@ -195,6 +209,10 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 }
 
 func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- PortScanWorkerResult) {
+	defer func() {
+		wg.Done()
+	}()
+
 	for target := range jobs {
 		proto := ""
 		if target.Addr().Is4() {
@@ -223,5 +241,4 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 
 		resultsChan <- result
 	}
-	wg.Done()
 }
