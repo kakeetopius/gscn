@@ -13,6 +13,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
+	"github.com/pterm/pterm"
 )
 
 type UDPScanOptions struct {
@@ -41,6 +42,7 @@ type UDPScanner struct {
 	stats                   UDPScanStats
 	resolveUnknownHostNames bool
 	hostNames               map[netip.Addr]string
+	messageNotifier         notifier.Notifier
 }
 
 func NewUDPScanner(opts *UDPScanOptions) Scanner {
@@ -91,6 +93,19 @@ func (s *UDPScanner) Scan() error {
 	}
 	s.results = results
 	return nil
+}
+
+func (s *UDPScanner) SendResultsViaNotifier() error {
+	if s.messageNotifier == nil {
+		return nil
+	}
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+	defer spinner.Stop()
+
+	return s.messageNotifier.SendMessage("")
 }
 
 func (s *UDPScanner) Results() ScanResults {
@@ -189,14 +204,14 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 				// BUG: This logic only works for hosts that are up. If a host is down, it will also timeout.
 				// Possible Fix is to first do a ping scan before actually doing port Scanning
 				result.Port.State = PortStatePossibleFilter
-				result.Port.Name = util.ServiceFromGoPacketString(layers.UDPPort(target.Port()).String())
+				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed
 				result.Port.State = PortStateClosed
 			}
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = util.ServiceFromGoPacketString(layers.UDPPort(target.Port()).String())
+			result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 		}
 
 		resultsChan <- result

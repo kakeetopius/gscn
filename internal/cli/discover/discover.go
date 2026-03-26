@@ -8,11 +8,19 @@ import (
 	"net"
 	"net/netip"
 
+	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
 	"github.com/urfave/cli/v3"
 )
+
+type DiscoverOpts struct {
+	cmd     *cli.Command
+	targets []netip.Prefix
+	iface   *net.Interface
+	source  netip.Addr
+}
 
 type RealNetInterfaceProvider struct{}
 
@@ -27,13 +35,13 @@ func (RealNetInterfaceProvider) AddrsOf(iface *net.Interface) ([]net.Addr, error
 func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	var iface *net.Interface
 	var err error
-
-	targets := make([]netip.Prefix, 0)
+	discoverOpts := DiscoverOpts{
+		cmd: cmd,
+	}
 
 	useIP6 := cmd.Bool("six")
 
-	timeout := cmd.Duration("timeout")
-
+	targets := make([]netip.Prefix, 0)
 	if targetStr := cmd.String("target"); targetStr != "" {
 		targets, err = scanner.TargetsFromString(targetStr)
 		if err != nil {
@@ -84,10 +92,6 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	ifaceOpts := scanner.Interface{
-		Interface: iface,
-	}
-
 	var sourceAddr netip.Addr
 	if source := cmd.String("source"); source != "" {
 		source, parseerr := netip.ParseAddr(source)
@@ -103,96 +107,148 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		sourceAddr = *source
 	}
 
-	doReverseLookup := cmd.Bool("hostnames")
+	discoverOpts.targets = targets
+	discoverOpts.iface = iface
+	discoverOpts.source = sourceAddr
+
 	if useIP6 {
-		useCache := cmd.Bool("from-cache")
-		forceScan := cmd.Bool("force-scan")
-		for _, target := range targets {
-			if !target.Addr().Is6() {
-				return fmt.Errorf("%v is not an IPv6 address", target)
-			}
-			if target.Bits() != 128 {
-				if !useCache && !forceScan {
-					fmt.Println()
-					pterm.Warning.Printf("Scanning of an IPv6 network %v using ICMPv6 NDP is impractical due to its large subnets\n", target.Masked())
-					pterm.Info.Println("To discover hosts using the kernel's neighbour table use the option --from-cache.")
-					pterm.Info.Println("To force scanning of the IPv6 subnet use the option --force-scan.")
-					return nil
-				}
-			}
-		}
-		if useCache {
-			pterm.Info.Println("Discovering Host(s) using kernel's neighbour table for interface ", iface.Name)
-			results, nerr := NDPResultsUsingNetlink(iface, targets)
-			if nerr != nil {
-				return nerr
-			}
-			displayNDPResults(results, nil)
-			return nil
-		}
-		if forceScan {
-			pterm.Warning.Println("Scanning of IPv6 networks may take alot of time and use alot of system resources due to their large size.")
-		}
-		ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
-			Targets:   targets,
-			Source:    sourceAddr,
-			Interface: ifaceOpts,
-		}).WithTimeout(timeout).WithVendorInfo()
-
-		if doReverseLookup {
-			ndpScanner = ndpScanner.WithHostNames(nil, true)
-		}
-		err = ndpScanner.Scan()
-		if err != nil {
-			return err
-		}
-		var ndpResults scanner.NDPScanResults
-		if results, ok := ndpScanner.Results().(scanner.NDPScanResults); ok {
-			ndpResults = results
-		} else {
-			return fmt.Errorf("error getting ndp results")
-		}
-		var ndpStats scanner.NDPScanStats
-		if stats, ok := ndpScanner.Stats().(scanner.NDPScanStats); ok {
-			ndpStats = stats
-		} else {
-			return fmt.Errorf("error getting ndp stats")
-		}
-		displayNDPResults(&ndpResults, &ndpStats)
-
+		err = runIP6Discovery(&discoverOpts)
 	} else {
-		for _, target := range targets {
-			if !target.Addr().Is4() {
-				return fmt.Errorf("%v is not an IPv4 address", target)
-			}
-		}
-
-		arpScanner := scanner.NewARPScanner(&scanner.ARPScanOptions{
-			Targets:   targets,
-			Source:    sourceAddr,
-			Interface: ifaceOpts,
-		}).WithTimeout(timeout).WithVendorInfo()
-		if doReverseLookup {
-			arpScanner = arpScanner.WithHostNames(nil, true)
-		}
-		err = arpScanner.Scan()
-		if err != nil {
-			return err
-		}
-		var arpResults scanner.ARPScanResults
-		if results, ok := arpScanner.Results().(scanner.ARPScanResults); ok {
-			arpResults = results
-		} else {
-			return fmt.Errorf("error getting ARP results")
-		}
-		var arpStats scanner.ARPScanStats
-		if stats, ok := arpScanner.Stats().(scanner.ARPScanStats); ok {
-			arpStats = stats
-		} else {
-			return fmt.Errorf("error getting ARP stats")
-		}
-		displayARPResults(&arpResults, &arpStats)
+		err = runIP4Discovery(&discoverOpts)
 	}
 
+	return err
+}
+
+func runIP4Discovery(opts *DiscoverOpts) error {
+	for _, target := range opts.targets {
+		if !target.Addr().Is4() {
+			return fmt.Errorf("%v is not an IPv4 address", target)
+		}
+	}
+	timeout := opts.cmd.Duration("timeout")
+	arpScanner := scanner.NewARPScanner(&scanner.ARPScanOptions{
+		Targets:   opts.targets,
+		Source:    opts.source,
+		Interface: *opts.iface,
+	}).WithTimeout(timeout).WithVendorInfo()
+
+	if opts.cmd.Bool("notify") {
+		config, confErr := util.SetUpConfig()
+		if confErr != nil {
+			return confErr
+		}
+		notifierName := config.GetString("notifier.type")
+		if notifierName == "" {
+			return fmt.Errorf("no notifier type set in the config file")
+		}
+		notifierObj, err := notifier.NotifierByName(notifierName, config)
+		if err != nil {
+			return err
+		}
+		arpScanner = arpScanner.WithNotifier(notifierObj)
+	}
+	if opts.cmd.Bool("hostnames") {
+		arpScanner = arpScanner.WithHostNames(nil, true)
+	}
+	err := arpScanner.Scan()
+	if err != nil {
+		return err
+	}
+	var arpResults scanner.ARPScanResults
+	if results, ok := arpScanner.Results().(scanner.ARPScanResults); ok {
+		arpResults = results
+	} else {
+		return fmt.Errorf("error getting ARP results")
+	}
+	var arpStats scanner.ARPScanStats
+	if stats, ok := arpScanner.Stats().(scanner.ARPScanStats); ok {
+		arpStats = stats
+	} else {
+		return fmt.Errorf("error getting ARP stats")
+	}
+	displayARPResults(&arpResults, &arpStats)
+	err = arpScanner.SendResultsViaNotifier()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func runIP6Discovery(opts *DiscoverOpts) error {
+	useCache := opts.cmd.Bool("from-cache")
+	forceScan := opts.cmd.Bool("force-scan")
+	for _, target := range opts.targets {
+		if !target.Addr().Is6() {
+			return fmt.Errorf("%v is not an IPv6 address", target)
+		}
+		if target.Bits() != 128 {
+			if !useCache && !forceScan {
+				fmt.Println()
+				pterm.Warning.Printf("Scanning of an IPv6 network %v using ICMPv6 NDP is impractical due to its large subnets\n", target.Masked())
+				pterm.Info.Println("To discover hosts using the kernel's neighbour table use the option --from-cache.")
+				pterm.Info.Println("To force scanning of the IPv6 subnet use the option --force-scan.")
+				return nil
+			}
+		}
+	}
+	if useCache {
+		pterm.Info.Println("Discovering Host(s) using kernel's neighbour table for interface ", opts.iface.Name)
+		results, nerr := NDPResultsUsingNetlink(opts.iface, opts.targets)
+		if nerr != nil {
+			return nerr
+		}
+		displayNDPResults(results, nil)
+		return nil
+	}
+	if forceScan {
+		pterm.Warning.Println("Scanning of IPv6 networks may take alot of time and use alot of system resources due to their large size.")
+	}
+	timeout := opts.cmd.Duration("timeout")
+	ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
+		Targets:   opts.targets,
+		Source:    opts.source,
+		Interface: *opts.iface,
+	}).WithTimeout(timeout).WithVendorInfo()
+
+	if opts.cmd.Bool("notify") {
+		config, confErr := util.SetUpConfig()
+		if confErr != nil {
+			return confErr
+		}
+		notifierName := config.GetString("notifier.type")
+		if notifierName == "" {
+			return fmt.Errorf("no notifier type set in the config file")
+		}
+		notifierObj, err := notifier.NotifierByName(notifierName, config)
+		if err != nil {
+			return err
+		}
+		ndpScanner = ndpScanner.WithNotifier(notifierObj)
+	}
+	if opts.cmd.Bool("hostnames") {
+		ndpScanner = ndpScanner.WithHostNames(nil, true)
+	}
+	err := ndpScanner.Scan()
+	if err != nil {
+		return err
+	}
+	var ndpResults scanner.NDPScanResults
+	if results, ok := ndpScanner.Results().(scanner.NDPScanResults); ok {
+		ndpResults = results
+	} else {
+		return fmt.Errorf("error getting ndp results")
+	}
+	var ndpStats scanner.NDPScanStats
+	if stats, ok := ndpScanner.Stats().(scanner.NDPScanStats); ok {
+		ndpStats = stats
+	} else {
+		return fmt.Errorf("error getting ndp stats")
+	}
+	displayNDPResults(&ndpResults, &ndpStats)
+	err = ndpScanner.SendResultsViaNotifier()
+	if err != nil {
+		return err
+	}
 	return nil
 }

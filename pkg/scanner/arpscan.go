@@ -27,7 +27,7 @@ type socketInfo struct {
 type ARPScanOptions struct {
 	Targets   []netip.Prefix
 	Source    netip.Addr
-	Interface Interface
+	Interface net.Interface
 	timeout   time.Duration
 	logger    io.Writer
 }
@@ -78,6 +78,7 @@ type ARPScanner struct {
 	stats            ARPScanStats
 	doReverseLookups bool
 	addVendors       bool
+	messageNotifier  notifier.Notifier
 }
 
 func NewARPScanner(opts *ARPScanOptions) Scanner {
@@ -109,7 +110,8 @@ func (s *ARPScanner) WithVendorInfo() Scanner {
 	return s
 }
 
-func (s *ARPScanner) WithNotifier(notifier.Notifier) Scanner {
+func (s *ARPScanner) WithNotifier(n notifier.Notifier) Scanner {
+	s.messageNotifier = n
 	return s
 }
 
@@ -151,6 +153,19 @@ func (s *ARPScanner) Results() ScanResults {
 		}
 	}
 	return s.results
+}
+
+func (s *ARPScanner) SendResultsViaNotifier() error {
+	if s.messageNotifier == nil {
+		return nil
+	}
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+	defer spinner.Stop()
+
+	return s.messageNotifier.SendMessage(s.results.String())
 }
 
 func (s *ARPScanner) Stats() ScanStats {
@@ -218,7 +233,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	return ARPScanResults{ResultSet: results}, nil
 }
 
-func sendArpPacket(iface *Interface, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},

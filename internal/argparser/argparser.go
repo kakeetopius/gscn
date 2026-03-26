@@ -69,6 +69,11 @@ func GetCommand() *cli.Command {
 						Value: false,
 						Usage: "Force scanning of IPv6 networks using ICMPv6 Neighbour Discovery Protocol.",
 					},
+					&cli.BoolFlag{
+						Name:  "notify",
+						Value: false,
+						Usage: "Send scan results via a configured notifier in $HOME/config/gscn.toml file",
+					},
 				},
 
 				Action: discover.RunDiscover,
