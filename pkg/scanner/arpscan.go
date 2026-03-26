@@ -6,12 +6,14 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
+	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 	"golang.org/x/sys/unix"
@@ -55,6 +57,17 @@ func (ARPScanResults) ResultType() ScanResultType {
 	return ARPScanResultType
 }
 
+func (r *ARPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
+
+	for _, result := range r.ResultSet {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	}
+
+	return stringBuilder.String()
+}
+
 type ARPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
@@ -93,6 +106,10 @@ func (s *ARPScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
 
 func (s *ARPScanner) WithVendorInfo() Scanner {
 	s.addVendors = true
+	return s
+}
+
+func (s *ARPScanner) WithNotifier(notifier.Notifier) Scanner {
 	return s
 }
 

@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/netip"
 	"time"
+
+	"github.com/kakeetopius/gscn/internal/notifier"
 )
 
 type Interface struct {
@@ -37,6 +39,8 @@ type Scanner interface {
 	WithVendorInfo() Scanner
 	// WithWorkers sets the number of concurrent workers for the scan.
 	WithWorkers(w int) Scanner
+	// WithNotifier sets which notifier to use to send scan results
+	WithNotifier(notifier.Notifier) Scanner
 }
 
 type ScanResultType int
