@@ -168,9 +168,11 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 		return fmt.Errorf("error getting ARP stats")
 	}
 	displayARPResults(&arpResults, &arpStats)
-	err = arpScanner.SendResultsViaNotifier()
-	if err != nil {
-		return err
+	if opts.cmd.Bool("notify") {
+		err = arpScanner.SendResultsViaNotifier()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -246,9 +248,12 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 		return fmt.Errorf("error getting ndp stats")
 	}
 	displayNDPResults(&ndpResults, &ndpStats)
-	err = ndpScanner.SendResultsViaNotifier()
-	if err != nil {
-		return err
+
+	if opts.cmd.Bool("notify") {
+		err = ndpScanner.SendResultsViaNotifier()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

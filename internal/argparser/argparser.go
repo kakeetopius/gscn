@@ -122,6 +122,11 @@ func GetCommand() *cli.Command {
 						Value:   64,
 						Usage:   "Number of workers to run concurrently when scanning with a maximum of 500",
 					},
+					&cli.BoolFlag{
+						Name:  "notify",
+						Value: false,
+						Usage: "Send scan results via a configured notifier in $HOME/config/gscn.toml file",
+					},
 				},
 				Description: "Targets can be provided in the following formats:\n" +
 					"\tgscn scan -t 10.1.1.1 -p 80    # Single Host\n" +

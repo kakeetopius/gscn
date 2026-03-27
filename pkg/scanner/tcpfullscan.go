@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,28 @@ type TCPFullScanResults struct {
 
 func (TCPFullScanResults) ResultType() ScanResultType {
 	return TCPFullScanScanResultType
+}
+
+func (r TCPFullScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "TCP Full Scan Results.\n\n")
+	for host, result := range r.ResultMap {
+		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, "(%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
 
 type TCPFullScanStats struct {
@@ -82,7 +105,8 @@ func (s *TCPFullScanner) WithTimeout(timeout time.Duration) Scanner {
 	return s
 }
 
-func (s *TCPFullScanner) WithNotifier(notifier.Notifier) Scanner {
+func (s *TCPFullScanner) WithNotifier(n notifier.Notifier) Scanner {
+	s.messageNotifier = n
 	return s
 }
 
@@ -96,7 +120,7 @@ func (s *TCPFullScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage("")
+	return s.messageNotifier.SendMessage(s.results.String())
 }
 
 func (s *TCPFullScanner) Scan() error {

@@ -7,6 +7,7 @@ import (
 	"net/netip"
 
 	"github.com/google/gopacket/layers"
+	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
@@ -62,11 +63,33 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			Targets:     targets,
 			TargetPorts: ports,
 		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(responseTimeout)
+		notify := cmd.Bool("notify")
+		if notify {
+			config, err := util.SetUpConfig()
+			if err != nil {
+				return err
+			}
+			notifierName := config.GetString("notifier.type")
+			if notifierName == "" {
+				return fmt.Errorf("no notifier type set in the config file")
+			}
+			notifierObj, err := notifier.NotifierByName(notifierName, config)
+			if err != nil {
+				return err
+			}
+			tcpFullScanner = tcpFullScanner.WithNotifier(notifierObj)
+		}
 		err := tcpFullScanner.Scan()
 		if err != nil {
 			return err
 		}
 		PrintTCPFullScanResults(tcpFullScanner.(*scanner.TCPFullScanner))
+		if notify {
+			err := tcpFullScanner.SendResultsViaNotifier()
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

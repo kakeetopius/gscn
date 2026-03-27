@@ -10,6 +10,7 @@ import (
 )
 
 type ScanResults interface {
+	String() string
 	ResultType() ScanResultType
 }
 
