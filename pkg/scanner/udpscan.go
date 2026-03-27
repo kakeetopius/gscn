@@ -32,6 +32,10 @@ func (UDPScanResults) ResultType() ScanResultType {
 	return UDPScanResultType
 }
 
+func (r UDPScanResults) String() string {
+	return ""
+}
+
 type UDPScanStats struct {
 	TotalNumOfHosts int
 }

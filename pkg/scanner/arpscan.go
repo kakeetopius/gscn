@@ -57,7 +57,7 @@ func (ARPScanResults) ResultType() ScanResultType {
 	return ARPScanResultType
 }
 
-func (r *ARPScanResults) String() string {
+func (r ARPScanResults) String() string {
 	stringBuilder := strings.Builder{}
 	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
 
