@@ -87,6 +87,10 @@ gscn scan [flags]
   ```
   gscn scan -u
   ```
+- Carry out a ping scan for a whole network to check which hosts are up with 200 concurrent workers
+  ```
+  gscn scan -t 10.1.1.1/24 --ping --workers 200
+  ```
 - Scan and notify results:
   ```
   gscn scan -t 10.1.1.1/24 -p 1-100 --notify
