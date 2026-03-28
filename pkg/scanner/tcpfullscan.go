@@ -140,7 +140,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	}
 
 	if !opts.SkipPingScan {
-		pingResults, err := pingHosts(targets, opts.PingTimeout) // first check if hosts are up.
+		pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers)) // first check if hosts are up.
 		if err != nil {
 			return TCPFullScanResults{}, err
 		}

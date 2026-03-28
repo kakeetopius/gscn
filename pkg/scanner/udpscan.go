@@ -138,7 +138,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 		return UDPScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
-	pingResults, err := pingHosts(targets, opts.PingTimeout) // first check if hosts are up.
+	pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers)) // first check if hosts are up.
 	if err != nil {
 		return UDPScanResults{}, err
 	}
@@ -277,10 +277,11 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 	}
 }
 
-func pingHosts(targets []netip.Prefix, pingTimeout time.Duration) (PingScanResults, error) {
+func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int) (PingScanResults, error) {
 	pinger := NewPingScanner(PingScanOptions{
 		Targets:     targets,
 		PingTimeout: pingTimeout,
+		Workers:     workers,
 	})
 
 	err := pinger.Scan()

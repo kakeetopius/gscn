@@ -94,6 +94,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			PingTimeout:         cmd.Duration("ping-timeout"),
 			AddUnknownHostNames: lookUpHostNames,
 			HostNames:           hostNames,
+			Workers:             numWorkers,
 		})
 		if notify {
 			pingScanner.MessageNotifier = notifiyObj
@@ -103,7 +104,8 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		results := pingScanner.Results().(scanner.PingScanResults)
-		printPingScanResults(results.ResultMap)
+		stats := pingScanner.Stats().(scanner.PingStats)
+		printPingScanResults(results, stats)
 		if notify {
 			err := pingScanner.SendResultsViaNotifier()
 			if err != nil {
@@ -161,12 +163,18 @@ func PrintUDPScanResults(udpScanner *scanner.UDPScanner) {
 
 func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 	var tableData [][]string
+	totalHosts := len(results)
+	totalUp := 0
 	for host, hostResults := range results {
 		tableData = pterm.TableData{{"Port", "State", "Service"}}
 		name := ""
 		if hostResults.HostName != "" {
 			name = fmt.Sprintf("(%v)", hostResults.HostName)
 		}
+		if hostResults.HostState == scanner.HostStateDown {
+			continue
+		}
+		totalUp++
 		fmt.Printf("\nScan Report for %v %v\n", host, name)
 		for _, port := range hostResults.Ports {
 			if port.State == scanner.PortStateClosed {
@@ -183,17 +191,29 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 		fmt.Println("Open Ports: ", hostResults.OpenPorts)
 		fmt.Println("Closed Ports: ", hostResults.ClosedPorts)
 	}
+	fmt.Println("\n──────────────────────────────────────────────")
+	fmt.Printf("Total Hosts Scanned: %v\n", totalHosts)
+	fmt.Printf("Hosts that are Up: %v\n", totalUp)
+	fmt.Printf("Hosts that are down: %v\n", totalHosts-totalUp)
 }
 
-func printPingScanResults(results map[netip.Addr]scanner.PingResult) {
+func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats) {
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State"}}
-	for host, result := range results {
+	for host, result := range results.ResultMap {
 		hostIdentity := host.String()
+		if result.HostState == scanner.HostStateDown {
+			continue
+		}
 		if result.HostName != "" {
 			hostIdentity = fmt.Sprintf("%v (%v)", hostIdentity, result.HostName)
 		}
 		tableData = append(tableData, []string{hostIdentity, result.String()})
 	}
-	pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
+	if stats.UpHosts > 0 {
+		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
+	}
+	fmt.Println("\nTotal Hosts Scanned: ", stats.UpHosts+stats.DownHosts)
+	fmt.Println("Hosts that are Up: ", stats.UpHosts)
+	fmt.Println("Hosts that are down: ", stats.DownHosts)
 }
