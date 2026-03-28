@@ -95,7 +95,7 @@ gscn scan [flags]
 
 ## Configuration
 
-> ![NOTE]
+> [!NOTE]
 > This is only required if notifications are desired.
 
 Create a configuration file at `~/.config/gscn.toml`:
