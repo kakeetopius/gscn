@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +132,9 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 	}
 	defer spinner.Stop()
 
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("ping scan requires root priviledges")
+	}
 	jobs := make(chan PingScanJob, scanner.Workers)
 	workerResultsChan := make(chan PingResult, scanner.Workers)
 	wg := &sync.WaitGroup{}
