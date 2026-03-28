@@ -71,6 +71,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			HostNames:           hostNames,
 			AddUnknownHostNames: lookUpHostNames,
 			ResponseTimeout:     waitTimeout,
+			PingTimeout:         cmd.Duration("ping-timeout"),
 		})
 		if notify {
 			udpScanner.MessageNotifier = notifiyObj
@@ -89,9 +90,10 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 
 	} else if cmd.Bool("ping") {
 		pingScanner := scanner.NewPingScanner(scanner.PingScanOptions{
-			Targets:     targets,
-			PingTimeout: cmd.Duration("ping-timeout"),
-			HostNames:   hostNames,
+			Targets:             targets,
+			PingTimeout:         cmd.Duration("ping-timeout"),
+			AddUnknownHostNames: lookUpHostNames,
+			HostNames:           hostNames,
 		})
 		if notify {
 			pingScanner.MessageNotifier = notifiyObj
@@ -116,6 +118,8 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			HostNames:           hostNames,
 			AddUnknownHostNames: lookUpHostNames,
 			ResponseTimeout:     waitTimeout,
+			SkipPingScan:        cmd.Bool("skip-ping"),
+			PingTimeout:         cmd.Duration("ping-timeout"),
 		})
 		if notify {
 			tcpFullScanner.MessageNotifier = notifiyObj
@@ -171,6 +175,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 			tcpService := util.Service(layers.TCPPort(port.Number).String())
 			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), tcpService})
 		}
+		fmt.Printf("Host is %s\n", hostResults.HostState)
 		if hostResults.OpenPorts > 0 {
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 		}
@@ -180,11 +185,15 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 	}
 }
 
-func printPingScanResults(results map[netip.Addr]scanner.HostState) {
+func printPingScanResults(results map[netip.Addr]scanner.PingResult) {
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State"}}
-	for host, state := range results {
-		tableData = append(tableData, []string{host.String(), state.String()})
+	for host, result := range results {
+		hostIdentity := host.String()
+		if result.HostName != "" {
+			hostIdentity = fmt.Sprintf("%v (%v)", hostIdentity, result.HostName)
+		}
+		tableData = append(tableData, []string{hostIdentity, result.String()})
 	}
 	pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
 }

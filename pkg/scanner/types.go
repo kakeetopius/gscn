@@ -75,8 +75,9 @@ type Port struct {
 
 // HostResult is the result of a single host after port scanning
 type HostResult struct {
-	Ports       map[uint]Port
-	HostName    string
+	Ports    map[uint]Port
+	HostName string
+	HostState
 	OpenPorts   int
 	ClosedPorts int
 }

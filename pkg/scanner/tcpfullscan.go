@@ -23,6 +23,8 @@ type TCPFullScanOptions struct {
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
+	PingTimeout         time.Duration
+	SkipPingScan        bool
 	MessageNotifier     notifier.Notifier
 	logger              io.Writer
 }
@@ -63,8 +65,9 @@ type TCPFullScanStats struct {
 
 type TCPFullScanner struct {
 	TCPFullScanOptions
-	results TCPFullScanResults
-	stats   TCPFullScanStats
+	results    TCPFullScanResults
+	stats      TCPFullScanStats
+	hostStates map[netip.Addr]PingResult
 }
 
 func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
@@ -136,6 +139,13 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 		return TCPFullScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
+	if !opts.SkipPingScan {
+		pingResults, err := pingHosts(targets, opts.PingTimeout) // first check if hosts are up.
+		if err != nil {
+			return TCPFullScanResults{}, err
+		}
+		scanner.hostStates = pingResults.ResultMap
+	}
 	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
@@ -192,7 +202,8 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.HostNames[hostIP] // put the hostname of the address in the HostResult struct
+			hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
+			hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++
