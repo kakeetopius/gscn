@@ -85,7 +85,7 @@ gscn scan [flags]
   ```
 - Use UDP scan:
   ```
-  gscn scan -u
+  gscn scan -t 10.1.1.1,2001:acad:abcd::1 -p 53,500,989 --udp
   ```
 - Carry out a ping scan for a whole network to check which hosts are up with 200 concurrent workers
   ```
