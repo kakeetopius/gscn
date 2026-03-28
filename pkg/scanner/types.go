@@ -2,13 +2,6 @@
 // including ARP, NDP, TCP, UDP.
 package scanner
 
-import (
-	"net/netip"
-	"time"
-
-	"github.com/kakeetopius/gscn/internal/notifier"
-)
-
 // ScanResults defines the interface that all scan result types must implement.
 // It provides methods to convert results to a string representation and identify
 // the specific type of scan result.
@@ -34,16 +27,6 @@ type Scanner interface {
 	Stats() ScanStats
 	// SendResultsViaNotifier sends scan results using the configured notifier
 	SendResultsViaNotifier() error
-	// WithTimeout sets a timeout duration for the scan and returns the Scanner for method chaining.
-	WithTimeout(d time.Duration) Scanner
-	// WithHostNames sets known hostname mappings for IP addresses and controls whether to add unknown hostnames.
-	WithHostNames(known map[netip.Addr]string, addUnknown bool) Scanner
-	// WithVendorInfo enables vendor information retrieval during the scan.
-	WithVendorInfo() Scanner
-	// WithWorkers sets the number of concurrent workers for the scan.
-	WithWorkers(w int) Scanner
-	// WithNotifier sets which notifier to use to send scan results
-	WithNotifier(notifier.Notifier) Scanner
 }
 
 type ScanResultType int

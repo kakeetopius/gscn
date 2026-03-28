@@ -25,11 +25,16 @@ type socketInfo struct {
 }
 
 type ARPScanOptions struct {
-	Targets   []netip.Prefix
-	Source    netip.Addr
-	Interface net.Interface
-	timeout   time.Duration
-	logger    io.Writer
+	Targets             []netip.Prefix
+	Source              netip.Addr
+	Interface           net.Interface
+	ResponseTimeout     time.Duration
+	WithVendorInfo      bool
+	HostNames           map[netip.Addr]string
+	AddUnknownHostNames bool
+	Workers             int
+	MessageNotifier     notifier.Notifier
+	logger              io.Writer
 }
 
 type ARPScanResult struct {
@@ -73,50 +78,24 @@ type ARPScanStats struct {
 	PacketsReceived int
 }
 type ARPScanner struct {
-	opts             *ARPScanOptions
-	results          ARPScanResults
-	stats            ARPScanStats
-	doReverseLookups bool
-	addVendors       bool
-	messageNotifier  notifier.Notifier
+	*ARPScanOptions
+	results ARPScanResults
+	stats   ARPScanStats
 }
 
-func NewARPScanner(opts *ARPScanOptions) Scanner {
+func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
+	if opts.HostNames == nil {
+		opts.HostNames = make(map[netip.Addr]string)
+	}
 	return &ARPScanner{
-		opts:             opts,
-		results:          ARPScanResults{},
-		stats:            ARPScanStats{},
-		doReverseLookups: false,
-		addVendors:       false,
+		ARPScanOptions: opts,
+		results:        ARPScanResults{},
+		stats:          ARPScanStats{},
 	}
 }
 
-func (s *ARPScanner) WithWorkers(w int) Scanner {
-	return s
-}
-
-func (s *ARPScanner) WithTimeout(d time.Duration) Scanner {
-	s.opts.timeout = d
-	return s
-}
-
-func (s *ARPScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
-	s.doReverseLookups = true
-	return s
-}
-
-func (s *ARPScanner) WithVendorInfo() Scanner {
-	s.addVendors = true
-	return s
-}
-
-func (s *ARPScanner) WithNotifier(n notifier.Notifier) Scanner {
-	s.messageNotifier = n
-	return s
-}
-
 func (s *ARPScanner) Scan() error {
-	if s.opts == nil {
+	if s.ARPScanOptions == nil {
 		return fmt.Errorf("no arp scan options set yet")
 	}
 	results, err := runArp(s)
@@ -129,7 +108,7 @@ func (s *ARPScanner) Scan() error {
 
 func (s *ARPScanner) Results() ScanResults {
 	resultSet := s.results.ResultSet
-	if s.doReverseLookups {
+	if s.AddUnknownHostNames {
 		s.results.hasHostnames = true
 		fmt.Println()
 		pterm.Info.Println("Trying to resolve hostnames")
@@ -141,12 +120,12 @@ func (s *ARPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.timeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.ResponseTimeout)
 			bar.Increment()
 		}
 		bar.Stop()
 	}
-	if s.addVendors {
+	if s.WithVendorInfo {
 		s.results.hasVendors = true
 		for i := range resultSet {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
@@ -156,7 +135,7 @@ func (s *ARPScanner) Results() ScanResults {
 }
 
 func (s *ARPScanner) SendResultsViaNotifier() error {
-	if s.messageNotifier == nil {
+	if s.MessageNotifier == nil {
 		return nil
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
@@ -165,7 +144,7 @@ func (s *ARPScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage(s.results.String())
+	return s.MessageNotifier.SendMessage(s.results.String())
 }
 
 func (s *ARPScanner) Stats() ScanStats {
@@ -175,7 +154,7 @@ func (s *ARPScanner) Stats() ScanStats {
 func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	opts := scanner.opts
+	opts := scanner.ARPScanOptions
 
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
@@ -226,7 +205,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	}
 	bar.Stop()
 
-	util.WaitTimeout(opts.timeout, "response")
+	util.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
@@ -275,7 +254,7 @@ func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr, s
 }
 
 func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- []ARPScanResult, startSendChan chan<- struct{}) {
-	opts := scanner.opts
+	opts := scanner.ARPScanOptions
 	handle, err := pcap.OpenLive(opts.Interface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return

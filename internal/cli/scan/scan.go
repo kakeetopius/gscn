@@ -65,17 +65,21 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	}
 	if cmd.Bool("udp") {
 		udpScanner := scanner.NewUDPScanner(scanner.UDPScanOptions{
-			Targets:     targets,
-			TargetPorts: ports,
-		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(waitTimeout)
+			Targets:             targets,
+			TargetPorts:         ports,
+			Workers:             uint(numWorkers),
+			HostNames:           hostNames,
+			AddUnknownHostNames: lookUpHostNames,
+			ResponseTimeout:     waitTimeout,
+		})
 		if notify {
-			udpScanner = udpScanner.WithNotifier(notifiyObj)
+			udpScanner.MessageNotifier = notifiyObj
 		}
 		err := udpScanner.Scan()
 		if err != nil {
 			return err
 		}
-		PrintUDPScanResults(udpScanner.(*scanner.UDPScanner))
+		PrintUDPScanResults(udpScanner)
 		if notify {
 			err := udpScanner.SendResultsViaNotifier()
 			if err != nil {
@@ -87,9 +91,10 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		pingScanner := scanner.NewPingScanner(scanner.PingScanOptions{
 			Targets:     targets,
 			PingTimeout: cmd.Duration("ping-timeout"),
+			HostNames:   hostNames,
 		})
 		if notify {
-			pingScanner = pingScanner.WithNotifier(notifiyObj)
+			pingScanner.MessageNotifier = notifiyObj
 		}
 		err := pingScanner.Scan()
 		if err != nil {
@@ -105,17 +110,21 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		}
 	} else {
 		tcpFullScanner := scanner.NewTCPFullScanner(scanner.TCPFullScanOptions{
-			Targets:     targets,
-			TargetPorts: ports,
-		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(waitTimeout)
+			Targets:             targets,
+			TargetPorts:         ports,
+			Workers:             uint(numWorkers),
+			HostNames:           hostNames,
+			AddUnknownHostNames: lookUpHostNames,
+			ResponseTimeout:     waitTimeout,
+		})
 		if notify {
-			tcpFullScanner = tcpFullScanner.WithNotifier(notifiyObj)
+			tcpFullScanner.MessageNotifier = notifiyObj
 		}
 		err := tcpFullScanner.Scan()
 		if err != nil {
 			return err
 		}
-		PrintTCPFullScanResults(tcpFullScanner.(*scanner.TCPFullScanner))
+		PrintTCPFullScanResults(tcpFullScanner)
 		if notify {
 			err := tcpFullScanner.SendResultsViaNotifier()
 			if err != nil {

@@ -128,10 +128,12 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 	}
 	timeout := opts.cmd.Duration("timeout")
 	arpScanner := scanner.NewARPScanner(&scanner.ARPScanOptions{
-		Targets:   opts.targets,
-		Source:    opts.source,
-		Interface: *opts.iface,
-	}).WithTimeout(timeout).WithVendorInfo()
+		Targets:         opts.targets,
+		Source:          opts.source,
+		Interface:       *opts.iface,
+		ResponseTimeout: timeout,
+		WithVendorInfo:  true,
+	})
 
 	if opts.cmd.Bool("notify") {
 		config, confErr := util.NewConfig()
@@ -146,10 +148,10 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 		if err != nil {
 			return err
 		}
-		arpScanner = arpScanner.WithNotifier(notifierObj)
+		arpScanner.MessageNotifier = notifierObj
 	}
 	if opts.cmd.Bool("hostnames") {
-		arpScanner = arpScanner.WithHostNames(nil, true)
+		arpScanner.AddUnknownHostNames = true
 	}
 	err := arpScanner.Scan()
 	if err != nil {
@@ -208,10 +210,12 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 	}
 	timeout := opts.cmd.Duration("timeout")
 	ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
-		Targets:   opts.targets,
-		Source:    opts.source,
-		Interface: *opts.iface,
-	}).WithTimeout(timeout).WithVendorInfo()
+		Targets:         opts.targets,
+		Source:          opts.source,
+		Interface:       *opts.iface,
+		ResponseTimeout: timeout,
+		WithVendorInfo:  true,
+	})
 
 	if opts.cmd.Bool("notify") {
 		config, confErr := util.NewConfig()
@@ -226,10 +230,10 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 		if err != nil {
 			return err
 		}
-		ndpScanner = ndpScanner.WithNotifier(notifierObj)
+		ndpScanner.MessageNotifier = notifierObj
 	}
 	if opts.cmd.Bool("hostnames") {
-		ndpScanner = ndpScanner.WithHostNames(nil, true)
+		ndpScanner.AddUnknownHostNames = true
 	}
 	err := ndpScanner.Scan()
 	if err != nil {

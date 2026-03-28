@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"net/netip"
 	"strings"
@@ -18,12 +17,15 @@ import (
 )
 
 type UDPScanOptions struct {
-	Targets     []netip.Prefix
-	TargetPorts []uint
-	PingTimeout time.Duration
-	workers     uint
-	logger      io.Writer
-	timeout     time.Duration
+	Targets             []netip.Prefix
+	TargetPorts         []uint
+	Workers             uint
+	PingTimeout         time.Duration
+	ResponseTimeout     time.Duration
+	HostNames           map[netip.Addr]string
+	AddUnknownHostNames bool
+	MessageNotifier     notifier.Notifier
+	logger              io.Writer
 }
 
 type UDPScanResults struct {
@@ -61,55 +63,23 @@ type UDPScanStats struct {
 }
 
 type UDPScanner struct {
-	opts                    UDPScanOptions
-	results                 UDPScanResults
-	stats                   UDPScanStats
-	resolveUnknownHostNames bool
-	hostNames               map[netip.Addr]string
-	hostStates              map[netip.Addr]HostState
-	messageNotifier         notifier.Notifier
+	UDPScanOptions
+	results    UDPScanResults
+	stats      UDPScanStats
+	hostStates map[netip.Addr]HostState
 }
 
-func NewUDPScanner(opts UDPScanOptions) Scanner {
-	resultMap := make(map[netip.Addr]HostResult)
+func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
+	if opts.HostNames == nil {
+		opts.HostNames = make(map[netip.Addr]string)
+	}
 	return &UDPScanner{
-		opts: opts,
+		UDPScanOptions: opts,
 		results: UDPScanResults{
-			ResultMap: resultMap,
+			ResultMap: make(map[netip.Addr]HostResult),
 		},
-		stats:                   UDPScanStats{},
-		hostNames:               make(map[netip.Addr]string),
-		resolveUnknownHostNames: false,
+		stats: UDPScanStats{},
 	}
-}
-
-func (s *UDPScanner) WithHostNames(h map[netip.Addr]string, addUnknown bool) Scanner {
-	if h != nil {
-		maps.Copy(s.hostNames, h)
-	}
-	if addUnknown {
-		s.resolveUnknownHostNames = true
-	}
-	return s
-}
-
-func (s *UDPScanner) WithVendorInfo() Scanner {
-	return s
-}
-
-func (s *UDPScanner) WithWorkers(numOfWorkers int) Scanner {
-	s.opts.workers = uint(numOfWorkers)
-	return s
-}
-
-func (s *UDPScanner) WithTimeout(timeout time.Duration) Scanner {
-	s.opts.timeout = timeout
-	return s
-}
-
-func (s *UDPScanner) WithNotifier(n notifier.Notifier) Scanner {
-	s.messageNotifier = n
-	return s
 }
 
 func (s *UDPScanner) Scan() error {
@@ -122,7 +92,7 @@ func (s *UDPScanner) Scan() error {
 }
 
 func (s *UDPScanner) SendResultsViaNotifier() error {
-	if s.messageNotifier == nil {
+	if s.MessageNotifier == nil {
 		return nil
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
@@ -131,11 +101,11 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage(s.Results().String())
+	return s.MessageNotifier.SendMessage(s.Results().String())
 }
 
 func (s *UDPScanner) Results() ScanResults {
-	if s.resolveUnknownHostNames {
+	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Stop()
 		for host, results := range s.results.ResultMap {
@@ -155,11 +125,11 @@ func (s *UDPScanner) Stats() ScanStats {
 }
 
 func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
-	opts := scanner.opts
+	opts := scanner.UDPScanOptions
 	targets := opts.Targets
 	ports := opts.TargetPorts
 
-	numWorkers := opts.workers
+	numWorkers := opts.Workers
 
 	if len(targets) == 0 {
 		return UDPScanResults{}, fmt.Errorf("no hosts to scan provided")
@@ -192,7 +162,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	defer cancel()
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.timeout)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
 	scanner.stats.TotalNumOfHosts = totalNumOfHosts
 
 	scanResultsChan := make(chan UDPScanResults)
@@ -292,7 +262,7 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.hostNames[hostIP] // put the hostname of the address in the HostResult struct
+			hostResults.HostName = scanner.HostNames[hostIP] // put the hostname of the address in the HostResult struct
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++
@@ -307,8 +277,8 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 func pingHosts(udpScanner *UDPScanner, targets []netip.Prefix) error {
 	pinger := NewPingScanner(PingScanOptions{
 		Targets:     targets,
-		PingTimeout: udpScanner.opts.PingTimeout,
-	}).(*PingScanner)
+		PingTimeout: udpScanner.PingTimeout,
+	})
 
 	err := pinger.Scan()
 	if err != nil {
