@@ -178,18 +178,17 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 		pinger.Count = 1
 		pinger.Timeout = scanner.PingTimeout
 
-		err := pinger.Run()
-		if err != nil {
-			return
-		}
-		stats := pinger.Statistics()
 		pingResult := PingResult{
 			HostState: HostStateDown,
 			HostName:  scanner.HostNames[job.Target],
 			IP:        job.Target,
 		}
-		if stats.PacketsRecv > 0 {
-			pingResult.HostState = HostStateUp
+		err := pinger.Run()
+		if err == nil {
+			stats := pinger.Statistics()
+			if stats.PacketsRecv > 0 {
+				pingResult.HostState = HostStateUp
+			}
 		}
 		resultChan <- pingResult
 	}
