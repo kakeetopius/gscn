@@ -152,8 +152,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 		go scanUDPPort(scanner, wg, jobs, workerResultsChan)
 	}
 
-	totalNumOfHosts := util.HostsInIP4Network(targets)
-	spinner, err := pterm.DefaultSpinner.Start("Scanning ", totalNumOfHosts, " hosts")
+	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
 		return UDPScanResults{}, err
 	}
@@ -164,7 +163,6 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	senderDone := make(chan struct{})
 
 	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
-	scanner.stats.TotalNumOfHosts = totalNumOfHosts
 
 	scanResultsChan := make(chan UDPScanResults)
 	go getUDPScanResults(ctx, scanner, workerResultsChan, scanResultsChan)

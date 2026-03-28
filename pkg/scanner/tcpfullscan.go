@@ -154,9 +154,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 		go scanTCPPort(wg, jobs, workerResultsChan)
 	}
 
-	totalNumOfHosts := util.HostsInIP4Network(targets)
-	scanner.stats.TotalNumOfHosts = totalNumOfHosts
-	spinner, err := pterm.DefaultSpinner.Start("Scanning ", totalNumOfHosts, " hosts")
+	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
 		return TCPFullScanResults{}, err
 	}

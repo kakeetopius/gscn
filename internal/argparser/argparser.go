@@ -92,7 +92,7 @@ func GetCommand() *cli.Command {
 					&cli.StringFlag{
 						Name:    "target",
 						Aliases: []string{"t"},
-						Usage:   "IP address(es) of the host to scan.",
+						Usage:   "IP address(es) or hostname(s) of the host to scan.",
 					},
 					&cli.StringFlag{
 						Name:    "ports",
