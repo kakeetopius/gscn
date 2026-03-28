@@ -9,7 +9,7 @@ A simple and flexible command-line tool for network operations such as host disc
 - **Reverse DNS Lookup**: Optionally resolve discovered IP addresses to hostnames.
 - **MAC Address Vendor Lookup**: Supports lookup of vendors for discovered hosts based on their MAC Addresses.
 - **Flexible Target Specification**: Supports single IPs, CIDR notation, IP ranges, domain names, and comma-separated lists.
-
+- **Notifications**: Send scan results via Discord or Email with configurable notifiers.
 
 ## Installation
 
@@ -25,6 +25,26 @@ go build -o gscn .
 sudo make install
 ```
 
+## Configuration
+
+Create a configuration file at `~/.config/gscn.toml` to enable notifications:
+
+```toml
+[notifier]
+type = "discord"  # or "email"
+
+[notifier.discord]
+token = "your_bot_token"
+channel_id = "your_channel_id"
+channel_name = "channel_name" #can be omitted if channel_id is given
+
+[notifier.email]
+sender = "your_email@gmail.com"
+receiver = "recipient@gmail.com"
+from = "gscn network scanner" # or any name you want to appear as email sender
+app_password = "your_app_password"
+```
+
 ## Usage
 
 ### Discover Hosts
@@ -38,7 +58,7 @@ gscn discover [flags]
 
 - Discover a single host:
   ```
-   gscn discover -t 10.1.1.1
+  gscn discover -t 10.1.1.1
   ```
 - Discover all hosts in a subnet:
   ```
@@ -55,6 +75,10 @@ gscn discover [flags]
 - Use IPv6 neighbor discovery:
   ```
   gscn discover --six -t 2001:abcd:db22::1
+  ```
+- Discover hosts and send results via Discord/Email:
+  ```
+  gscn discover -t 10.1.1.1/24 --notify
   ```
   </details>
 
@@ -83,6 +107,10 @@ gscn scan [flags]
   ```
   gscn scan -u
   ```
+- Scan and notify results:
+  ```
+  gscn scan -t 10.1.1.1/24 -p 1-100 --notify
+  ```
   </details>
 
 ## Planned Features
@@ -96,3 +124,7 @@ Contributions are welcome! Please open issues or pull requests for bug fixes, fe
 ## License
 
 MIT License
+
+```
+
+```
