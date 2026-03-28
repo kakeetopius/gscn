@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"net/netip"
 	"strings"
@@ -18,11 +17,14 @@ import (
 )
 
 type TCPFullScanOptions struct {
-	Targets     []netip.Prefix
-	TargetPorts []uint
-	workers     uint
-	timeout     time.Duration
-	logger      io.Writer
+	Targets             []netip.Prefix
+	TargetPorts         []uint
+	Workers             uint
+	ResponseTimeout     time.Duration
+	HostNames           map[netip.Addr]string
+	AddUnknownHostNames bool
+	MessageNotifier     notifier.Notifier
+	logger              io.Writer
 }
 
 type TCPFullScanResults struct {
@@ -60,58 +62,26 @@ type TCPFullScanStats struct {
 }
 
 type TCPFullScanner struct {
-	opts                    TCPFullScanOptions
-	results                 TCPFullScanResults
-	stats                   TCPFullScanStats
-	resolveUnknownHostNames bool
-	hostNames               map[netip.Addr]string
-	messageNotifier         notifier.Notifier
+	TCPFullScanOptions
+	results TCPFullScanResults
+	stats   TCPFullScanStats
 }
 
-func NewTCPFullScanner(opts TCPFullScanOptions) Scanner {
-	resultMap := make(map[netip.Addr]HostResult)
+func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
+	if opts.HostNames == nil {
+		opts.HostNames = make(map[netip.Addr]string)
+	}
 	return &TCPFullScanner{
-		opts: opts,
+		TCPFullScanOptions: opts,
 		results: TCPFullScanResults{
-			ResultMap: resultMap,
+			ResultMap: make(map[netip.Addr]HostResult),
 		},
-		stats:                   TCPFullScanStats{},
-		hostNames:               make(map[netip.Addr]string),
-		resolveUnknownHostNames: false,
+		stats: TCPFullScanStats{},
 	}
-}
-
-func (s *TCPFullScanner) WithHostNames(h map[netip.Addr]string, addUnknown bool) Scanner {
-	if h != nil {
-		maps.Copy(s.hostNames, h)
-	}
-	if addUnknown {
-		s.resolveUnknownHostNames = true
-	}
-	return s
-}
-
-func (s *TCPFullScanner) WithVendorInfo() Scanner {
-	return s
-}
-
-func (s *TCPFullScanner) WithWorkers(numOfWorkers int) Scanner {
-	s.opts.workers = uint(numOfWorkers)
-	return s
-}
-
-func (s *TCPFullScanner) WithTimeout(timeout time.Duration) Scanner {
-	s.opts.timeout = timeout
-	return s
-}
-
-func (s *TCPFullScanner) WithNotifier(n notifier.Notifier) Scanner {
-	s.messageNotifier = n
-	return s
 }
 
 func (s *TCPFullScanner) SendResultsViaNotifier() error {
-	if s.messageNotifier == nil {
+	if s.MessageNotifier == nil {
 		return nil
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
@@ -120,7 +90,7 @@ func (s *TCPFullScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage(s.results.String())
+	return s.MessageNotifier.SendMessage(s.results.String())
 }
 
 func (s *TCPFullScanner) Scan() error {
@@ -133,7 +103,7 @@ func (s *TCPFullScanner) Scan() error {
 }
 
 func (s *TCPFullScanner) Results() ScanResults {
-	if s.resolveUnknownHostNames {
+	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Stop()
 		for host, results := range s.results.ResultMap {
@@ -153,11 +123,11 @@ func (s *TCPFullScanner) Stats() ScanStats {
 }
 
 func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
-	opts := scanner.opts
+	opts := scanner.TCPFullScanOptions
 	targets := opts.Targets
 	ports := opts.TargetPorts
 
-	numWorkers := opts.workers
+	numWorkers := opts.Workers
 
 	if len(targets) == 0 {
 		return TCPFullScanResults{}, fmt.Errorf("no hosts to scan provided")
@@ -187,7 +157,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.timeout)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
 
 	scanResultsChan := make(chan TCPFullScanResults)
 	go getTCPFullScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
@@ -222,7 +192,7 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.hostNames[hostIP] // put the hostname of the address in the HostResult struct
+			hostResults.HostName = scanner.HostNames[hostIP] // put the hostname of the address in the HostResult struct
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++

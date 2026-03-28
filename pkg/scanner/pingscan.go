@@ -10,10 +10,11 @@ import (
 )
 
 type PingScanOptions struct {
-	Targets     []netip.Prefix
-	PingTimeout time.Duration
-	workers     int
-	timeout     time.Duration
+	Targets         []netip.Prefix
+	PingTimeout     time.Duration
+	Workers         int
+	HostNames       map[netip.Addr]string
+	MessageNotifier notifier.Notifier
 }
 
 type PingScanResults struct {
@@ -31,15 +32,17 @@ func (r PingScanResults) ResultType() ScanResultType {
 type PingStats struct{}
 
 type PingScanner struct {
-	opts            PingScanOptions
-	results         PingScanResults
-	stats           PingStats
-	messageNotifier notifier.Notifier
+	PingScanOptions
+	results PingScanResults
+	stats   PingStats
 }
 
-func NewPingScanner(opts PingScanOptions) Scanner {
+func NewPingScanner(opts PingScanOptions) *PingScanner {
+	if opts.HostNames == nil {
+		opts.HostNames = make(map[netip.Addr]string)
+	}
 	return &PingScanner{
-		opts: opts,
+		PingScanOptions: opts,
 		results: PingScanResults{
 			ResultMap: make(map[netip.Addr]HostState),
 		},
@@ -47,36 +50,8 @@ func NewPingScanner(opts PingScanOptions) Scanner {
 	}
 }
 
-func (s *PingScanner) WithTargets(t []netip.Prefix) Scanner {
-	s.opts.Targets = t
-	return s
-}
-
-func (s *PingScanner) WithWorkers(w int) Scanner {
-	s.opts.workers = w
-	return s
-}
-
-func (s *PingScanner) WithTimeout(d time.Duration) Scanner {
-	s.opts.timeout = d
-	return s
-}
-
-func (s *PingScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
-	return s
-}
-
-func (s *PingScanner) WithVendorInfo() Scanner {
-	return s
-}
-
-func (s *PingScanner) WithNotifier(n notifier.Notifier) Scanner {
-	s.messageNotifier = n
-	return s
-}
-
 func (s *PingScanner) Scan() error {
-	err := PingHosts(s, s.opts.Targets)
+	err := PingHosts(s, s.Targets)
 	return err
 }
 
@@ -85,7 +60,7 @@ func (s *PingScanner) Results() ScanResults {
 }
 
 func (s *PingScanner) SendResultsViaNotifier() error {
-	if s.messageNotifier == nil {
+	if s.MessageNotifier == nil {
 		return nil
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
@@ -94,7 +69,7 @@ func (s *PingScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage(s.results.String())
+	return s.MessageNotifier.SendMessage(s.results.String())
 }
 
 func (s *PingScanner) Stats() ScanStats {
@@ -114,7 +89,7 @@ func PingHosts(scanner *PingScanner, targets []netip.Prefix) error {
 			pinger := probing.New(IPaddr.String())
 			pinger.SetPrivileged(true)
 			pinger.Count = 1
-			pinger.Timeout = scanner.opts.PingTimeout
+			pinger.Timeout = scanner.PingTimeout
 
 			err := pinger.Run()
 			if err != nil {

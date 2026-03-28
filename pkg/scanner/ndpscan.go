@@ -20,11 +20,17 @@ import (
 )
 
 type NDPScanOptions struct {
-	Targets   []netip.Prefix
-	Source    netip.Addr
-	Interface net.Interface
-	logger    io.Writer
-	timeout   time.Duration
+	Targets             []netip.Prefix
+	Source              netip.Addr
+	Interface           net.Interface
+	ResponseTimeout     time.Duration
+	HostNames           map[netip.Addr]string
+	WithVendorInfo      bool
+	WithHostNames       bool
+	AddUnknownHostNames bool
+	Workers             int
+	MessageNotifier     notifier.Notifier
+	logger              io.Writer
 }
 
 type NDPScanResult struct {
@@ -69,50 +75,24 @@ func (r NDPScanResults) HasVendors() bool {
 }
 
 type NDPScanner struct {
-	opts             *NDPScanOptions
-	results          NDPScanResults
-	stats            NDPScanStats
-	doReverseLookups bool
-	addVendors       bool
-	messageNotifier  notifier.Notifier
+	*NDPScanOptions
+	results NDPScanResults
+	stats   NDPScanStats
 }
 
-func NewNDPScanner(opts *NDPScanOptions) Scanner {
+func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
+	if opts.HostNames == nil {
+		opts.HostNames = make(map[netip.Addr]string)
+	}
 	return &NDPScanner{
-		opts:             opts,
-		results:          NDPScanResults{},
-		stats:            NDPScanStats{},
-		addVendors:       false,
-		doReverseLookups: false,
+		NDPScanOptions: opts,
+		results:        NDPScanResults{},
+		stats:          NDPScanStats{},
 	}
 }
 
-func (s *NDPScanner) WithWorkers(w int) Scanner {
-	return s
-}
-
-func (s *NDPScanner) WithTimeout(timeout time.Duration) Scanner {
-	s.opts.timeout = timeout
-	return s
-}
-
-func (s *NDPScanner) WithHostNames(_ map[netip.Addr]string, _ bool) Scanner {
-	s.doReverseLookups = true
-	return s
-}
-
-func (s *NDPScanner) WithVendorInfo() Scanner {
-	s.addVendors = true
-	return s
-}
-
-func (s *NDPScanner) WithNotifier(n notifier.Notifier) Scanner {
-	s.messageNotifier = n
-	return s
-}
-
 func (s *NDPScanner) Scan() error {
-	if s.opts == nil {
+	if s.NDPScanOptions == nil {
 		return fmt.Errorf("no ndp options set yet")
 	}
 	results, err := runIPv6Disc(s)
@@ -125,7 +105,7 @@ func (s *NDPScanner) Scan() error {
 
 func (s *NDPScanner) Results() ScanResults {
 	resultSet := s.results.ResultSet
-	if s.doReverseLookups {
+	if s.AddUnknownHostNames {
 		s.results.hasHostNames = true
 		fmt.Println()
 		pterm.Info.Println("Trying to resolve hostnames")
@@ -137,12 +117,12 @@ func (s *NDPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.opts.timeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.ResponseTimeout)
 			bar.Increment()
 		}
 		bar.Stop()
 	}
-	if s.addVendors {
+	if s.WithHostNames {
 		s.results.hasVendors = true
 		for i := range resultSet {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
@@ -152,7 +132,7 @@ func (s *NDPScanner) Results() ScanResults {
 }
 
 func (s *NDPScanner) SendResultsViaNotifier() error {
-	if s.messageNotifier == nil {
+	if s.MessageNotifier == nil {
 		return nil
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
@@ -161,7 +141,7 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage(s.results.String())
+	return s.MessageNotifier.SendMessage(s.results.String())
 }
 
 func (s *NDPScanner) Stats() ScanStats {
@@ -169,7 +149,7 @@ func (s *NDPScanner) Stats() ScanStats {
 }
 
 func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
-	opts := scanner.opts
+	opts := scanner.NDPScanOptions
 	resultChan := make(chan NDPScanResults)
 	startSendChan := make(chan struct{})
 
@@ -199,7 +179,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 	}
 	spinner.Stop()
 
-	util.WaitTimeout(opts.timeout, "response")
+	util.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultChan
 	return results, nil
@@ -210,7 +190,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	if err != nil {
 		return err
 	}
-	iface := scanner.opts.Interface
+	iface := scanner.Interface
 	addr := &unix.SockaddrLinklayer{
 		Ifindex:  iface.Index,
 		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
@@ -223,7 +203,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	}
 
 	ip := &layers.IPv6{
-		SrcIP:      scanner.opts.Source.AsSlice(),
+		SrcIP:      scanner.Source.AsSlice(),
 		DstIP:      solicitedNodeIPAddress(*dstIP),
 		Version:    6,
 		NextHeader: layers.IPProtocolICMPv6,
@@ -268,7 +248,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 }
 
 func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- NDPScanResults, startSendChan chan<- struct{}) {
-	iface := scanner.opts.Interface
+	iface := scanner.Interface
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return
@@ -303,7 +283,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 					continue
 				}
 				srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-				if !util.AddrIsPartOfNetworks(scanner.opts.Targets, &srcIP) {
+				if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
 					continue
 				}
 				scanner.stats.PacketsReceived++
