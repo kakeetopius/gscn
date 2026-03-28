@@ -127,13 +127,19 @@ func GetCommand() *cli.Command {
 						Name:    "ping-timeout",
 						Value:   2 * time.Second,
 						Aliases: []string{"T"},
-						Usage:   "Amount of time to wait for ping replies when doing ping or udp scans",
+						Usage:   "Amount of time to wait for ping replies when doing scans.",
 					},
 					&cli.IntFlag{
 						Name:    "workers",
 						Aliases: []string{"w"},
 						Value:   64,
 						Usage:   "Number of workers to run concurrently when scanning with a maximum of 500",
+					},
+
+					&cli.BoolFlag{
+						Name:  "skip-ping",
+						Value: false,
+						Usage: "Skip pinging hosts before scanning ports.",
 					},
 					&cli.BoolFlag{
 						Name:  "notify",

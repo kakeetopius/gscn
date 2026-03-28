@@ -66,7 +66,7 @@ type UDPScanner struct {
 	UDPScanOptions
 	results    UDPScanResults
 	stats      UDPScanStats
-	hostStates map[netip.Addr]HostState
+	hostStates map[netip.Addr]PingResult
 }
 
 func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
@@ -138,10 +138,11 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 		return UDPScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
-	err := pingHosts(scanner, targets) // first check if hosts are up.
+	pingResults, err := pingHosts(targets, opts.PingTimeout) // first check if hosts are up.
 	if err != nil {
 		return UDPScanResults{}, err
 	}
+	scanner.hostStates = pingResults.ResultMap
 
 	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
@@ -196,7 +197,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 				Protocol: proto,
 			},
 		}
-		if scanner.hostStates[target.Addr()] == HostStateDown {
+		if scanner.hostStates[target.Addr()].HostState == HostStateDown {
 			result.Port.State = PortStateClosed
 			resultsChan <- result
 			continue
@@ -262,7 +263,9 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.HostNames[hostIP] // put the hostname of the address in the HostResult struct
+			hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
+			hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
+
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++
@@ -274,18 +277,17 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 	}
 }
 
-func pingHosts(udpScanner *UDPScanner, targets []netip.Prefix) error {
+func pingHosts(targets []netip.Prefix, pingTimeout time.Duration) (PingScanResults, error) {
 	pinger := NewPingScanner(PingScanOptions{
 		Targets:     targets,
-		PingTimeout: udpScanner.PingTimeout,
+		PingTimeout: pingTimeout,
 	})
 
 	err := pinger.Scan()
 	if err != nil {
-		return err
+		return PingScanResults{}, err
 	}
 	results := pinger.Results().(PingScanResults)
 
-	udpScanner.hostStates = results.ResultMap
-	return nil
+	return results, nil
 }
