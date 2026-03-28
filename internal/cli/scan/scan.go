@@ -40,7 +40,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			return err
 		}
 	}
-	if len(ports) == 0 {
+	if len(ports) == 0 && !cmd.Bool("ping") {
 		return fmt.Errorf("no ports to scan provided")
 	}
 
@@ -64,7 +64,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 		}
 	}
 	if cmd.Bool("udp") {
-		udpScanner := scanner.NewUDPScanner(&scanner.UDPScanOptions{
+		udpScanner := scanner.NewUDPScanner(scanner.UDPScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
 		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(waitTimeout)
@@ -82,8 +82,29 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 				return err
 			}
 		}
+
+	} else if cmd.Bool("ping") {
+		pingScanner := scanner.NewPingScanner(scanner.PingScanOptions{
+			Targets:     targets,
+			PingTimeout: cmd.Duration("ping-timeout"),
+		})
+		if notify {
+			pingScanner = pingScanner.WithNotifier(notifiyObj)
+		}
+		err := pingScanner.Scan()
+		if err != nil {
+			return err
+		}
+		results := pingScanner.Results().(scanner.PingScanResults)
+		printPingScanResults(results.ResultMap)
+		if notify {
+			err := pingScanner.SendResultsViaNotifier()
+			if err != nil {
+				return err
+			}
+		}
 	} else {
-		tcpFullScanner := scanner.NewTCPFullScanner(&scanner.TCPFullScanOptions{
+		tcpFullScanner := scanner.NewTCPFullScanner(scanner.TCPFullScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
 		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(waitTimeout)
@@ -148,4 +169,13 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 		fmt.Println("Open Ports: ", hostResults.OpenPorts)
 		fmt.Println("Closed Ports: ", hostResults.ClosedPorts)
 	}
+}
+
+func printPingScanResults(results map[netip.Addr]scanner.HostState) {
+	var tableData [][]string
+	tableData = pterm.TableData{{"Host", "State"}}
+	for host, state := range results {
+		tableData = append(tableData, []string{host.String(), state.String()})
+	}
+	pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
 }

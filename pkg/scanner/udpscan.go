@@ -20,6 +20,7 @@ import (
 type UDPScanOptions struct {
 	Targets     []netip.Prefix
 	TargetPorts []uint
+	PingTimeout time.Duration
 	workers     uint
 	logger      io.Writer
 	timeout     time.Duration
@@ -60,15 +61,16 @@ type UDPScanStats struct {
 }
 
 type UDPScanner struct {
-	opts                    *UDPScanOptions
+	opts                    UDPScanOptions
 	results                 UDPScanResults
 	stats                   UDPScanStats
 	resolveUnknownHostNames bool
 	hostNames               map[netip.Addr]string
+	hostStates              map[netip.Addr]HostState
 	messageNotifier         notifier.Notifier
 }
 
-func NewUDPScanner(opts *UDPScanOptions) Scanner {
+func NewUDPScanner(opts UDPScanOptions) Scanner {
 	resultMap := make(map[netip.Addr]HostResult)
 	return &UDPScanner{
 		opts: opts,
@@ -134,6 +136,8 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 
 func (s *UDPScanner) Results() ScanResults {
 	if s.resolveUnknownHostNames {
+		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
+		defer spinner.Stop()
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
@@ -164,12 +168,17 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 		return UDPScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
+	err := pingHosts(scanner, targets) // first check if hosts are up.
+	if err != nil {
+		return UDPScanResults{}, err
+	}
+
 	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
 		wg.Add(1)
-		go scanUDPPort(wg, jobs, workerResultsChan)
+		go scanUDPPort(scanner, wg, jobs, workerResultsChan)
 	}
 
 	totalNumOfHosts := util.HostsInIP4Network(targets)
@@ -197,7 +206,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	return scanResults, nil
 }
 
-func scanUDPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
+func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
 	defer func() {
 		wg.Done()
 	}()
@@ -217,6 +226,12 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- P
 				Protocol: proto,
 			},
 		}
+		if scanner.hostStates[target.Addr()] == HostStateDown {
+			result.Port.State = PortStateClosed
+			resultsChan <- result
+			continue
+		}
+
 		dialer := net.Dialer{
 			Timeout: job.scanTimeout,
 		}
@@ -238,9 +253,6 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- P
 		_, err = conn.Read(buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				// if we got a timeout, it can be because the port is filtered or open but silent
-				// BUG: This logic only works for hosts that are up. If a host is down, it will also timeout.
-				// Possible Fix is to first do a ping scan before actually doing port Scanning
 
 				result.Port.State = PortStateOpen
 				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
@@ -290,4 +302,20 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 			scanResults.ResultMap[hostIP] = hostResults
 		}
 	}
+}
+
+func pingHosts(udpScanner *UDPScanner, targets []netip.Prefix) error {
+	pinger := NewPingScanner(PingScanOptions{
+		Targets:     targets,
+		PingTimeout: udpScanner.opts.PingTimeout,
+	}).(*PingScanner)
+
+	err := pinger.Scan()
+	if err != nil {
+		return err
+	}
+	results := pinger.Results().(PingScanResults)
+
+	udpScanner.hostStates = results.ResultMap
+	return nil
 }
