@@ -100,16 +100,14 @@ func GetCommand() *cli.Command {
 						Usage:   "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080",
 					},
 					&cli.BoolFlag{
-						Name:    "udp",
-						Value:   false,
-						Aliases: []string{"u"},
-						Usage:   "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.",
+						Name:  "udp",
+						Value: false,
+						Usage: "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.",
 					},
 					&cli.BoolFlag{
-						Name:    "ping",
-						Value:   false,
-						Aliases: []string{"P"},
-						Usage:   "Carry out a ping scan to check if hosts are up.",
+						Name:  "ping",
+						Value: false,
+						Usage: "Carry out a ping scan to check if hosts are up.",
 					},
 					&cli.BoolFlag{
 						Name:    "hostnames",
@@ -124,10 +122,9 @@ func GetCommand() *cli.Command {
 						Usage:   "Amount of time in to carry out scan",
 					},
 					&cli.DurationFlag{
-						Name:    "ping-timeout",
-						Value:   2 * time.Second,
-						Aliases: []string{"T"},
-						Usage:   "Amount of time to wait for ping replies when doing scans.",
+						Name:  "ping-timeout",
+						Value: 2 * time.Second,
+						Usage: "Amount of time to wait for ping replies when doing scans.",
 					},
 					&cli.IntFlag{
 						Name:    "workers",
