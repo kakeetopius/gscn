@@ -9,8 +9,13 @@ import (
 	"github.com/kakeetopius/gscn/internal/notifier"
 )
 
+// ScanResults defines the interface that all scan result types must implement.
+// It provides methods to convert results to a string representation and identify
+// the specific type of scan result.
 type ScanResults interface {
+	// String returns a string representation of the scan result.
 	String() string
+	// ResultType returns the type of scan result.
 	ResultType() ScanResultType
 }
 
@@ -72,11 +77,16 @@ func (p PortState) String() string {
 	return s
 }
 
+// Port represents a network port with its metadata.
 type Port struct {
-	Number   uint
-	Name     string
+	// Number is the port number (0-65535).
+	Number uint
+	// Name is the service name associated with the port.
+	Name string
+	// Protocol is the transport protocol (tcp, udp, etc.).
 	Protocol string
-	State    PortState
+	// State describes the current state of the port.
+	State PortState
 }
 
 // HostResult is the result of a single host after port scanning

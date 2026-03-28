@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,7 +34,25 @@ func (UDPScanResults) ResultType() ScanResultType {
 }
 
 func (r UDPScanResults) String() string {
-	return ""
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "UDP Scan Results.\n\n")
+	for host, result := range r.ResultMap {
+		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
 
 type UDPScanStats struct {
@@ -86,7 +105,8 @@ func (s *UDPScanner) WithTimeout(timeout time.Duration) Scanner {
 	return s
 }
 
-func (s *UDPScanner) WithNotifier(notifier.Notifier) Scanner {
+func (s *UDPScanner) WithNotifier(n notifier.Notifier) Scanner {
+	s.messageNotifier = n
 	return s
 }
 
@@ -109,7 +129,7 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 	}
 	defer spinner.Stop()
 
-	return s.messageNotifier.SendMessage("")
+	return s.messageNotifier.SendMessage(s.Results().String())
 }
 
 func (s *UDPScanner) Results() ScanResults {
@@ -144,7 +164,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 		return UDPScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
-	jobs := make(chan netip.AddrPort, numWorkers)
+	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
@@ -163,7 +183,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	defer cancel()
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.timeout)
 	scanner.stats.TotalNumOfHosts = totalNumOfHosts
 
 	scanResultsChan := make(chan UDPScanResults)
@@ -177,12 +197,13 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	return scanResults, nil
 }
 
-func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- PortScanWorkerResult) {
+func scanUDPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
 	defer func() {
 		wg.Done()
 	}()
 
-	for target := range jobs {
+	for job := range jobs {
+		target := job.target
 		proto := ""
 		if target.Addr().Is4() {
 			proto = "udp"
@@ -197,7 +218,7 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 			},
 		}
 		dialer := net.Dialer{
-			Timeout: 1 * time.Second,
+			Timeout: job.scanTimeout,
 		}
 		conn, err := dialer.Dial(proto, target.String())
 		if err != nil {
@@ -221,8 +242,7 @@ func scanUDPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<
 				// BUG: This logic only works for hosts that are up. If a host is down, it will also timeout.
 				// Possible Fix is to first do a ping scan before actually doing port Scanning
 
-				// result.Port.State = PortStatePossibleFilter
-				result.Port.State = PortStateClosed
+				result.Port.State = PortStateOpen
 				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed

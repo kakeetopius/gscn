@@ -114,7 +114,7 @@ func GetCommand() *cli.Command {
 						Name:    "timeout",
 						Value:   2 * time.Second,
 						Aliases: []string{"T"},
-						Usage:   "Amount of time in seconds to wait for responses.",
+						Usage:   "Amount of time in to carry out scan",
 					},
 					&cli.IntFlag{
 						Name:    "workers",

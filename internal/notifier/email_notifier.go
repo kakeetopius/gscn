@@ -11,6 +11,10 @@ type EmailNotifier struct {
 	Config *viper.Viper
 }
 
+// SendMessage sends an email notification with the provided message content.
+// It retrieves email configuration (sender, receiver, credentials) from the notifier's config,
+// constructs an email message, and sends it via Gmail's SMTP server.
+// Returns an error if email construction, client creation, or sending fails.
 func (n EmailNotifier) SendMessage(message string) error {
 	messageObj := mail.NewMsg()
 	config := n.Config

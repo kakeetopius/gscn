@@ -41,7 +41,7 @@ func (r TCPFullScanResults) String() string {
 		if result.HostName == "" {
 			fmt.Fprintf(&stringBuilder, "\n")
 		} else {
-			fmt.Fprintf(&stringBuilder, "(%v)\n", result.HostName)
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
 		}
 		for _, port := range result.Ports {
 			if port.State == PortStateOpen {
@@ -164,7 +164,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 		return TCPFullScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
-	jobs := make(chan netip.AddrPort, numWorkers)
+	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
@@ -185,7 +185,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.timeout)
 
 	scanResultsChan := make(chan TCPFullScanResults)
 	go getTCPFullScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
@@ -232,20 +232,21 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 	}
 }
 
-func scanTCPPort(wg *sync.WaitGroup, jobs chan netip.AddrPort, resultsChan chan<- PortScanWorkerResult) {
+func scanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
 	defer func() {
 		wg.Done()
 	}()
 
-	for target := range jobs {
+	for job := range jobs {
 		proto := ""
+		target := job.target
 		if target.Addr().Is4() {
 			proto = "tcp"
 		} else {
 			proto = "tcp6"
 		}
 		dialer := net.Dialer{
-			Timeout: 1 * time.Second,
+			Timeout: job.scanTimeout,
 		}
 		_, err := dialer.Dial(proto, target.String())
 
