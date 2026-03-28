@@ -25,26 +25,6 @@ go build -o gscn .
 sudo make install
 ```
 
-## Configuration
-
-Create a configuration file at `~/.config/gscn.toml` to enable notifications:
-
-```toml
-[notifier]
-type = "discord"  # or "email"
-
-[notifier.discord]
-token = "your_bot_token"
-channel_id = "your_channel_id"
-channel_name = "channel_name" #can be omitted if channel_id is given
-
-[notifier.email]
-sender = "your_email@gmail.com"
-receiver = "recipient@gmail.com"
-from = "gscn network scanner" # or any name you want to appear as email sender
-app_password = "your_app_password"
-```
-
 ## Usage
 
 ### Discover Hosts
@@ -113,6 +93,31 @@ gscn scan [flags]
   ```
   </details>
 
+## Configuration
+
+> ![NOTE]
+> This is only required if notifications are desired.
+
+Create a configuration file at `~/.config/gscn.toml`:
+
+```toml
+[notifier]
+type = "discord"  # or "email"
+
+[notifier.discord]
+token = "your_bot_token"
+channel_id = "your_channel_id"
+channel_name = "channel_name" #can be omitted if channel_id is given
+
+#OR
+[notifier.email]
+sender = "your_email@gmail.com"
+receiver = "recipient@gmail.com"
+from = "gscn network scanner" # or any name you want to appear as email sender
+app_password = "your_app_password"
+
+```
+
 ## Planned Features
 
 - **WiFi Scanning**: Scan for nearby WiFi networks and devices (coming soon).
@@ -123,8 +128,4 @@ Contributions are welcome! Please open issues or pull requests for bug fixes, fe
 
 ## License
 
-MIT License
-
-```
-
-```
+[MIT License](LICENSE)
