@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"net/netip"
+	"time"
 
 	"github.com/kakeetopius/gscn/internal/util"
 )
@@ -11,9 +12,15 @@ import (
 type PortScanWorkerResult struct {
 	HostIP netip.Addr
 	Port   Port
+	RTT    time.Duration
 }
 
-func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan chan netip.AddrPort, targets []netip.Prefix, ports []uint) {
+type PortScanJob struct {
+	target      netip.AddrPort
+	scanTimeout time.Duration
+}
+
+func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan chan PortScanJob, targets []netip.Prefix, ports []uint, scanTimeout time.Duration) {
 	defer func() {
 		close(jobChan)
 		done <- struct{}{}
@@ -28,7 +35,10 @@ func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan cha
 			}
 			if util.OnlyIPInRange(target) {
 				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
-				jobChan <- addrPort
+				jobChan <- PortScanJob{
+					target:      addrPort,
+					scanTimeout: scanTimeout,
+				}
 				continue
 			}
 			netAddr := target.Masked()
@@ -36,7 +46,10 @@ func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan cha
 			for netAddr.Contains(addr) {
 				// loop over range of IPs
 				addrPort := netip.AddrPortFrom(addr, uint16(port))
-				jobChan <- addrPort
+				jobChan <- PortScanJob{
+					target:      addrPort,
+					scanTimeout: scanTimeout,
+				}
 				addr = addr.Next()
 			}
 		}

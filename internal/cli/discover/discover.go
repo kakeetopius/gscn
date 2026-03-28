@@ -134,7 +134,7 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 	}).WithTimeout(timeout).WithVendorInfo()
 
 	if opts.cmd.Bool("notify") {
-		config, confErr := util.SetUpConfig()
+		config, confErr := util.NewConfig()
 		if confErr != nil {
 			return confErr
 		}
@@ -214,7 +214,7 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 	}).WithTimeout(timeout).WithVendorInfo()
 
 	if opts.cmd.Bool("notify") {
-		config, confErr := util.SetUpConfig()
+		config, confErr := util.NewConfig()
 		if confErr != nil {
 			return confErr
 		}

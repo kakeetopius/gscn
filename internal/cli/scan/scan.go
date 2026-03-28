@@ -45,39 +45,50 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	}
 
 	lookUpHostNames := cmd.Bool("hostnames")
-	responseTimeout := cmd.Duration("timeout")
+	waitTimeout := cmd.Duration("timeout")
+
+	notify := cmd.Bool("notify")
+	var notifiyObj notifier.Notifier
+	if notify {
+		config, err := util.NewConfig()
+		if err != nil {
+			return err
+		}
+		notifierName := config.GetString("notifier.type")
+		if notifierName == "" {
+			return fmt.Errorf("no notifier type set in the config file")
+		}
+		notifiyObj, err = notifier.NotifierByName(notifierName, config)
+		if err != nil {
+			return err
+		}
+	}
 	if cmd.Bool("udp") {
-		scannerObj := scanner.NewUDPScanner(&scanner.UDPScanOptions{
+		udpScanner := scanner.NewUDPScanner(&scanner.UDPScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
-		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(responseTimeout)
-
-		udpScanner := scannerObj.(*scanner.UDPScanner)
+		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(waitTimeout)
+		if notify {
+			udpScanner = udpScanner.WithNotifier(notifiyObj)
+		}
 		err := udpScanner.Scan()
 		if err != nil {
 			return err
 		}
-		PrintUDPScanResults(udpScanner)
+		PrintUDPScanResults(udpScanner.(*scanner.UDPScanner))
+		if notify {
+			err := udpScanner.SendResultsViaNotifier()
+			if err != nil {
+				return err
+			}
+		}
 	} else {
 		tcpFullScanner := scanner.NewTCPFullScanner(&scanner.TCPFullScanOptions{
 			Targets:     targets,
 			TargetPorts: ports,
-		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(responseTimeout)
-		notify := cmd.Bool("notify")
+		}).WithWorkers(numWorkers).WithHostNames(hostNames, lookUpHostNames).WithTimeout(waitTimeout)
 		if notify {
-			config, err := util.SetUpConfig()
-			if err != nil {
-				return err
-			}
-			notifierName := config.GetString("notifier.type")
-			if notifierName == "" {
-				return fmt.Errorf("no notifier type set in the config file")
-			}
-			notifierObj, err := notifier.NotifierByName(notifierName, config)
-			if err != nil {
-				return err
-			}
-			tcpFullScanner = tcpFullScanner.WithNotifier(notifierObj)
+			tcpFullScanner = tcpFullScanner.WithNotifier(notifiyObj)
 		}
 		err := tcpFullScanner.Scan()
 		if err != nil {
@@ -101,29 +112,7 @@ func PrintTCPFullScanResults(tcpFullScanner *scanner.TCPFullScanner) {
 	} else {
 		return
 	}
-
-	var tableData [][]string
-	for host, hostResults := range tcpFullScanResults.ResultMap {
-		tableData = pterm.TableData{{"Port", "State", "Service"}}
-		name := ""
-		if hostResults.HostName != "" {
-			name = fmt.Sprintf("(%v)", hostResults.HostName)
-		}
-		fmt.Printf("\nScan Report for %v %v\n", host, name)
-		for _, port := range hostResults.Ports {
-			if port.State == scanner.PortStateClosed {
-				continue // no need to add closed port to table
-			}
-			tcpService := util.Service(layers.TCPPort(port.Number).String())
-			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), tcpService})
-		}
-		if hostResults.OpenPorts > 0 {
-			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
-		}
-		fmt.Println("Ports Scanned: ", hostResults.OpenPorts+hostResults.ClosedPorts)
-		fmt.Println("Open Ports: ", hostResults.OpenPorts)
-		fmt.Println("Closed Ports: ", hostResults.ClosedPorts)
-	}
+	printScanResultsMap(tcpFullScanResults.ResultMap)
 }
 
 func PrintUDPScanResults(udpScanner *scanner.UDPScanner) {
@@ -133,9 +122,12 @@ func PrintUDPScanResults(udpScanner *scanner.UDPScanner) {
 	} else {
 		return
 	}
+	printScanResultsMap(tcpFullScanResults.ResultMap)
+}
 
+func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 	var tableData [][]string
-	for host, hostResults := range tcpFullScanResults.ResultMap {
+	for host, hostResults := range results {
 		tableData = pterm.TableData{{"Port", "State", "Service"}}
 		name := ""
 		if hostResults.HostName != "" {

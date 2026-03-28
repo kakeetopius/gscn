@@ -292,11 +292,17 @@ func Service(s string) string {
 	return s[firstBracket+1 : secondBracket]
 }
 
+// MACVendor returns the vendor name for a given MAC address.
 func MACVendor(mac string) string {
 	return oui.Vendor(mac)
 }
 
-func SetUpConfig() (*viper.Viper, error) {
+// NewConfig initializes and reads the application configuration from a TOML file.
+// It handles both root and non-root user scenarios by determining the appropriate
+// home directory. The function looks for a "gscn.toml" config file in ~/.config
+// or the current directory.
+// Returns a configured Viper instance or an error if setup fails.
+func NewConfig() (*viper.Viper, error) {
 	home := ""
 	if os.Geteuid() == 0 {
 		// running as root
