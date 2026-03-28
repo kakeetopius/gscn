@@ -53,6 +53,7 @@ const (
 	NDPScanResultType
 	TCPFullScanScanResultType
 	UDPScanResultType
+	PingScanResultType
 )
 
 type PortState uint8
@@ -95,4 +96,22 @@ type HostResult struct {
 	HostName    string
 	OpenPorts   int
 	ClosedPorts int
+}
+
+type HostState int
+
+const (
+	HostStateUp HostState = iota
+	HostStateDown
+)
+
+func (s HostState) String() string {
+	switch s {
+	case HostStateUp:
+		return "Up"
+	case HostStateDown:
+		return "Down"
+	default:
+		return ""
+	}
 }

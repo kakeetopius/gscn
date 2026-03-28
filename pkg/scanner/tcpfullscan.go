@@ -60,7 +60,7 @@ type TCPFullScanStats struct {
 }
 
 type TCPFullScanner struct {
-	opts                    *TCPFullScanOptions
+	opts                    TCPFullScanOptions
 	results                 TCPFullScanResults
 	stats                   TCPFullScanStats
 	resolveUnknownHostNames bool
@@ -68,7 +68,7 @@ type TCPFullScanner struct {
 	messageNotifier         notifier.Notifier
 }
 
-func NewTCPFullScanner(opts *TCPFullScanOptions) Scanner {
+func NewTCPFullScanner(opts TCPFullScanOptions) Scanner {
 	resultMap := make(map[netip.Addr]HostResult)
 	return &TCPFullScanner{
 		opts: opts,
@@ -134,6 +134,8 @@ func (s *TCPFullScanner) Scan() error {
 
 func (s *TCPFullScanner) Results() ScanResults {
 	if s.resolveUnknownHostNames {
+		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
+		defer spinner.Stop()
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue

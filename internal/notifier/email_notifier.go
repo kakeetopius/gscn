@@ -19,9 +19,21 @@ func (n EmailNotifier) SendMessage(message string) error {
 	messageObj := mail.NewMsg()
 	config := n.Config
 	username := config.GetString("notifier.email.from")
+	if username == "" {
+		username = "gscn network scanner"
+	}
 	sender := config.GetString("notifier.email.sender")
+	if sender == "" {
+		return fmt.Errorf("no sender address given")
+	}
 	receiver := config.GetString("notifier.email.receiver")
+	if receiver == "" {
+		return fmt.Errorf("no receiver address given")
+	}
 	password := config.GetString("notifier.email.app_password")
+	if password == "" {
+		return fmt.Errorf("no app password given")
+	}
 
 	if err := messageObj.To(receiver); err != nil {
 		return err
