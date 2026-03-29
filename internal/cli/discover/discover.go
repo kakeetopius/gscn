@@ -70,6 +70,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		if len(targets) == 0 {
 			return fmt.Errorf("could not determine which hosts scan. Use gscn discover --help for mor information")
 		}
+		// if no interface given but we have some IPs then find an interface on the same network as one of the targets.
 		for _, target := range targets {
 			iface, err = util.GetIfaceByIP(netInterfaceProvider, target.Addr())
 			if err != nil {

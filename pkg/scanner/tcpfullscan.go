@@ -179,7 +179,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 }
 
 func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan TCPFullScanResults) {
-	// To Be Run By Main Worker
+	// To Be Run By Main Worker (aggregator)
 	scanResults := TCPFullScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
 	}

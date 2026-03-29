@@ -147,6 +147,7 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 	defer cancel()
 
 	scanResultsChan := make(chan PingScanResults)
+	// start workers
 	go getPingScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
 	// send jobs
@@ -170,6 +171,7 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 }
 
 func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingResult) {
+	// To be run by workers
 	defer wg.Done()
 
 	for job := range jobs {
@@ -195,7 +197,7 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 }
 
 func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResultsChan chan PingResult, scanResultsChan chan PingScanResults) {
-	// To Be Run By Main Worker
+	// To Be Run By Main Worker (aggregator)
 	scanResults := PingScanResults{
 		ResultMap: make(map[netip.Addr]PingResult),
 	}
@@ -208,7 +210,7 @@ func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResults
 			return
 		case result, ok := <-workerResultsChan:
 			if !ok {
-				return
+				return // stop when channel is closed
 			}
 			switch result.HostState {
 			case HostStateDown:

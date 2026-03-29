@@ -168,7 +168,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	go getUDPScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
 	<-senderDone             // wait for sender to send all jobs
-	wg.Wait()                // wait for all to workers to finish
+	wg.Wait()                // wait for all the workers to finish
 	close(workerResultsChan) // tell the main Woker to stop and send results
 
 	scanResults := <-scanResultsChan
@@ -221,8 +221,8 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 		conn.Write(buf) // first write to the connection so we can get responses if any
 		_, err = conn.Read(buf)
 		if err != nil {
+			// Here we assume that if the read attempt on the socket timed out then the port is open
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-
 				result.Port.State = PortStateOpen
 				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 			} else {
