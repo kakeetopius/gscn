@@ -42,7 +42,7 @@ gscn discover [flags]
 - Discover all hosts in a subnet:
   ````sh
   gscn discover -t 10.1.1.1/24
-  ```sh
+  ```
   ````
 - Discover a range of IPs:
   ```sh
@@ -104,7 +104,7 @@ gscn wifi [flags]
 ```
 
 <details>
-<summary>Examples></summary>
+<summary>Examples</summary>
 
 - Scan for nearby WiFi networks:
 
@@ -148,13 +148,6 @@ sender = "your_email@gmail.com"
 receiver = "recipient@gmail.com"
 from = "gscn network scanner" # or any name you want to appear as email sender
 app_password = "your_app_password"
-<details>
-<summary><b>WiFi Scanning</b></summary>
-
-Scan for nearby WiFi networks:
-
-```bash
-gscn wifi
 ````
 
 ## Contributing
