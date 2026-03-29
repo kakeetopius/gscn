@@ -7,6 +7,7 @@ require (
 	github.com/endobit/oui v0.6.0
 	github.com/google/gopacket v1.1.19
 	github.com/jsimonetti/rtnetlink v1.4.2
+	github.com/mdlayher/wifi v0.7.2
 	github.com/prometheus-community/pro-bing v0.8.0
 	github.com/pterm/pterm v0.12.82
 	github.com/spf13/viper v1.21.0
@@ -23,15 +24,15 @@ require (
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
-	github.com/josharian/native v1.1.0 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/mattn/go-runewidth v0.0.20 // indirect
-	github.com/mdlayher/netlink v1.7.2 // indirect
-	github.com/mdlayher/socket v0.4.1 // indirect
+	github.com/mdlayher/genetlink v1.3.2 // indirect
+	github.com/mdlayher/netlink v1.8.0 // indirect
+	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect

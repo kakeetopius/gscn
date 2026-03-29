@@ -122,7 +122,7 @@ func (s *NDPScanner) Results() ScanResults {
 		}
 		bar.Stop()
 	}
-	if s.WithHostNames {
+	if s.WithVendorInfo {
 		s.results.hasVendors = true
 		for i := range resultSet {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
