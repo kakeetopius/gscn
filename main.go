@@ -12,6 +12,6 @@ func main() {
 	cmd := argparser.GetCommand()
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "Error: ", err)
+		fmt.Fprintln(os.Stderr, "\nError: ", err)
 	}
 }
