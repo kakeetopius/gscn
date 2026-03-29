@@ -77,11 +77,11 @@ func GetCommand() *cli.Command {
 				},
 
 				Action: discover.RunDiscover,
-				Description: "Targets can be provided in the following formats:\n" +
-					"\tgscn discover -t 10.1.1.1 # Single Host\n" +
-					"\tgscn discover -t 10.1.1.1/24 # CIDR Notation\n" +
-					"\tgscn discover -t 10.1.1.1-5 # IP Range\n" +
-					"\tgscn discover -t 10.1.1.1,10.2.2.2/24,10.4.4.4-10 # Comma Separated List\n",
+				ArgsUsage: "\n\n   Targets can be provided in the following formats:\n" +
+					"\t     gscn discover -t 10.1.1.1 # Single Host\n" +
+					"\t     gscn discover -t 10.1.1.1/24 # CIDR Notation\n" +
+					"\t     gscn discover -t 10.1.1.1-5 # IP Range\n" +
+					"\t     gscn discover -t 10.1.1.1,10.2.2.2/24,10.4.4.4-10 # Comma Separated List\n",
 			},
 
 			{
@@ -100,16 +100,6 @@ func GetCommand() *cli.Command {
 						Usage:   "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080",
 					},
 					&cli.BoolFlag{
-						Name:  "udp",
-						Value: false,
-						Usage: "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.",
-					},
-					&cli.BoolFlag{
-						Name:  "ping",
-						Value: false,
-						Usage: "Carry out a ping scan to check if hosts are up.",
-					},
-					&cli.BoolFlag{
 						Name:    "hostnames",
 						Value:   false,
 						Aliases: []string{"H"},
@@ -119,7 +109,7 @@ func GetCommand() *cli.Command {
 						Name:    "timeout",
 						Value:   2 * time.Second,
 						Aliases: []string{"T"},
-						Usage:   "Amount of time in to carry out scan",
+						Usage:   "Amount of time to wait for responses",
 					},
 					&cli.DurationFlag{
 						Name:  "ping-timeout",
@@ -132,7 +122,6 @@ func GetCommand() *cli.Command {
 						Value:   64,
 						Usage:   "Number of workers to run concurrently when scanning with a maximum of 500",
 					},
-
 					&cli.BoolFlag{
 						Name:  "skip-ping",
 						Value: false,
@@ -144,12 +133,33 @@ func GetCommand() *cli.Command {
 						Usage: "Send scan results via a configured notifier in $HOME/config/gscn.toml file",
 					},
 				},
-				Description: "Targets can be provided in the following formats:\n" +
-					"\tgscn scan -t 10.1.1.1 -p 80    # Single Host\n" +
-					"\tgscn scan -t 10.1.1.1/24 -p 80,90,100    # CIDR Notation\n" +
-					"\tgscn scan -t 10.1.1.1-5 -p 1-100    # IP Range\n" +
-					"\tgscn scan -t bing.com -p 1-100    # Domain Name\n" +
-					"\tgscn scan -t 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096 	# Comma Separated List\n",
+				MutuallyExclusiveFlags: []cli.MutuallyExclusiveFlags{
+					{
+						Required: false,
+						Flags: [][]cli.Flag{
+							{
+								&cli.BoolFlag{
+									Name:  "udp",
+									Value: false,
+									Usage: "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.",
+								},
+							},
+							{
+								&cli.BoolFlag{
+									Name:  "ping",
+									Value: false,
+									Usage: "Carry out a ping scan to check if hosts are up.",
+								},
+							},
+						},
+					},
+				},
+				ArgsUsage: "\n\n   Targets can be provided in the following formats:\n" +
+					"\t      gscn scan -t 10.1.1.1 -p 80    # Single Host\n" +
+					"\t      gscn scan -t 10.1.1.1/24 -p 80,90,100    # CIDR Notation\n" +
+					"\t      gscn scan -t 10.1.1.1-5 -p 1-100    # IP Range\n" +
+					"\t      gscn scan -t bing.com -p 1-100    # Domain Name\n" +
+					"\t      gscn scan -t 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096 	# Comma Separated List\n",
 				Action: scan.RunScan,
 			},
 		},

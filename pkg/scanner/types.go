@@ -32,7 +32,7 @@ type Scanner interface {
 type ScanResultType int
 
 const (
-	ARPScanResultType ScanResultType = iota
+	ARPScanResultType ScanResultType = iota + 1
 	NDPScanResultType
 	TCPFullScanScanResultType
 	UDPScanResultType
@@ -42,7 +42,7 @@ const (
 type PortState uint8
 
 const (
-	PortStateOpen PortState = iota
+	PortStateOpen PortState = iota + 1
 	PortStateClosed
 	PortStatePossibleFilter
 )
@@ -85,7 +85,7 @@ type HostResult struct {
 type HostState int
 
 const (
-	HostStateUp HostState = iota
+	HostStateUp HostState = iota + 1
 	HostStateDown
 )
 
