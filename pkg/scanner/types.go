@@ -37,6 +37,7 @@ const (
 	TCPFullScanScanResultType
 	UDPScanResultType
 	PingScanResultType
+	WifiScanResultType
 )
 
 type PortState uint8

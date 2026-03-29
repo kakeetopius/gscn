@@ -7,6 +7,7 @@ import (
 
 	"github.com/kakeetopius/gscn/internal/cli/discover"
 	"github.com/kakeetopius/gscn/internal/cli/scan"
+	"github.com/kakeetopius/gscn/internal/cli/wifi"
 	"github.com/urfave/cli/v3"
 )
 
@@ -161,6 +162,30 @@ func GetCommand() *cli.Command {
 					"\t      gscn scan -t bing.com -p 1-100    # Domain Name\n" +
 					"\t      gscn scan -t 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096 	# Comma Separated List\n",
 				Action: scan.RunScan,
+			},
+			{
+				Name:    "wifi",
+				Aliases: []string{"w"},
+				Usage:   "Carry out different operations on Wi-Fi networks",
+				Action:  wifi.RunWifi,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "aps",
+						Value: false,
+						Usage: "Scan for nearby access points.",
+					},
+					&cli.StringFlag{
+						Name:    "iface",
+						Aliases: []string{"i"},
+						Usage:   "Wi-Fi interface to use when scanning.",
+					},
+					&cli.BoolFlag{
+						Name:  "notify",
+						Value: false,
+						Usage: "Send scan results via a configured notifier in $HOME/config/gscn.toml file",
+					},
+				},
+				ArgsUsage: "\n   If no interface is provided, the first Wi-Fi interface found on the system is used.",
 			},
 		},
 	}
