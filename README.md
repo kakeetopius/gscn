@@ -42,7 +42,6 @@ gscn discover [flags]
 - Discover all hosts in a subnet:
   ````sh
   gscn discover -t 10.1.1.1/24
-  ```
   ````
 - Discover a range of IPs:
   ```sh
