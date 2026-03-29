@@ -45,7 +45,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	}
 
 	lookUpHostNames := cmd.Bool("hostnames")
-	waitTimeout := cmd.Duration("timeout")
+	responseTimeout := cmd.Duration("timeout")
 
 	notify := cmd.Bool("notify")
 	var notifiyObj notifier.Notifier
@@ -70,7 +70,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			Workers:             uint(numWorkers),
 			HostNames:           hostNames,
 			AddUnknownHostNames: lookUpHostNames,
-			ResponseTimeout:     waitTimeout,
+			ResponseTimeout:     responseTimeout,
 			PingTimeout:         cmd.Duration("ping-timeout"),
 		})
 		if notify {
@@ -119,7 +119,7 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			Workers:             uint(numWorkers),
 			HostNames:           hostNames,
 			AddUnknownHostNames: lookUpHostNames,
-			ResponseTimeout:     waitTimeout,
+			ResponseTimeout:     responseTimeout,
 			SkipPingScan:        cmd.Bool("skip-ping"),
 			PingTimeout:         cmd.Duration("ping-timeout"),
 		})

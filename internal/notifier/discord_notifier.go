@@ -46,7 +46,6 @@ func channelIDByName(d *discordgo.Session, channelName string) (string, error) {
 	for _, g := range d.State.Guilds {
 		for _, c := range g.Channels {
 			if c.Name == channelName {
-				fmt.Println(c.ID)
 				return c.ID, nil
 			}
 		}

@@ -8,7 +8,7 @@ import (
 	"github.com/kakeetopius/gscn/internal/util"
 )
 
-// PortScanWorkerResult is the tesult returned by Scanning workers
+// PortScanWorkerResult is the tesult returned by Port Scanning workers
 type PortScanWorkerResult struct {
 	HostIP netip.Addr
 	Port   Port
