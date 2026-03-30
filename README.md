@@ -10,6 +10,11 @@ A simple and flexible command-line tool for network operations such as host disc
 - **Notifications**: Send scan results via Discord or Email with configurable notifiers.
 - **WiFi Scanning**: Scan for nearby WiFi networks and display detailed information about them.
 
+## Requirements
+
+- Go (1.18 or newer) installed and available in your PATH for building from source.
+- libpcap development headers (e.g., `libpcap-dev` on Debian/Ubuntu, `libpcap-devel` on Fedora/CentOS) for packet capture features.
+
 ## Installation
 
 Clone the repository and build with Go:
@@ -40,9 +45,9 @@ gscn discover [flags]
   gscn discover -t 10.1.1.1
   ```
 - Discover all hosts in a subnet:
-  ````sh
+  ```sh
   gscn discover -t 10.1.1.1/24
-  ````
+  ```
 - Discover a range of IPs:
   ```sh
   gscn discover -t 10.1.1.1-5
@@ -132,7 +137,7 @@ gscn wifi -i wlo2 --notify
 
 Create a configuration file at `~/.config/gscn.toml`:
 
-````toml
+```toml
 [notifier]
 type = "discord"  # or "email"
 
@@ -147,7 +152,7 @@ sender = "your_email@gmail.com"
 receiver = "recipient@gmail.com"
 from = "gscn network scanner" # or any name you want to appear as email sender
 app_password = "your_app_password"
-````
+```
 
 ## Contributing
 
