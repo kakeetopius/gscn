@@ -2,10 +2,12 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +133,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 
 	numWorkers := opts.Workers
 
+	pterm.Warning.Println("UDP Scans are not reliable and may show inconsistent or wrong results.")
 	if len(targets) == 0 {
 		return UDPScanResults{}, fmt.Errorf("no hosts to scan provided")
 	}
@@ -211,7 +214,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 			continue
 		}
 
-		err = conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		err = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		if err != nil {
 			result.Port.State = PortStateClosed
 			resultsChan <- result
@@ -222,7 +225,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 		_, err = conn.Read(buf)
 		if err != nil {
 			// Here we assume that if the read attempt on the socket timed out then the port is open
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
 				result.Port.State = PortStateOpen
 				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 			} else {
