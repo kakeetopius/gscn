@@ -47,7 +47,10 @@ func RunWifi(clictx context.Context, cmd *cli.Command) error {
 	displayWifiScanResults(wifiScanner)
 
 	if notify {
-		wifiScanner.SendResultsViaNotifier()
+		err := wifiScanner.SendResultsViaNotifier()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
