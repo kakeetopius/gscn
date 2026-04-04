@@ -12,6 +12,7 @@ type DiscordNotifier struct {
 }
 
 func (n DiscordNotifier) SendMessage(message string) error {
+	// BUG: fails when message is above 4000 characters.
 	config := n.Config
 	token := config.GetString("notifier.discord.token")
 	if token == "" {
