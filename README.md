@@ -31,7 +31,7 @@ sudo make install
 
 ## Usage
 
-### Discover Hosts
+### Discover Hosts on a Local Network.
 
 ```sh
 gscn discover [flags]
@@ -44,11 +44,11 @@ gscn discover [flags]
   ```sh
   gscn discover -t 10.1.1.1
   ```
-- Discover all hosts in a subnet:
+- Discover all hosts that are up in a local subnet:
   ```sh
   gscn discover -t 10.1.1.1/24
   ```
-- Discover a range of IPs:
+- Check if a range of IPs are up on a local network:
   ```sh
   gscn discover -t 10.1.1.1-5
   ```
