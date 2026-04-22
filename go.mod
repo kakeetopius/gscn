@@ -10,6 +10,7 @@ require (
 	github.com/mdlayher/wifi v0.7.2
 	github.com/prometheus-community/pro-bing v0.8.0
 	github.com/pterm/pterm v0.12.82
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/urfave/cli/v3 v3.6.2
 	github.com/wneessen/go-mail v0.7.2
@@ -28,6 +29,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/mdlayher/genetlink v1.3.2 // indirect

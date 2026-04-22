@@ -3,12 +3,14 @@ package notifier
 import (
 	"fmt"
 
-	"github.com/spf13/viper"
 	"github.com/wneessen/go-mail"
 )
 
 type EmailNotifier struct {
-	Config *viper.Viper
+	FromAddress string
+	ToAddress   string
+	SenderName  string
+	AppPassword string
 }
 
 // SendMessage sends an email notification with the provided message content.
@@ -17,20 +19,19 @@ type EmailNotifier struct {
 // Returns an error if email construction, client creation, or sending fails.
 func (n EmailNotifier) SendMessage(message string) error {
 	messageObj := mail.NewMsg()
-	config := n.Config
-	username := config.GetString("notifier.email.from")
+	username := n.SenderName
 	if username == "" {
 		username = "gscn network scanner"
 	}
-	sender := config.GetString("notifier.email.sender")
-	if sender == "" {
+	senderAddress := n.FromAddress
+	if senderAddress == "" {
 		return fmt.Errorf("no sender address given")
 	}
-	receiver := config.GetString("notifier.email.receiver")
+	receiver := n.ToAddress
 	if receiver == "" {
 		return fmt.Errorf("no receiver address given")
 	}
-	password := config.GetString("notifier.email.app_password")
+	password := n.AppPassword
 	if password == "" {
 		return fmt.Errorf("no app password given")
 	}
@@ -39,17 +40,17 @@ func (n EmailNotifier) SendMessage(message string) error {
 		return err
 	}
 	if username != "" {
-		if err := messageObj.FromFormat(username, sender); err != nil {
+		if err := messageObj.FromFormat(username, senderAddress); err != nil {
 			return err
 		}
-	} else if err := messageObj.From(sender); err != nil {
+	} else if err := messageObj.From(senderAddress); err != nil {
 		return err
 	}
 
 	messageObj.Subject("SCAN RESULTS FROM gscn")
 	messageObj.SetBodyString(mail.TypeTextPlain, message)
 
-	client, confErr := mail.NewClient("smtp.gmail.com", mail.WithSMTPAuth(mail.SMTPAuthPlain), mail.WithUsername(sender), mail.WithPassword(password))
+	client, confErr := mail.NewClient("smtp.gmail.com", mail.WithSMTPAuth(mail.SMTPAuthPlain), mail.WithUsername(senderAddress), mail.WithPassword(password))
 	if confErr != nil {
 		return fmt.Errorf("failed to create mail client %v", confErr)
 	}

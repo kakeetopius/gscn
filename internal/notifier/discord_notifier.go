@@ -8,13 +8,15 @@ import (
 )
 
 type DiscordNotifier struct {
-	Config *viper.Viper
+	Config      *viper.Viper
+	Token       string
+	ChannelID   string
+	ChannelName string
 }
 
 func (n DiscordNotifier) SendMessage(message string) error {
 	// BUG: fails when message is above 4000 characters.
-	config := n.Config
-	token := config.GetString("notifier.discord.token")
+	token := n.Token
 	if token == "" {
 		return fmt.Errorf("discord token is required to send messages to a discord server")
 	}
@@ -24,9 +26,9 @@ func (n DiscordNotifier) SendMessage(message string) error {
 	}
 	defer discord.Close()
 
-	channelID := config.GetString("notifier.discord.channel_id")
+	channelID := n.ChannelID
 	if channelID == "" {
-		channelName := config.GetString("notifier.discord.channel_name")
+		channelName := n.ChannelName
 		if channelName == "" {
 			return fmt.Errorf("no channel id or channel name given")
 		}
