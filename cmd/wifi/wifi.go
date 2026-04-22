@@ -2,37 +2,36 @@
 package wifi
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/kakeetopius/gscn/internal/notifier"
-	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/mdlayher/wifi"
 	"github.com/pterm/pterm"
-	"github.com/urfave/cli/v3"
+	"github.com/spf13/viper"
 )
 
-func RunWifi(clictx context.Context, cmd *cli.Command) error {
-	ifaceName := cmd.String("iface")
+type WifiOpts struct {
+	Config          *viper.Viper
+	InterfaceString string
+	Notify          bool
+}
+
+func RunWifi(opts WifiOpts) error {
+	ifaceName := opts.InterfaceString
 	autoIface := ifaceName == ""
-	notify := cmd.Bool("notify")
 
 	wifiScanner := scanner.NewWiFiScanner(scanner.WiFiScannerOptions{
 		AutoInterface: autoIface,
 		InterfaceName: ifaceName,
 	})
 
-	if notify {
-		config, err := util.NewConfig()
-		if err != nil {
-			return err
-		}
-		notifierName := config.GetString("notifier.type")
+	if opts.Notify {
+		notifierName := opts.Config.GetString("notifier.type")
 		if notifierName == "" {
 			return fmt.Errorf("no notifier type set in the config file")
 		}
-		notifiyObj, err := notifier.NotifierByName(notifierName, config)
+		notifiyObj, err := notifier.NotifierByName(notifierName, opts.Config)
 		if err != nil {
 			return err
 		}
@@ -46,7 +45,7 @@ func RunWifi(clictx context.Context, cmd *cli.Command) error {
 
 	displayWifiScanResults(wifiScanner)
 
-	if notify {
+	if opts.Notify {
 		err := wifiScanner.SendResultsViaNotifier()
 		if err != nil {
 			return err

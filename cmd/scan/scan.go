@@ -2,30 +2,44 @@
 package scan
 
 import (
-	"context"
 	"fmt"
 	"net/netip"
+	"time"
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
-	"github.com/urfave/cli/v3"
+	"github.com/spf13/viper"
 )
 
-func RunScan(clictx context.Context, cmd *cli.Command) error {
+type ScanOpts struct {
+	Config           *viper.Viper
+	TargetsString    string
+	PortsString      string
+	Workers          int
+	ResponseTimeout  time.Duration
+	PingTimeout      time.Duration
+	ResolveHostNames bool
+	DoPingScan       bool
+	DoUDPScan        bool
+	SkipPingScan     bool
+	Notify           bool
+}
+
+func RunScan(opts ScanOpts) error {
 	var err error
 	targets := make([]netip.Prefix, 0)
 	ports := make([]uint, 0)
 	var hostNames map[netip.Addr]string
 
-	numWorkers := cmd.Int("workers")
+	numWorkers := opts.Workers
 	if numWorkers > 500 {
 		return fmt.Errorf("number of workers cannot go above 500")
 	}
 
-	if targetStr := cmd.String("target"); targetStr != "" {
+	if targetStr := opts.TargetsString; targetStr != "" {
 		targets, hostNames, err = scanner.TargetsFromStringWithDNSLookup(targetStr)
 		if err != nil {
 			return err
@@ -34,26 +48,20 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 	if len(targets) == 0 {
 		return fmt.Errorf("no hosts to scan provided")
 	}
-	if portStr := cmd.String("ports"); portStr != "" {
+	if portStr := opts.PortsString; portStr != "" {
 		ports, err = scanner.PortsFromString(portStr)
 		if err != nil {
 			return err
 		}
 	}
-	if len(ports) == 0 && !cmd.Bool("ping") {
+	if len(ports) == 0 && !opts.DoPingScan {
 		return fmt.Errorf("no ports to scan provided")
 	}
 
-	lookUpHostNames := cmd.Bool("hostnames")
-	responseTimeout := cmd.Duration("timeout")
-
-	notify := cmd.Bool("notify")
+	notify := opts.Notify
 	var notifiyObj notifier.Notifier
 	if notify {
-		config, err := util.NewConfig()
-		if err != nil {
-			return err
-		}
+		config := opts.Config
 		notifierName := config.GetString("notifier.type")
 		if notifierName == "" {
 			return fmt.Errorf("no notifier type set in the config file")
@@ -63,15 +71,15 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			return err
 		}
 	}
-	if cmd.Bool("udp") {
+	if opts.DoUDPScan {
 		udpScanner := scanner.NewUDPScanner(scanner.UDPScanOptions{
 			Targets:             targets,
 			TargetPorts:         ports,
 			Workers:             uint(numWorkers),
 			HostNames:           hostNames,
-			AddUnknownHostNames: lookUpHostNames,
-			ResponseTimeout:     responseTimeout,
-			PingTimeout:         cmd.Duration("ping-timeout"),
+			AddUnknownHostNames: opts.ResolveHostNames,
+			ResponseTimeout:     opts.ResponseTimeout,
+			PingTimeout:         opts.PingTimeout,
 		})
 		if notify {
 			udpScanner.MessageNotifier = notifiyObj
@@ -88,11 +96,11 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-	} else if cmd.Bool("ping") {
+	} else if opts.DoPingScan {
 		pingScanner := scanner.NewPingScanner(scanner.PingScanOptions{
 			Targets:             targets,
-			PingTimeout:         cmd.Duration("ping-timeout"),
-			AddUnknownHostNames: lookUpHostNames,
+			PingTimeout:         opts.PingTimeout,
+			AddUnknownHostNames: opts.ResolveHostNames,
 			HostNames:           hostNames,
 			Workers:             numWorkers,
 		})
@@ -118,10 +126,10 @@ func RunScan(clictx context.Context, cmd *cli.Command) error {
 			TargetPorts:         ports,
 			Workers:             uint(numWorkers),
 			HostNames:           hostNames,
-			AddUnknownHostNames: lookUpHostNames,
-			ResponseTimeout:     responseTimeout,
-			SkipPingScan:        cmd.Bool("skip-ping"),
-			PingTimeout:         cmd.Duration("ping-timeout"),
+			AddUnknownHostNames: opts.ResolveHostNames,
+			ResponseTimeout:     opts.ResponseTimeout,
+			SkipPingScan:        opts.SkipPingScan,
+			PingTimeout:         opts.PingTimeout,
 		})
 		if notify {
 			tcpFullScanner.MessageNotifier = notifiyObj
