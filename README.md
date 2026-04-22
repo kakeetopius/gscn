@@ -148,9 +148,9 @@ channel_name = "channel_name" #can be omitted if channel_id is given
 
 #OR
 [notifier.email]
-sender = "your_email@gmail.com"
-receiver = "recipient@gmail.com"
-from = "gscn network scanner" # or any name you want to appear as email sender
+sender_address = "your_email@gmail.com"
+receiver_address = "recipient@gmail.com"
+sender_name = "gscn network scanner" # or any name you want to appear as email sender
 app_password = "your_app_password"
 ```
 
