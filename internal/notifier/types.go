@@ -15,16 +15,21 @@ type Notifier interface {
 
 // NotifierByName returns a Notifier instance based on the provided name.
 // It takes a notifier type string and a Viper configuration, and returns
-// the corresponding notifier or an error if the type is not supported.
+// the corresponding notifier properly configured using settings from viper or an error if the type is not supported.
 func NotifierByName(s string, config *viper.Viper) (Notifier, error) {
 	switch s {
 	case "email":
 		return EmailNotifier{
-			Config: config,
+			FromAddress: viper.GetString("notifier.email.sender_address"),
+			ToAddress:   config.GetString("notifier.email.receiver_address"),
+			SenderName:  config.GetString("notifier.email.sender_name"),
+			AppPassword: config.GetString("notifier.email.app_password"),
 		}, nil
 	case "discord":
 		return DiscordNotifier{
-			Config: config,
+			Token:       config.GetString("notifier.discord.token"),
+			ChannelID:   config.GetString("notifier.discord.channel_id"),
+			ChannelName: config.GetString("notifier.discord.channel_name"),
 		}, nil
 	}
 	return nil, fmt.Errorf("notifier %v not supported", s)
