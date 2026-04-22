@@ -4,11 +4,9 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/spf13/viper"
 )
 
 type DiscordNotifier struct {
-	Config      *viper.Viper
 	Token       string
 	ChannelID   string
 	ChannelName string
