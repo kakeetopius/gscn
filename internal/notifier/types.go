@@ -20,7 +20,7 @@ func NotifierByName(s string, config *viper.Viper) (Notifier, error) {
 	switch s {
 	case "email":
 		return EmailNotifier{
-			FromAddress: viper.GetString("notifier.email.sender_address"),
+			FromAddress: config.GetString("notifier.email.sender_address"),
 			ToAddress:   config.GetString("notifier.email.receiver_address"),
 			SenderName:  config.GetString("notifier.email.sender_name"),
 			AppPassword: config.GetString("notifier.email.app_password"),

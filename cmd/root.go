@@ -7,6 +7,7 @@ import (
 	"os/user"
 	"path"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,8 +20,9 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "gscn",
-	Short: "A simple command line tool to carry out different operations on a network.",
+	Use:          "gscn",
+	Short:        "A simple command line tool to carry out different operations on a network.",
+	SilenceUsage: true,
 	// Runs after flags are passed but before RunE runs
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return initialiseConfig()
@@ -80,22 +82,31 @@ func initialiseConfig() error {
 			home = h
 		}
 
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
 		config.SetConfigName("gscn")
 		config.SetConfigType("toml")
 		config.AddConfigPath(path.Join(home, ".config"))
-		config.AddConfigPath(".")
+		config.AddConfigPath(cwd)
 	}
 
 	config.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
 	err := config.ReadInConfig()
+	configFileFound := true
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
+		configFileFound = false
 	}
-	// fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	if configFileFound {
+		info := pterm.Info.Sprintln("Using config file:", config.ConfigFileUsed())
+		fmt.Fprintln(os.Stderr, info)
+	}
 
 	return nil
 }
