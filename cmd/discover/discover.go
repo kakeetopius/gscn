@@ -2,24 +2,34 @@
 package discover
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
-	"github.com/urfave/cli/v3"
+	"github.com/spf13/viper"
 )
 
 type DiscoverOpts struct {
-	cmd     *cli.Command
-	targets []netip.Prefix
-	iface   *net.Interface
-	source  netip.Addr
+	Config           *viper.Viper
+	TargetsString    string
+	InterfaceString  string
+	SourceAddrString string
+	Timeout          time.Duration
+	UseIP6           bool
+	Notify           bool
+	ResolveHostnames bool
+	FromCache        bool
+	ForceIP6Scan     bool
+
+	targets    []netip.Prefix
+	iface      *net.Interface
+	sourceAddr netip.Addr
 }
 
 type RealNetInterfaceProvider struct{}
@@ -32,17 +42,14 @@ func (RealNetInterfaceProvider) AddrsOf(iface *net.Interface) ([]net.Addr, error
 	return iface.Addrs()
 }
 
-func RunDiscover(ctx context.Context, cmd *cli.Command) error {
+func RunDiscover(opts DiscoverOpts) error {
 	var iface *net.Interface
 	var err error
-	discoverOpts := DiscoverOpts{
-		cmd: cmd,
-	}
 
-	useIP6 := cmd.Bool("six")
+	useIP6 := opts.UseIP6
 
 	targets := make([]netip.Prefix, 0)
-	if targetStr := cmd.String("target"); targetStr != "" {
+	if targetStr := opts.TargetsString; targetStr != "" {
 		targets, err = scanner.TargetsFromString(targetStr)
 		if err != nil {
 			return err
@@ -51,7 +58,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 
 	netInterfaceProvider := RealNetInterfaceProvider{}
 
-	if ifaceName := cmd.String("iface"); ifaceName != "" {
+	if ifaceName := opts.InterfaceString; ifaceName != "" {
 		iface, err = net.InterfaceByName(ifaceName)
 		if err != nil {
 			return err
@@ -94,7 +101,7 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	var sourceAddr netip.Addr
-	if source := cmd.String("source"); source != "" {
+	if source := opts.SourceAddrString; source != "" {
 		source, parseerr := netip.ParseAddr(source)
 		if parseerr != nil {
 			return fmt.Errorf("error parsing source address :%v", parseerr)
@@ -108,14 +115,14 @@ func RunDiscover(ctx context.Context, cmd *cli.Command) error {
 		sourceAddr = *source
 	}
 
-	discoverOpts.targets = targets
-	discoverOpts.iface = iface
-	discoverOpts.source = sourceAddr
+	opts.targets = targets
+	opts.iface = iface
+	opts.sourceAddr = sourceAddr
 
 	if useIP6 {
-		err = runIP6Discovery(&discoverOpts)
+		err = runIP6Discovery(&opts)
 	} else {
-		err = runIP4Discovery(&discoverOpts)
+		err = runIP4Discovery(&opts)
 	}
 
 	return err
@@ -127,20 +134,17 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 			return fmt.Errorf("%v is not an IPv4 address", target)
 		}
 	}
-	timeout := opts.cmd.Duration("timeout")
+	timeout := opts.Timeout
 	arpScanner := scanner.NewARPScanner(&scanner.ARPScanOptions{
 		Targets:         opts.targets,
-		Source:          opts.source,
+		Source:          opts.sourceAddr,
 		Interface:       *opts.iface,
 		ResponseTimeout: timeout,
 		WithVendorInfo:  true,
 	})
 
-	if opts.cmd.Bool("notify") {
-		config, confErr := util.NewConfig()
-		if confErr != nil {
-			return confErr
-		}
+	if opts.Notify {
+		config := opts.Config
 		notifierName := config.GetString("notifier.type")
 		if notifierName == "" {
 			return fmt.Errorf("no notifier type set in the config file")
@@ -151,7 +155,7 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 		}
 		arpScanner.MessageNotifier = notifierObj
 	}
-	if opts.cmd.Bool("hostnames") {
+	if opts.ResolveHostnames {
 		arpScanner.AddUnknownHostNames = true
 	}
 	err := arpScanner.Scan()
@@ -171,7 +175,7 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 		return fmt.Errorf("error getting ARP stats")
 	}
 	displayARPResults(&arpResults, &arpStats)
-	if opts.cmd.Bool("notify") {
+	if opts.Notify {
 		err = arpScanner.SendResultsViaNotifier()
 		if err != nil {
 			return err
@@ -181,8 +185,8 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 }
 
 func runIP6Discovery(opts *DiscoverOpts) error {
-	useCache := opts.cmd.Bool("from-cache")
-	forceScan := opts.cmd.Bool("force-scan")
+	useCache := opts.FromCache
+	forceScan := opts.ForceIP6Scan
 	for _, target := range opts.targets {
 		if !target.Addr().Is6() {
 			return fmt.Errorf("%v is not an IPv6 address", target)
@@ -209,20 +213,17 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 	if forceScan {
 		pterm.Warning.Println("Scanning of IPv6 networks may take alot of time and use alot of system resources due to their large size.")
 	}
-	timeout := opts.cmd.Duration("timeout")
+	timeout := opts.Timeout
 	ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{
 		Targets:         opts.targets,
-		Source:          opts.source,
+		Source:          opts.sourceAddr,
 		Interface:       *opts.iface,
 		ResponseTimeout: timeout,
 		WithVendorInfo:  true,
 	})
 
-	if opts.cmd.Bool("notify") {
-		config, confErr := util.NewConfig()
-		if confErr != nil {
-			return confErr
-		}
+	if opts.Notify {
+		config := opts.Config
 		notifierName := config.GetString("notifier.type")
 		if notifierName == "" {
 			return fmt.Errorf("no notifier type set in the config file")
@@ -233,7 +234,7 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 		}
 		ndpScanner.MessageNotifier = notifierObj
 	}
-	if opts.cmd.Bool("hostnames") {
+	if opts.ResolveHostnames {
 		ndpScanner.AddUnknownHostNames = true
 	}
 	err := ndpScanner.Scan()
@@ -254,7 +255,7 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 	}
 	displayNDPResults(&ndpResults, &ndpStats)
 
-	if opts.cmd.Bool("notify") {
+	if opts.Notify {
 		err = ndpScanner.SendResultsViaNotifier()
 		if err != nil {
 			return err

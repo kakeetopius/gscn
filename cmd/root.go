@@ -11,7 +11,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+var (
+	cfgFile string
+	notify  bool
+	config  *viper.Viper
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -36,6 +40,7 @@ func init() {
 	rootCmd.PersistentFlags().SortFlags = false
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/gscn.toml)")
+	rootCmd.PersistentFlags().BoolVar(&notify, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
 
 	rootCmd.AddCommand(
 		DiscoverCmd(),
@@ -50,9 +55,10 @@ func init() {
 // or the current directory.
 // Returns a configured Viper instance or an error if setup fails.
 func initialiseConfig() error {
+	config = viper.New()
 	if cfgFile != "" {
 		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
+		config.SetConfigFile(cfgFile)
 	} else {
 		home := ""
 		if os.Geteuid() == 0 {
@@ -74,16 +80,16 @@ func initialiseConfig() error {
 			home = h
 		}
 
-		viper.SetConfigName("gscn")
-		viper.SetConfigType("toml")
-		viper.AddConfigPath(path.Join(home, ".config"))
-		viper.AddConfigPath(".")
+		config.SetConfigName("gscn")
+		config.SetConfigType("toml")
+		config.AddConfigPath(path.Join(home, ".config"))
+		config.AddConfigPath(".")
 	}
 
-	viper.AutomaticEnv() // read in environment variables that match
+	config.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
-	err := viper.ReadInConfig()
+	err := config.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
