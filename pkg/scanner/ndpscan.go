@@ -162,10 +162,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 	if !ok {
 		return NDPScanResults{}, fmt.Errorf("error capturing packets on that interface")
 	}
-	spinner, err := pterm.DefaultSpinner.Start("Probing host on interface: " + opts.Interface.Name)
-	if err != nil {
-		return NDPScanResults{}, err
-	}
+	pterm.Info.Println("Probing host on interface: " + opts.Interface.Name)
 
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
@@ -177,7 +174,6 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 			IPaddr = IPaddr.Next()
 		}
 	}
-	spinner.Stop()
 
 	util.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop

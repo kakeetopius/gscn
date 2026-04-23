@@ -179,25 +179,40 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 		if hostResults.HostName != "" {
 			name = fmt.Sprintf("(%v)", hostResults.HostName)
 		}
-		if hostResults.HostState == scanner.HostStateDown {
+		if hostResults.HostState == scanner.HostStateDown && totalHosts > 10 {
 			continue
 		}
-		totalUp++
-		fmt.Printf("\nScan Report for %v %v\n", host, name)
-		for _, port := range hostResults.Ports {
-			if port.State == scanner.PortStateClosed {
-				continue // no need to add closed port to table
-			}
-			tcpService := util.Service(layers.TCPPort(port.Number).String())
-			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), tcpService})
+		if hostResults.HostState == scanner.HostStateUp {
+			totalUp++
 		}
-		fmt.Printf("Host is %s\n", hostResults.HostState)
-		if hostResults.OpenPorts > 0 {
+		fmt.Printf("\nScan Report for %v %v\n", host, name)
+
+		totalPortsScanned := hostResults.TotalNumberOfPorts()
+		for _, port := range hostResults.Ports {
+			if port.State == scanner.PortStateClosed && totalPortsScanned > 10 {
+				continue // no need to add closed port to table if scanned ports are above 10
+			}
+			service := util.Service(layers.TCPPort(port.Number).String())
+			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), service})
+		}
+
+		hostStateStyle := pterm.FgDefault
+		switch hostResults.HostState {
+		case scanner.HostStateUp:
+			hostStateStyle = pterm.FgGreen
+		case scanner.HostStateDown:
+			hostStateStyle = pterm.FgRed
+		}
+		fmt.Printf("Host State: %s\n", hostStateStyle.Sprint(hostResults.HostState))
+		if len(tableData) > 1 {
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 		}
-		fmt.Println("Ports Scanned: ", hostResults.OpenPorts+hostResults.ClosedPorts)
+		fmt.Println("Ports Scanned: ", totalPortsScanned)
 		fmt.Println("Open Ports: ", hostResults.OpenPorts)
 		fmt.Println("Closed Ports: ", hostResults.ClosedPorts)
+		if hostResults.FilteredPorts > 1 {
+			fmt.Println("Filtered Ports: ", hostResults.FilteredPorts)
+		}
 	}
 	fmt.Println("\n──────────────────────────────────────────────")
 	fmt.Printf("Total Hosts Scanned: %v\n", totalHosts)
@@ -208,20 +223,28 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats) {
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State"}}
+	totalHosts := stats.DownHosts + stats.UpHosts
 	for host, result := range results.ResultMap {
 		hostIdentity := host.String()
-		if result.HostState == scanner.HostStateDown {
+		if result.HostState == scanner.HostStateDown && totalHosts > 256 {
 			continue
 		}
 		if result.HostName != "" {
 			hostIdentity = fmt.Sprintf("%v (%v)", hostIdentity, result.HostName)
 		}
-		tableData = append(tableData, []string{hostIdentity, result.String()})
+		hostStateStyle := pterm.FgDefault
+		switch result.HostState {
+		case scanner.HostStateUp:
+			hostStateStyle = pterm.FgGreen
+		case scanner.HostStateDown:
+			hostStateStyle = pterm.FgRed
+		}
+		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState)})
 	}
-	if stats.UpHosts > 0 {
+	if len(tableData) > 1 {
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
 	}
-	fmt.Println("\nTotal Hosts Scanned: ", stats.UpHosts+stats.DownHosts)
+	fmt.Println("\nTotal Hosts Scanned: ", totalHosts)
 	fmt.Println("Hosts that are Up: ", stats.UpHosts)
 	fmt.Println("Hosts that are down: ", stats.DownHosts)
 }

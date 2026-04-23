@@ -195,15 +195,16 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 				return
 			}
 			hostIP := result.HostIP
-			hostResults := scanResults.ResultMap[hostIP]
-			if hostResults.Ports == nil {
-				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
+			hostResults, found := scanResults.ResultMap[hostIP]
+			if !found {
+				hostResults.Ports = make(map[uint]Port)
+				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
+				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
-			hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 			switch result.Port.State {
 			case PortStateOpen:
+				hostResults.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
 				hostResults.OpenPorts++
 			case PortStateClosed:
 				hostResults.ClosedPorts++

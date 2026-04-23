@@ -45,7 +45,7 @@ type PortState uint8
 const (
 	PortStateOpen PortState = iota + 1
 	PortStateClosed
-	PortStatePossibleFilter
+	PortStatePossibleFilter // used during udp scan when a host does not return a connection refused error, but returns an i/o timeout. So port state cant be known definitevly
 )
 
 func (p PortState) String() string {
@@ -79,8 +79,13 @@ type HostResult struct {
 	Ports    map[uint]Port
 	HostName string
 	HostState
-	OpenPorts   int
-	ClosedPorts int
+	OpenPorts     int
+	ClosedPorts   int
+	FilteredPorts int
+}
+
+func (h HostResult) TotalNumberOfPorts() int {
+	return h.OpenPorts + h.ClosedPorts + h.FilteredPorts
 }
 
 type HostState int
@@ -97,6 +102,6 @@ func (s HostState) String() string {
 	case HostStateDown:
 		return "Down"
 	default:
-		return ""
+		return "unknown"
 	}
 }

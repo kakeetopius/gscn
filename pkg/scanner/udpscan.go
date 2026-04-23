@@ -226,7 +226,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 		if err != nil {
 			// Here we assume that if the read attempt on the socket timed out then the port is open
 			if errors.Is(err, os.ErrDeadlineExceeded) {
-				result.Port.State = PortStateOpen
+				result.Port.State = PortStatePossibleFilter
 				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed
@@ -259,19 +259,21 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 				return
 			}
 			hostIP := result.HostIP
-			hostResults := scanResults.ResultMap[hostIP]
-			if hostResults.Ports == nil {
-				hostResults.Ports = make(map[uint]Port) // make new map if not created yet
+			hostResults, found := scanResults.ResultMap[hostIP]
+			if !found {
+				hostResults.Ports = make(map[uint]Port)
+				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
+				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
-			hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
-			hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.OpenPorts++
 			case PortStateClosed:
 				hostResults.ClosedPorts++
+			case PortStatePossibleFilter:
+				hostResults.FilteredPorts++
 			}
 			scanResults.ResultMap[hostIP] = hostResults
 		}
