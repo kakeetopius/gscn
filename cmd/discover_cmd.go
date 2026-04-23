@@ -7,18 +7,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	targetStr        string
-	ifaceStr         string
-	sourceAddr       string
-	timeout          time.Duration
-	resolveHostnames bool
-	useIP6           bool
-	fromCache        bool
-	forceScan        bool
-)
-
 func DiscoverCmd() *cobra.Command {
+	var (
+		targetStr        string
+		ifaceStr         string
+		sourceAddr       string
+		timeout          time.Duration
+		resolveHostnames bool
+		useIP6           bool
+		fromCache        bool
+		forceScan        bool
+	)
 	discoverCmd := cobra.Command{
 		Use:     "discover",
 		Short:   "Discover hosts on the local network using ARP for IPv4 or ICMP Neighbour Discovery for IPv6.",

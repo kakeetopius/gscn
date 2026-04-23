@@ -210,7 +210,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 		fmt.Println("Ports Scanned: ", totalPortsScanned)
 		fmt.Println("Open Ports: ", hostResults.OpenPorts)
 		fmt.Println("Closed Ports: ", hostResults.ClosedPorts)
-		if hostResults.FilteredPorts > 1 {
+		if hostResults.FilteredPorts > 0 {
 			fmt.Println("Filtered Ports: ", hostResults.FilteredPorts)
 		}
 	}
