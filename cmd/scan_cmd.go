@@ -55,7 +55,7 @@ func ScanCmd() *cobra.Command {
 	scanCmd.Flags().DurationVarP(&responseTimeout, "response-timeout", "T", 2*time.Second, "Amount of time to wait for responses")
 	scanCmd.Flags().DurationVar(&pingTimeout, "ping-timeout", 2*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
-	scanCmd.Flags().BoolVarP(&resolveHostnames, "hostnames", "H", false, "Carry out a reverse lookup to get host names on the IP addresses given.")
+	scanCmd.Flags().BoolVarP(&resolveHostnames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
 	scanCmd.Flags().BoolVar(&skipPing, "skip-ping", false, "Skip pinging hosts before scanning ports.")
 	scanCmd.Flags().BoolVar(&doUDPScan, "udp", false, "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.")
 	scanCmd.Flags().BoolVar(&doPingScan, "ping", false, "Carry out a ping scan to check if hosts are up.")
