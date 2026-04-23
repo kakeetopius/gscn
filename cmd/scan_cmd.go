@@ -7,17 +7,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	ports           string
-	workers         int
-	responseTimeout time.Duration
-	pingTimeout     time.Duration
-	skipPing        bool
-	doUDPScan       bool
-	doPingScan      bool
-)
-
 func ScanCmd() *cobra.Command {
+	var (
+		targetStr        string
+		ports            string
+		workers          int
+		responseTimeout  time.Duration
+		pingTimeout      time.Duration
+		resolveHostnames bool
+		skipPing         bool
+		doUDPScan        bool
+		doPingScan       bool
+	)
 	scanCmd := cobra.Command{
 		Use:     "scan",
 		Short:   "Determine information about any host on any network for example open ports.",
