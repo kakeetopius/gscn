@@ -12,7 +12,6 @@ require (
 	github.com/pterm/pterm v0.12.82
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/urfave/cli/v3 v3.6.2
 	github.com/wneessen/go-mail v0.7.2
 	golang.org/x/sys v0.42.0
 )
