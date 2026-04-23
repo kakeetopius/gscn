@@ -204,7 +204,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 			hostStateStyle = pterm.FgRed
 		}
 		fmt.Printf("Host State: %s\n", hostStateStyle.Sprint(hostResults.HostState))
-		if len(tableData) > 1 {
+		if len(tableData) > 1 && hostResults.HostState == scanner.HostStateUp {
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 		}
 		fmt.Println("Ports Scanned: ", totalPortsScanned)
