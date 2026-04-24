@@ -95,7 +95,7 @@ func (s *PingScanner) Scan() error {
 func (s *PingScanner) Results() ScanResults {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Stop()
+		defer spinner.Success("Resolving Done")
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
@@ -114,11 +114,18 @@ func (s *PingScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
+		spinner.Fail()
 		return err
 	}
-	defer spinner.Stop()
 
-	return s.MessageNotifier.SendMessage(s.results.String())
+	err = s.MessageNotifier.SendMessage(s.results.String())
+	if err != nil {
+		spinner.Fail()
+		return err
+	}
+
+	spinner.Success("Results Sent")
+	return nil
 }
 
 func (s *PingScanner) Stats() ScanStats {
@@ -130,9 +137,9 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 	if err != nil {
 		return err
 	}
-	defer spinner.Stop()
 
 	if os.Geteuid() != 0 {
+		spinner.Fail()
 		return fmt.Errorf("ping scan requires root priviledges")
 	}
 	jobs := make(chan PingScanJob, scanner.Workers)
@@ -167,6 +174,7 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 
 	pingScanResults := <-scanResultsChan
 	scanner.results = pingScanResults
+	spinner.Success("Pinging done")
 	return nil
 }
 

@@ -99,17 +99,24 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
+		spinner.Fail()
 		return err
 	}
-	defer spinner.Stop()
 
-	return s.MessageNotifier.SendMessage(s.Results().String())
+	err = s.MessageNotifier.SendMessage(s.results.String())
+	if err != nil {
+		spinner.Fail()
+		return err
+	}
+
+	spinner.Success("Results Sent")
+	return nil
 }
 
 func (s *UDPScanner) Results() ScanResults {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Stop()
+		defer spinner.Success("Resolving Done")
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
@@ -159,7 +166,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	if err != nil {
 		return UDPScanResults{}, err
 	}
-	defer spinner.Stop()
+	defer spinner.Success("Scanning Done")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
