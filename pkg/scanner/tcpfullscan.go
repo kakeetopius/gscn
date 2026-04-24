@@ -89,11 +89,18 @@ func (s *TCPFullScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
+		spinner.Fail()
 		return err
 	}
-	defer spinner.Stop()
 
-	return s.MessageNotifier.SendMessage(s.results.String())
+	err = s.MessageNotifier.SendMessage(s.results.String())
+	if err != nil {
+		spinner.Fail()
+		return err
+	}
+
+	spinner.Success("Results Sent")
+	return nil
 }
 
 func (s *TCPFullScanner) Scan() error {
@@ -108,7 +115,7 @@ func (s *TCPFullScanner) Scan() error {
 func (s *TCPFullScanner) Results() ScanResults {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Stop()
+		defer spinner.Success("Resolving done")
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
@@ -158,7 +165,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	if err != nil {
 		return TCPFullScanResults{}, err
 	}
-	defer spinner.Stop()
+	defer spinner.Success("Scanning Done")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

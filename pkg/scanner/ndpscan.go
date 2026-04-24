@@ -137,11 +137,18 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
+		spinner.Fail()
 		return err
 	}
-	defer spinner.Stop()
 
-	return s.MessageNotifier.SendMessage(s.results.String())
+	err = s.MessageNotifier.SendMessage(s.results.String())
+	if err != nil {
+		spinner.Fail()
+		return err
+	}
+
+	spinner.Success("Results Sent")
+	return nil
 }
 
 func (s *NDPScanner) Stats() ScanStats {

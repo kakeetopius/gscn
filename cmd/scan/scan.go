@@ -217,7 +217,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 	fmt.Println("\n──────────────────────────────────────────────")
 	fmt.Printf("Total Hosts Scanned: %v\n", totalHosts)
 	fmt.Printf("Hosts that are Up: %v\n", totalUp)
-	fmt.Printf("Hosts that are down: %v\n", totalHosts-totalUp)
+	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
 }
 
 func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats) {
@@ -246,5 +246,5 @@ func printPingScanResults(results scanner.PingScanResults, stats scanner.PingSta
 	}
 	fmt.Println("\nTotal Hosts Scanned: ", totalHosts)
 	fmt.Println("Hosts that are Up: ", stats.UpHosts)
-	fmt.Println("Hosts that are down: ", stats.DownHosts)
+	fmt.Printf("Hosts that are down: %v\n\n", stats.DownHosts)
 }
