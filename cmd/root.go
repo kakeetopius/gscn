@@ -16,6 +16,7 @@ var (
 	cfgFile string
 	notify  bool
 	config  *viper.Viper
+	debug   bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -43,6 +44,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/gscn.toml)")
 	rootCmd.PersistentFlags().BoolVar(&notify, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run in debug mode.")
 
 	rootCmd.AddCommand(
 		DiscoverCmd(),
@@ -96,14 +98,14 @@ func initialiseConfig() error {
 
 	// If a config file is found, read it in.
 	err := config.ReadInConfig()
-	configFileFound := true
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
 		}
-		configFileFound = false
+		// No need to return error if config file not found
+		return nil
 	}
-	if configFileFound {
+	if debug {
 		info := pterm.Info.Sprintln("Using config file:", config.ConfigFileUsed())
 		fmt.Fprintln(os.Stderr, info)
 	}
