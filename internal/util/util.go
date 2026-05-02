@@ -14,12 +14,20 @@ import (
 
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
 
+type Interface struct {
+	Name string
+	net.Interface
+	address []net.Addr
+}
+
 type NetInterfaceProvider interface {
 	// Returns all network interfaces
-	Interfaces() ([]net.Interface, error)
+	Interfaces() ([]Interface, error)
 
 	// Returns IP Addresses of a particular interface.
-	AddrsOf(*net.Interface) ([]net.Addr, error)
+	AddrsOf(*Interface) ([]net.Addr, error)
+
+	InterfaceByName(name string) (*Interface, error)
 }
 
 // GetIfaceByIP finds the first network interface whose assigned IP network
@@ -27,7 +35,7 @@ type NetInterfaceProvider interface {
 //
 // It returns ErrNoInterfaceConnectedToTarget
 // when no matching interface is found.
-func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*net.Interface, error) {
+func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*Interface, error) {
 	allIfaces, err := interfaceProvider.Interfaces()
 	if err != nil {
 		return nil, err
@@ -59,7 +67,7 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*n
 // When ip6 is true, it searches for an IPv6 address; otherwise it searches for
 // IPv4. An error is returned if address lookup fails, the interface has no addresses, conversion fails, or no address
 // of the requested family is found.
-func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Interface, ip6 bool) (*netip.Prefix, error) {
+func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *Interface, ip6 bool) (*netip.Prefix, error) {
 	addrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
 		return nil, err
@@ -86,31 +94,6 @@ func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *net.Inter
 		return nil, fmt.Errorf("the interface %v has no IPv6 addresses", iface.Name)
 	}
 	return nil, fmt.Errorf("the interface %v has no IPv4 addresses", iface.Name)
-}
-
-// VerifyInterface validates whether iface is suitable for scanning operations.
-//
-// The interface must not be loopback, must be administratively up, must be
-// running, and must have at least one assigned address as reported by
-// interfaceProvider. It returns an error describing the first failed check.
-func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *net.Interface) error {
-	if iface.Flags&net.FlagLoopback != 0 {
-		return fmt.Errorf("cannot scan on a loopback interface")
-	} else if iface.Flags&net.FlagUp == 0 {
-		return fmt.Errorf("interface %v is administratively down", iface.Name)
-	} else if iface.Flags&net.FlagRunning == 0 {
-		return fmt.Errorf("interface %v is not running", iface.Name)
-	}
-
-	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
-	if err != nil {
-		return err
-	}
-	if len(ifaceAddrs) < 1 {
-		return fmt.Errorf("interface %v has no IP addresses", iface.Name)
-	}
-
-	return nil
 }
 
 // IPNetToPrefix converts a net.IPNet value into its netip.Prefix equivalent.
@@ -181,7 +164,7 @@ func OnlyIPInRange(addr netip.Prefix) bool {
 // Returns:
 //   - *netip.Addr: The selected source IP address.
 //   - error: Any error encountered during address selection.
-func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *net.Interface, targets []netip.Prefix, ip6 bool) (*netip.Addr, error) {
+func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *Interface, targets []netip.Prefix, ip6 bool) (*netip.Addr, error) {
 	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
 	if err != nil {
 		return nil, err

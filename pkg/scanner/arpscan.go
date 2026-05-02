@@ -20,7 +20,7 @@ import (
 type ARPScanOptions struct {
 	Targets             []netip.Prefix
 	Source              netip.Addr
-	Interface           net.Interface
+	Interface           util.Interface
 	ResponseTimeout     time.Duration
 	WithVendorInfo      bool
 	HostNames           map[netip.Addr]string
@@ -179,6 +179,7 @@ outer:
 	if err != nil {
 		return ARPScanResults{}, err
 	}
+	defer bar.Stop()
 
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
@@ -198,7 +199,6 @@ outer:
 			}
 		}
 	}
-	bar.Stop()
 
 	scanner.logger.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
@@ -207,7 +207,7 @@ outer:
 	return ARPScanResults{ResultSet: results}, nil
 }
 
-func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr) error {
+func sendArpPacket(iface *util.Interface, srcIP *netip.Addr, dstIP *netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
