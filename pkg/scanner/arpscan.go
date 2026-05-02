@@ -252,8 +252,10 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 	opts := scanner.ARPScanOptions
 	handle, err := pcap.OpenLive(opts.Interface.Name, 1600, false, time.Millisecond)
 	if err != nil {
+		errorChan <- err
 		return
 	}
+
 	defer handle.Close()
 	err = handle.SetBPFFilter("arp")
 	if err != nil {
