@@ -4,8 +4,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/user"
-	"path"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -69,33 +67,17 @@ func initialiseConfig() error {
 		// Use config file from the flag.
 		config.SetConfigFile(cfgFile)
 	} else {
-		home := ""
-		if os.Geteuid() == 0 {
-			// running as root
-			sudoUser := os.Getenv("SUDO_USER")
-			if sudoUser == "" {
-				return fmt.Errorf("could not get sudo user variable")
-			}
-			u, err := user.Lookup(sudoUser)
-			if err != nil {
-				return err
-			}
-			home = u.HomeDir
-		} else {
-			h, err := os.UserHomeDir()
-			if err != nil {
-				return err
-			}
-			home = h
-		}
-
 		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		configDir, err := ConfigDir()
 		if err != nil {
 			return err
 		}
 		config.SetConfigName("gscn")
 		config.SetConfigType("toml")
-		config.AddConfigPath(path.Join(home, ".config"))
+		config.AddConfigPath(configDir)
 		config.AddConfigPath(cwd)
 	}
 
