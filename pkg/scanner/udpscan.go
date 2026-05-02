@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket/layers"
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
@@ -27,7 +27,6 @@ type UDPScanOptions struct {
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
 	MessageNotifier     notifier.Notifier
-	logger              io.Writer
 }
 
 type UDPScanResults struct {
@@ -69,6 +68,7 @@ type UDPScanner struct {
 	results    UDPScanResults
 	stats      UDPScanStats
 	hostStates map[netip.Addr]PingResult
+	logger     log.Logger
 }
 
 func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
@@ -80,7 +80,8 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 		results: UDPScanResults{
 			ResultMap: make(map[netip.Addr]HostResult),
 		},
-		stats: UDPScanStats{},
+		stats:  UDPScanStats{},
+		logger: log.NewLogger(true),
 	}
 }
 

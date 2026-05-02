@@ -8,10 +8,10 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/kakeetopius/gscn/pkg/scanner"
-	"github.com/pterm/pterm"
 	"github.com/spf13/viper"
 )
 
@@ -26,6 +26,7 @@ type DiscoverOpts struct {
 	ResolveHostnames bool
 	FromCache        bool
 	ForceIP6Scan     bool
+	Debug            bool
 
 	targets    []netip.Prefix
 	iface      *net.Interface
@@ -45,6 +46,7 @@ func (RealNetInterfaceProvider) AddrsOf(iface *net.Interface) ([]net.Addr, error
 func RunDiscover(opts DiscoverOpts) error {
 	var iface *net.Interface
 	var err error
+	logger := log.NewLogger(opts.Debug)
 
 	useIP6 := opts.UseIP6
 
@@ -69,7 +71,7 @@ func RunDiscover(opts DiscoverOpts) error {
 			if err != nil {
 				return err
 			}
-			pterm.Info.Println("No targets Provided. Scanning for hosts on the interface's network: ", target.Masked())
+			logger.Info("No targets Provided. Scanning for hosts on the interface's network: ", target.Masked())
 			fmt.Println()
 			targets = append(targets, *target)
 		}
@@ -185,6 +187,7 @@ func runIP4Discovery(opts *DiscoverOpts) error {
 }
 
 func runIP6Discovery(opts *DiscoverOpts) error {
+	logger := log.NewLogger(opts.Debug)
 	useCache := opts.FromCache
 	forceScan := opts.ForceIP6Scan
 	for _, target := range opts.targets {
@@ -194,15 +197,15 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 		if target.Bits() != 128 {
 			if !useCache && !forceScan {
 				fmt.Println()
-				pterm.Warning.Printf("Scanning of an IPv6 network %v using ICMPv6 NDP is impractical due to its large subnets\n", target.Masked())
-				pterm.Info.Println("To discover hosts using the kernel's neighbour table use the option --from-cache.")
-				pterm.Info.Println("To force scanning of the IPv6 subnet use the option --force-scan.")
+				logger.Warnf("Scanning of an IPv6 network %v using ICMPv6 NDP is impractical due to its large subnets\n", target.Masked())
+				logger.Info("To discover hosts using the kernel's neighbour table use the option --from-cache.")
+				logger.Info("To force scanning of the IPv6 subnet use the option --force-scan.")
 				return nil
 			}
 		}
 	}
 	if useCache {
-		pterm.Info.Println("Discovering Host(s) using kernel's neighbour table for interface ", opts.iface.Name)
+		logger.Info("Discovering Host(s) using kernel's neighbour table for interface ", opts.iface.Name)
 		results, nerr := NDPResultsUsingNetlink(opts.iface, opts.targets)
 		if nerr != nil {
 			return nerr
@@ -211,7 +214,7 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 		return nil
 	}
 	if forceScan {
-		pterm.Warning.Println("Scanning of IPv6 networks may take alot of time and use alot of system resources due to their large size.")
+		logger.Warn("Scanning of IPv6 networks may take alot of time and use alot of system resources due to their large size.")
 	}
 	timeout := opts.Timeout
 	ndpScanner := scanner.NewNDPScanner(&scanner.NDPScanOptions{

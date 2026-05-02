@@ -39,6 +39,7 @@ func DiscoverCmd() *cobra.Command {
 				FromCache:        fromCache,
 				ForceIP6Scan:     forceScan,
 				Notify:           notify,
+				Debug:            true,
 			})
 		},
 	}
