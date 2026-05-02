@@ -9,11 +9,13 @@ A simple and flexible command-line tool for network operations such as host disc
 - **Flexible Target Specification**: Supports single IPs, CIDR notation, IP ranges, domain names, and comma-separated lists.
 - **Notifications**: Send scan results via Discord or Email with configurable notifiers.
 - **WiFi Scanning**: Scan for nearby WiFi networks and display detailed information about them.
+- **Cross Platform**: Works on both windows and linux.
 
 ## Requirements
 
 - Go (1.18 or newer) installed and available in your PATH for building from source.
-- libpcap development headers (e.g., `libpcap-dev` on Debian/Ubuntu, `libpcap-devel` on Fedora/CentOS) for packet capture features.
+- libpcap development headers (e.g., `libpcap-dev` on Debian/Ubuntu, `libpcap-devel` on Fedora/CentOS) for packet capture features for Linux.
+- npcap for Windows.
 
 ## Installation
 
@@ -58,7 +60,7 @@ gscn discover [flags]
   ```
 - Use IPv6 neighbor discovery:
   ```sh
-  gscn discover --six -t 2001:abcd:db22::1
+  gscn discover -6 -t 2001:abcd:db22::1
   ```
 - Discover hosts and send results via Discord/Email:
   ```sh
@@ -135,7 +137,15 @@ gscn wifi -i wlo2 --notify
 > [!NOTE]
 > This is only required if notifications are desired.
 
-Create a configuration file at `~/.config/gscn.toml`:
+Create a configuration file at:
+
+**On Linux:**
+
+- `~/.config/gscn.toml`
+
+**On Windows:**
+
+- `%APPDATA%\gscn.toml`
 
 ```toml
 [notifier]
