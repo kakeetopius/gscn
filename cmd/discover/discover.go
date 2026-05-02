@@ -4,7 +4,6 @@ package discover
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
 	"time"
 
@@ -29,22 +28,12 @@ type DiscoverOpts struct {
 	Debug            bool
 
 	targets    []netip.Prefix
-	iface      *net.Interface
+	iface      *util.Interface
 	sourceAddr netip.Addr
 }
 
-type RealNetInterfaceProvider struct{}
-
-func (RealNetInterfaceProvider) Interfaces() ([]net.Interface, error) {
-	return net.Interfaces()
-}
-
-func (RealNetInterfaceProvider) AddrsOf(iface *net.Interface) ([]net.Addr, error) {
-	return iface.Addrs()
-}
-
 func RunDiscover(opts DiscoverOpts) error {
-	var iface *net.Interface
+	var iface *util.Interface
 	var err error
 	logger := log.NewLogger(opts.Debug)
 
@@ -58,18 +47,20 @@ func RunDiscover(opts DiscoverOpts) error {
 		}
 	}
 
-	netInterfaceProvider := RealNetInterfaceProvider{}
+	netInterfaceProvider := util.RealNetInterfaceProvider{}
 
 	if ifaceName := opts.InterfaceString; ifaceName != "" {
-		iface, err = net.InterfaceByName(ifaceName)
+		iface, err = netInterfaceProvider.InterfaceByName(ifaceName)
 		if err != nil {
 			return err
 		}
+
+		var neterr error
 		if len(targets) == 0 {
 			var target *netip.Prefix
-			target, err = util.GetFirstIfaceIPNet(netInterfaceProvider, iface, useIP6)
-			if err != nil {
-				return err
+			target, neterr = util.GetFirstIfaceIPNet(netInterfaceProvider, iface, useIP6)
+			if neterr != nil {
+				return neterr
 			}
 			logger.Info("No targets Provided. Scanning for hosts on the interface's network: ", target.Masked())
 			fmt.Println()

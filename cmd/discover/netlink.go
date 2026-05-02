@@ -2,7 +2,6 @@ package discover
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 	"syscall"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/kakeetopius/gscn/pkg/scanner"
 )
 
-func NDPResultsUsingNetlink(iface *net.Interface, targets []netip.Prefix) (*scanner.NDPScanResults, error) {
+func NDPResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) (*scanner.NDPScanResults, error) {
 	results := scanner.NDPScanResults{
 		ResultSet: make([]scanner.NDPScanResult, 0, 5),
 	}
@@ -21,7 +20,7 @@ func NDPResultsUsingNetlink(iface *net.Interface, targets []netip.Prefix) (*scan
 	}
 	defer conn.Close()
 
-	neighbours, err := conn.Neighbours(iface, syscall.AF_INET6)
+	neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET6)
 	if err != nil {
 		return nil, err
 	}

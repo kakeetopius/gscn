@@ -20,7 +20,7 @@ import (
 type NDPScanOptions struct {
 	Targets             []netip.Prefix
 	Source              netip.Addr
-	Interface           net.Interface
+	Interface           util.Interface
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	WithVendorInfo      bool

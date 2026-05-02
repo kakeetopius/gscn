@@ -1,10 +1,10 @@
 package scanner
 
 import (
-	"net"
 	"time"
 
 	"github.com/google/gopacket/pcap"
+	"github.com/kakeetopius/gscn/internal/util"
 )
 
 // go: build windows
@@ -15,7 +15,7 @@ type socketInfo struct {
 
 var socket *socketInfo
 
-func sendPacket(packet []byte, iface *net.Interface) error {
+func sendPacket(packet []byte, iface *util.Interface) error {
 	if socket == nil {
 		err := setUpSocket(iface)
 		if err != nil {
@@ -25,7 +25,7 @@ func sendPacket(packet []byte, iface *net.Interface) error {
 	return socket.WritePacketData(packet)
 }
 
-func setUpSocket(iface *net.Interface) error {
+func setUpSocket(iface *util.Interface) error {
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
 		return err

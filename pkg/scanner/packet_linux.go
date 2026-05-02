@@ -1,9 +1,8 @@
 package scanner
 
 import (
-	"net"
-
 	"github.com/kakeetopius/gscn/internal/bits"
+	"github.com/kakeetopius/gscn/internal/util"
 	"golang.org/x/sys/unix"
 )
 
@@ -16,7 +15,7 @@ type socketInfo struct {
 
 var socket *socketInfo
 
-func sendPacket(packet []byte, iface *net.Interface) error {
+func sendPacket(packet []byte, iface *util.Interface) error {
 	if socket == nil {
 		err := setUpSocket(iface)
 		if err != nil {
@@ -26,7 +25,7 @@ func sendPacket(packet []byte, iface *net.Interface) error {
 	return unix.Sendto(socket.socketFD, packet, 0, socket.socketAddr)
 }
 
-func setUpSocket(iface *net.Interface) error {
+func setUpSocket(iface *util.Interface) error {
 	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
 	if err != nil {
 		return err
