@@ -11,18 +11,11 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/kakeetopius/gscn/internal/bits"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
-	"golang.org/x/sys/unix"
 )
-
-type socketInfo struct {
-	socketFD   int
-	socketAddr *unix.SockaddrLinklayer
-}
 
 type ARPScanOptions struct {
 	Targets             []netip.Prefix
@@ -164,19 +157,6 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	defer cancel()
 	opts := scanner.ARPScanOptions
 
-	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
-	if err != nil {
-		return ARPScanResults{}, err
-	}
-	addr := &unix.SockaddrLinklayer{
-		Ifindex:  opts.Interface.Index,
-		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
-	}
-	socketinfo := socketInfo{
-		socketFD:   sockfd,
-		socketAddr: addr,
-	}
-
 	resultsChan := make(chan []ARPScanResult)
 	startSending := make(chan struct{})
 
@@ -201,7 +181,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 				IPaddr = IPaddr.Next()
 				continue
 			} else {
-				err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr, &socketinfo)
+				err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
 				if err != nil {
 					return ARPScanResults{}, err
 				}
@@ -220,7 +200,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	return ARPScanResults{ResultSet: results}, nil
 }
 
-func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr, sockinfo *socketInfo) error {
+func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -254,7 +234,7 @@ func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr, s
 
 	packetBytes := buf.Bytes()
 
-	err = unix.Sendto(sockinfo.socketFD, packetBytes, 0, sockinfo.socketAddr)
+	err = sendPacket(packetBytes, iface)
 	if err != nil {
 		return err
 	}
