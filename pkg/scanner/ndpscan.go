@@ -3,7 +3,6 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"strings"
@@ -30,7 +29,6 @@ type NDPScanOptions struct {
 	AddUnknownHostNames bool
 	Workers             int
 	MessageNotifier     notifier.Notifier
-	logger              io.Writer
 }
 
 type NDPScanResult struct {

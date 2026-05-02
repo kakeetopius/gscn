@@ -26,7 +26,12 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 	// Runs after flags are passed but before RunE runs
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return initialiseConfig()
+		err := initialiseConfig()
+		if err != nil {
+			return err
+		}
+
+		return nil
 	},
 }
 
@@ -44,7 +49,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/gscn.toml)")
 	rootCmd.PersistentFlags().BoolVar(&notify, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
-	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run in debug mode.")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run in debug mode")
 
 	rootCmd.AddCommand(
 		DiscoverCmd(),
