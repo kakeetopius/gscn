@@ -195,6 +195,7 @@ func runIP6Discovery(opts *DiscoverOpts) error {
 			return fmt.Errorf("%v is not an IPv6 address", target)
 		}
 		if target.Bits() != 128 {
+			// if not a single ip network
 			if !useCache && !forceScan {
 				fmt.Println()
 				logger.Warnf("Scanning of an IPv6 network %v using ICMPv6 NDP is impractical due to its large subnets\n", target.Masked())

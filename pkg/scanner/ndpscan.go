@@ -11,12 +11,10 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/kakeetopius/gscn/internal/bits"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
-	"golang.org/x/sys/unix"
 )
 
 type NDPScanOptions struct {
@@ -190,16 +188,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 }
 
 func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
-	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
-	if err != nil {
-		return err
-	}
 	iface := scanner.Interface
-	addr := &unix.SockaddrLinklayer{
-		Ifindex:  iface.Index,
-		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
-	}
-
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       solicitedNodeMacAddress(*dstIP),
@@ -235,7 +224,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	}
 
 	icmp.SetNetworkLayerForChecksum(ip)
-	err = gopacket.SerializeLayers(buf, options, eth, ip, icmp, nd)
+	err := gopacket.SerializeLayers(buf, options, eth, ip, icmp, nd)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -243,7 +232,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 
 	packetBytes := buf.Bytes()
 
-	err = unix.Sendto(sockfd, packetBytes, 0, addr)
+	err = sendPacket(packetBytes, &iface)
 	if err != nil {
 		return err
 	}
