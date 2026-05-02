@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/pterm/pterm"
@@ -72,6 +73,7 @@ type PingScanner struct {
 	PingScanOptions
 	results PingScanResults
 	stats   PingStats
+	logger  log.Logger
 }
 
 func NewPingScanner(opts PingScanOptions) *PingScanner {
@@ -83,7 +85,8 @@ func NewPingScanner(opts PingScanOptions) *PingScanner {
 		results: PingScanResults{
 			ResultMap: make(map[netip.Addr]PingResult),
 		},
-		stats: PingStats{},
+		stats:  PingStats{},
+		logger: log.NewLogger(true),
 	}
 }
 

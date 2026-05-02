@@ -8,10 +8,8 @@ import (
 	"net"
 	"net/netip"
 	"strings"
-	"time"
 
 	"github.com/endobit/oui"
-	"github.com/pterm/pterm"
 )
 
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
@@ -256,18 +254,6 @@ func Unique[T comparable](slice []T) []T {
 		}
 	}
 	return results
-}
-
-// WaitTimeout displays a spinner indicating a wait for the given reason,
-// sleeps for the provided duration, and marks the spinner as successful
-// when the timeout is reached.
-func WaitTimeout(duration time.Duration, timeoutReason string) {
-	spinner, err := pterm.DefaultSpinner.Start("Waiting for "+timeoutReason, " timeout")
-	if err != nil {
-		fmt.Println(err)
-	}
-	<-time.After(duration)
-	spinner.Success("Timeout Reached.")
 }
 
 // Service extracts the service name from a gopacket-style

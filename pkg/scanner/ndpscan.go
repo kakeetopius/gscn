@@ -12,6 +12,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
@@ -76,6 +77,7 @@ type NDPScanner struct {
 	*NDPScanOptions
 	results NDPScanResults
 	stats   NDPScanStats
+	logger  log.Logger
 }
 
 func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
@@ -86,6 +88,7 @@ func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
 		NDPScanOptions: opts,
 		results:        NDPScanResults{},
 		stats:          NDPScanStats{},
+		logger:         log.NewLogger(true),
 	}
 }
 
@@ -106,7 +109,7 @@ func (s *NDPScanner) Results() ScanResults {
 	if s.AddUnknownHostNames {
 		s.results.hasHostNames = true
 		fmt.Println()
-		pterm.Info.Println("Trying to resolve hostnames")
+		s.logger.Info("Trying to resolve hostnames")
 		numHosts := len(resultSet)
 		bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
 		if err != nil {
@@ -167,7 +170,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 	if !ok {
 		return NDPScanResults{}, fmt.Errorf("error capturing packets on that interface")
 	}
-	pterm.Info.Println("Probing host on interface: " + opts.Interface.Name)
+	scanner.logger.Info("Probing host on interface: " + opts.Interface.Name)
 
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
@@ -180,7 +183,7 @@ func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 		}
 	}
 
-	util.WaitTimeout(opts.ResponseTimeout, "response")
+	scanner.logger.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultChan
 	return results, nil
@@ -257,7 +260,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	defer handle.Close()
 	err = handle.SetBPFFilter("icmp6 and icmp6[0] == 136") // 136 is the number for ICMPv6TypeNeighborSolicitation
 	if err != nil {
-		fmt.Println("Error setting up packet capturing interface: ", err)
+		scanner.logger.Error("Error setting up packet capturing interface: ", err)
 		close(startSendChan)
 		return
 	}

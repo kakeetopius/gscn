@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/mdlayher/wifi"
 	"github.com/pterm/pterm"
@@ -46,6 +47,7 @@ type WiFiScanner struct {
 	WiFiScannerOptions
 	results WiFiScanResults
 	stats   WiFiScanStats
+	logger  log.Logger
 }
 
 func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
@@ -53,6 +55,7 @@ func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 		WiFiScannerOptions: opts,
 		results:            WiFiScanResults{},
 		stats:              WiFiScanStats{},
+		logger:             log.NewLogger(true),
 	}
 }
 

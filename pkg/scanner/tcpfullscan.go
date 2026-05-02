@@ -3,7 +3,6 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket/layers"
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
@@ -26,7 +26,6 @@ type TCPFullScanOptions struct {
 	PingTimeout         time.Duration
 	SkipPingScan        bool
 	MessageNotifier     notifier.Notifier
-	logger              io.Writer
 }
 
 type TCPFullScanResults struct {
@@ -68,6 +67,7 @@ type TCPFullScanner struct {
 	results    TCPFullScanResults
 	stats      TCPFullScanStats
 	hostStates map[netip.Addr]PingResult
+	logger     log.Logger
 }
 
 func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
@@ -79,7 +79,8 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 		results: TCPFullScanResults{
 			ResultMap: make(map[netip.Addr]HostResult),
 		},
-		stats: TCPFullScanStats{},
+		stats:  TCPFullScanStats{},
+		logger: log.NewLogger(true),
 	}
 }
 

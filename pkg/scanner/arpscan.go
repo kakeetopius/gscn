@@ -12,6 +12,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
+	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
@@ -79,6 +80,7 @@ type ARPScanner struct {
 	*ARPScanOptions
 	results ARPScanResults
 	stats   ARPScanStats
+	logger  log.Logger
 }
 
 func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
@@ -89,6 +91,7 @@ func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
 		ARPScanOptions: opts,
 		results:        ARPScanResults{},
 		stats:          ARPScanStats{},
+		logger:         log.NewLogger(true),
 	}
 }
 
@@ -109,7 +112,7 @@ func (s *ARPScanner) Results() ScanResults {
 	if s.AddUnknownHostNames {
 		s.results.hasHostnames = true
 		fmt.Println()
-		pterm.Info.Println("Trying to resolve hostnames")
+		s.logger.Info("Trying to resolve hostnames")
 		numHosts := len(resultSet)
 		bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
 		if err != nil {
@@ -183,7 +186,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 		return ARPScanResults{}, fmt.Errorf("could not capture packets on the interface")
 	}
 
-	pterm.Info.Println("Probing host(s) on interface: " + opts.Interface.Name)
+	scanner.logger.Info("Probing host(s) on interface: " + opts.Interface.Name)
 	numHosts := util.HostsInIP4Network(opts.Targets)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
@@ -210,7 +213,7 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 	}
 	bar.Stop()
 
-	util.WaitTimeout(opts.ResponseTimeout, "response")
+	scanner.logger.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
@@ -267,7 +270,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 	defer handle.Close()
 	err = handle.SetBPFFilter("arp")
 	if err != nil {
-		fmt.Println("Error setting up packet capturing interface: ", err)
+		scanner.logger.Error("Error setting up packet capturing interface: ", err)
 		close(startSendChan)
 		return
 	}
