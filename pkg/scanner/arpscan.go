@@ -159,11 +159,18 @@ func runArp(scanner *ARPScanner) (ARPScanResults, error) {
 
 	resultsChan := make(chan []ARPScanResult)
 	startSending := make(chan struct{})
+	errorChan := make(chan error)
 
-	go getARPReplies(ctx, scanner, resultsChan, startSending)
-	_, ok := <-startSending // wait for packet receiving go routine to finish setup.
-	if !ok {
-		return ARPScanResults{}, fmt.Errorf("could not capture packets on the interface")
+	go getARPReplies(ctx, scanner, resultsChan, startSending, errorChan)
+
+outer:
+	for {
+		select {
+		case err := <-errorChan:
+			return ARPScanResults{}, err
+		case <-startSending:
+			break outer
+		}
 	}
 
 	scanner.logger.Info("Probing host(s) on interface: " + opts.Interface.Name)
@@ -241,7 +248,7 @@ func sendArpPacket(iface *net.Interface, srcIP *netip.Addr, dstIP *netip.Addr) e
 	return nil
 }
 
-func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- []ARPScanResult, startSendChan chan<- struct{}) {
+func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- []ARPScanResult, startSendChan chan<- struct{}, errorChan chan<- error) {
 	opts := scanner.ARPScanOptions
 	handle, err := pcap.OpenLive(opts.Interface.Name, 1600, false, time.Millisecond)
 	if err != nil {
@@ -250,8 +257,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 	defer handle.Close()
 	err = handle.SetBPFFilter("arp")
 	if err != nil {
-		scanner.logger.Error("Error setting up packet capturing interface: ", err)
-		close(startSendChan)
+		errorChan <- err
 		return
 	}
 

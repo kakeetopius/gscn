@@ -157,16 +157,22 @@ func (s *NDPScanner) Stats() ScanStats {
 func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
 	opts := scanner.NDPScanOptions
 	resultChan := make(chan NDPScanResults)
-	startSendChan := make(chan struct{})
+	startSending := make(chan struct{})
+	errorChan := make(chan error)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go getNeighbourAdvertisements(ctx, scanner, resultChan, startSendChan)
+	go getNeighbourAdvertisements(ctx, scanner, resultChan, startSending, errorChan)
 
-	_, ok := <-startSendChan // wait for packet receving routine to set up
-	if !ok {
-		return NDPScanResults{}, fmt.Errorf("error capturing packets on that interface")
+outer:
+	for {
+		select {
+		case err := <-errorChan:
+			return NDPScanResults{}, err
+		case <-startSending:
+			break outer
+		}
 	}
 	scanner.logger.Info("Probing host on interface: " + opts.Interface.Name)
 
@@ -240,7 +246,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- NDPScanResults, startSendChan chan<- struct{}) {
+func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- NDPScanResults, startSendChan chan<- struct{}, errorChan chan<- error) {
 	iface := scanner.Interface
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
@@ -249,8 +255,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	defer handle.Close()
 	err = handle.SetBPFFilter("icmp6 and icmp6[0] == 136") // 136 is the number for ICMPv6TypeNeighborSolicitation
 	if err != nil {
-		scanner.logger.Error("Error setting up packet capturing interface: ", err)
-		close(startSendChan)
+		errorChan <- err
 		return
 	}
 
