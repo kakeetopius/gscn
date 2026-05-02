@@ -250,6 +250,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	iface := scanner.Interface
 	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
 	if err != nil {
+		errorChan <- err
 		return
 	}
 	defer handle.Close()
