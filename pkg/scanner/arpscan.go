@@ -3,7 +3,6 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"strings"
@@ -34,7 +33,6 @@ type ARPScanOptions struct {
 	AddUnknownHostNames bool
 	Workers             int
 	MessageNotifier     notifier.Notifier
-	logger              io.Writer
 }
 
 type ARPScanResult struct {
