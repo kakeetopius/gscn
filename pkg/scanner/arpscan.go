@@ -130,7 +130,7 @@ func (s *ARPScanner) Results() ScanResults {
 
 func (s *ARPScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
-		return nil
+		return fmt.Errorf("arpscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
@@ -250,7 +250,7 @@ func sendArpPacket(iface *util.Interface, srcIP *netip.Addr, dstIP *netip.Addr) 
 
 func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- []ARPScanResult, startSendChan chan<- struct{}, errorChan chan<- error) {
 	opts := scanner.ARPScanOptions
-	handle, err := pcap.OpenLive(opts.Interface.Name, 1600, false, time.Millisecond)
+	handle, err := pcap.OpenLive(opts.Interface.PcapName, 1600, false, time.Millisecond)
 	if err != nil {
 		errorChan <- err
 		return

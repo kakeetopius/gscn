@@ -73,7 +73,7 @@ func (s *WiFiScanner) Stats() ScanStats {
 
 func (s *WiFiScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
-		return nil
+		return fmt.Errorf("wifiscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {

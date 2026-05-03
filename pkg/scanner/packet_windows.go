@@ -26,7 +26,7 @@ func sendPacket(packet []byte, iface *util.Interface) error {
 }
 
 func setUpSocket(iface *util.Interface) error {
-	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
+	handle, err := pcap.OpenLive(iface.PcapName, 1600, false, time.Millisecond)
 	if err != nil {
 		return err
 	}

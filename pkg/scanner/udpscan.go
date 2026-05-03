@@ -96,7 +96,7 @@ func (s *UDPScanner) Scan() error {
 
 func (s *UDPScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
-		return nil
+		return fmt.Errorf("udpscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {

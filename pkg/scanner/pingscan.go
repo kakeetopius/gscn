@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -112,7 +114,7 @@ func (s *PingScanner) Results() ScanResults {
 
 func (s *PingScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
-		return nil
+		return fmt.Errorf("pingscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
@@ -135,6 +137,10 @@ func (s *PingScanner) Stats() ScanStats {
 }
 
 func runPing(scanner *PingScanner, targets []netip.Prefix) error {
+	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
+		return fmt.Errorf("ping scan requires root permissions")
+	}
+
 	spinner, err := pterm.DefaultSpinner.Start("Pinging Hosts")
 	if err != nil {
 		return err

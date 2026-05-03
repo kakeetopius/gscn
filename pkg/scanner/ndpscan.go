@@ -132,7 +132,7 @@ func (s *NDPScanner) Results() ScanResults {
 
 func (s *NDPScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
-		return nil
+		return fmt.Errorf("ndpscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
@@ -210,7 +210,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	}
 
 	icmp := &layers.ICMPv6{
-		TypeCode: layers.ICMPv6TypeNeighborSolicitation << 8,
+		TypeCode: layers.ICMPv6TypeNeighborSolicitation << 8, // typecode should be in first 8 bits of the 16 bit field
 	}
 
 	nd := &layers.ICMPv6NeighborSolicitation{
@@ -248,7 +248,7 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 
 func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- NDPScanResults, startSendChan chan<- struct{}, errorChan chan<- error) {
 	iface := scanner.Interface
-	handle, err := pcap.OpenLive(iface.Name, 1600, false, time.Millisecond)
+	handle, err := pcap.OpenLive(iface.PcapName, 1600, false, time.Millisecond)
 	if err != nil {
 		errorChan <- err
 		return
