@@ -17,7 +17,7 @@ var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any 
 type Interface struct {
 	Name string
 	net.Interface
-	address []net.Addr
+	address []netip.Prefix
 }
 
 type NetInterfaceProvider interface {
@@ -25,7 +25,7 @@ type NetInterfaceProvider interface {
 	Interfaces() ([]Interface, error)
 
 	// Returns IP Addresses of a particular interface.
-	AddrsOf(*Interface) ([]net.Addr, error)
+	AddrsOf(*Interface) []netip.Prefix
 
 	InterfaceByName(name string) (*Interface, error)
 }
@@ -42,17 +42,9 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*I
 	}
 
 	for _, iface := range allIfaces {
-		addrs, err := interfaceProvider.AddrsOf(&iface)
-		if err != nil {
-			return nil, err
-		}
+		addrs := interfaceProvider.AddrsOf(&iface)
 		for _, addr := range addrs {
-			addr, ok := addr.(*net.IPNet)
-			if !ok {
-				return nil, fmt.Errorf("could not convert to IPNet")
-			}
-
-			if addr.Contains(IPAddr.AsSlice()) {
+			if addr.Contains(IPAddr) {
 				return &iface, nil
 			}
 		}
@@ -68,23 +60,12 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*I
 // IPv4. An error is returned if address lookup fails, the interface has no addresses, conversion fails, or no address
 // of the requested family is found.
 func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *Interface, ip6 bool) (*netip.Prefix, error) {
-	addrs, err := interfaceProvider.AddrsOf(iface)
-	if err != nil {
-		return nil, err
-	}
+	addrs := interfaceProvider.AddrsOf(iface)
 	if len(addrs) < 1 {
 		return nil, fmt.Errorf("the interface %v has no IP addresses", iface.Name)
 	}
 
 	for _, addr := range addrs {
-		ipnet, ok := addr.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		addr, err := IPNetToPrefix(ipnet)
-		if err != nil {
-			return nil, err
-		}
 		if addr.Addr().Is6() == ip6 {
 			return &addr, nil
 		}
@@ -116,6 +97,23 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	ones, _ := ipnet.Mask.Size()
 
 	return netip.PrefixFrom(addr, ones), nil
+}
+
+func AddrSliceToPrefixSlice(addrs []net.Addr) ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(addrs))
+	for _, addr := range addrs {
+		ipnet, ok := addr.(*net.IPNet)
+		if !ok {
+			return nil, fmt.Errorf("invalid IPNet")
+		}
+		prefix, err := IPNetToPrefix(ipnet)
+		if err != nil {
+			return nil, err
+		}
+		prefixes = append(prefixes, prefix)
+	}
+
+	return prefixes, nil
 }
 
 // AddrIsPartOfNetworks reports whether addr is contained in at least one
@@ -165,25 +163,13 @@ func OnlyIPInRange(addr netip.Prefix) bool {
 //   - *netip.Addr: The selected source IP address.
 //   - error: Any error encountered during address selection.
 func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *Interface, targets []netip.Prefix, ip6 bool) (*netip.Addr, error) {
-	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
-	if err != nil {
-		return nil, err
-	}
+	ifaceAddrs := interfaceProvider.AddrsOf(iface)
 	if len(ifaceAddrs) < 1 {
 		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
 	}
 	var ifaceAddr *netip.Prefix
 outer:
 	for _, addr := range ifaceAddrs {
-		ipnet, ok := addr.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		addr, err := IPNetToPrefix(ipnet)
-		if err != nil {
-			return nil, err
-		}
-
 		if ip6 != addr.Addr().Is6() {
 			// if an IPv4 address is needed but the current address is not IPv6 and vice versa
 			continue
