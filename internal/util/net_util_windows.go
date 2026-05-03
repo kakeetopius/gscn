@@ -27,7 +27,7 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 
 	ifaces := make([]Interface, 0, len(devs))
 	for _, dev := range devs {
-		// first convert []pcap.Interfaces to []netip.Prefix
+		// first convert []pcap.InterfaceAddress to []netip.Prefix
 		addrs := pcapInterfaceAddressSliceToPrefixSlice(dev.Addresses)
 
 		// get a net.Interface using the addresses returned by pcap
@@ -129,16 +129,12 @@ func netInterfaceFromAddrs(givenAddrs []netip.Prefix) (net.Interface, error) {
 		if err != nil {
 			return net.Interface{}, err
 		}
-		for _, ifaceaddr := range ifaceAddrs {
-			iaddr, ok := ifaceaddr.(*net.IPNet)
-			if !ok {
-				return net.Interface{}, fmt.Errorf("could not get net.Interface")
-			}
-			ifacePrefix, err := IPNetToPrefix(iaddr)
-			if err != nil {
-				return net.Interface{}, err
-			}
-			if slices.Contains(givenAddrs, ifacePrefix) {
+		ifacePrefixes, err := AddrSliceToPrefixSlice(ifaceAddrs)
+		if err != nil {
+			return net.Interface{}, err
+		}
+		for _, ifaceaddr := range ifacePrefixes {
+			if slices.Contains(givenAddrs, ifaceaddr) {
 				return iface, nil
 			}
 		}
