@@ -14,21 +14,27 @@ A simple and flexible command-line tool for network operations such as host disc
 ## Requirements
 
 - Go (1.18 or newer) installed and available in your PATH for building from source.
-- libpcap development headers (e.g., `libpcap-dev` on Debian/Ubuntu, `libpcap-devel` on Fedora/CentOS) for packet capture features for Linux.
-- npcap for Windows.
+- For Linux: libpcap development headers (e.g., `libpcap-dev` on Debian/Ubuntu, `libpcap-devel` on Fedora/CentOS) for packet capture features.
+- For Windows: npcap which can be obtained [here](https://npcap.com/#download).
 
 ## Installation
 
+On Linux
 Clone the repository and build with Go:
 
 ```sh
 git clone https://github.com/kakeetopius/gscn.git
 cd gscn
-
 go build -o gscn .
 
-#OR to install to your PATH
+#OR to install to your PATH on linux
 sudo make install
+```
+
+On Windows.
+If npcap is successfully installed, you can simply install with Go.
+```sh
+go install github.com/kakeetopius/gscn@latest
 ```
 
 ## Usage
