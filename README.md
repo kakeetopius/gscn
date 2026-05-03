@@ -151,7 +151,7 @@ Create a configuration file at:
 
 **On Windows:**
 
-- `%APPDATA%\gscn.toml`
+- `%APPDATA%\gscn.toml` or for powershell env:/APPDATA/gscn.toml
 
 ```toml
 [notifier]
