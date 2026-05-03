@@ -58,7 +58,7 @@ func RunDiscover(opts DiscoverOpts) error {
 		var neterr error
 		if len(targets) == 0 {
 			var target *netip.Prefix
-			target, neterr = util.GetFirstIfaceIPNet(netInterfaceProvider, iface, useIP6)
+			target, neterr = util.GetFirstIfaceIPNet(&netInterfaceProvider, iface, useIP6)
 			if neterr != nil {
 				return neterr
 			}
@@ -72,7 +72,7 @@ func RunDiscover(opts DiscoverOpts) error {
 		}
 		// if no interface given but we have some IPs then find an interface on the same network as one of the targets.
 		for _, target := range targets {
-			iface, err = util.GetIfaceByIP(netInterfaceProvider, target.Addr())
+			iface, err = util.GetIfaceByIP(&netInterfaceProvider, target.Addr())
 			if err != nil {
 				if errors.Is(err, util.ErrNoInterfaceConnectedToTarget) {
 					continue
@@ -88,7 +88,7 @@ func RunDiscover(opts DiscoverOpts) error {
 	} else if len(targets) == 0 {
 		return fmt.Errorf("could not determine which targets to scan. Use the gscn discover --help for more information")
 	}
-	err = util.VerifyInterface(netInterfaceProvider, iface)
+	err = util.VerifyInterface(&netInterfaceProvider, iface)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func RunDiscover(opts DiscoverOpts) error {
 		}
 		sourceAddr = source
 	} else {
-		source, nerr := util.GetSourceIPFromInterface(netInterfaceProvider, iface, targets, useIP6)
+		source, nerr := util.GetSourceIPFromInterface(&netInterfaceProvider, iface, targets, useIP6)
 		if nerr != nil {
 			return err
 		}

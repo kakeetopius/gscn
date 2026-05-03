@@ -3,31 +3,49 @@ package util
 import (
 	"fmt"
 	"net"
+	"net/netip"
 )
 
 // go: build linux
 
-type RealNetInterfaceProvider struct{}
+type RealNetInterfaceProvider struct {
+	interfaces    []Interface
+	isInitialised bool
+}
 
-func (RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
+func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
+	if r.isInitialised {
+		return r.interfaces, nil
+	}
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
 
-	addresses := make([]Interface, 0, len(ifaces))
+	interfaces := make([]Interface, 0, len(ifaces))
 	for _, iface := range ifaces {
-		addresses = append(addresses, Interface{
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		prefixes, err := AddrSliceToPrefixSlice(addrs)
+		if err != nil {
+			return nil, err
+		}
+		interfaces = append(interfaces, Interface{
 			Name:      iface.Name,
 			Interface: iface,
+			address:   prefixes,
 		})
 	}
 
-	return addresses, nil
+	r.interfaces = interfaces
+	r.isInitialised = true
+	return interfaces, nil
 }
 
-func (RealNetInterfaceProvider) AddrsOf(iface *Interface) ([]net.Addr, error) {
-	return iface.Addrs()
+func (RealNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
+	return iface.address
 }
 
 func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
@@ -35,9 +53,18 @@ func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error)
 	if neterr != nil {
 		return nil, neterr
 	}
+	addrs, err := netIface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	prefixes, err := AddrSliceToPrefixSlice(addrs)
+	if err != nil {
+		return nil, err
+	}
 	return &Interface{
 		Name:      netIface.Name,
 		Interface: *netIface,
+		address:   prefixes,
 	}, nil
 }
 
@@ -55,10 +82,7 @@ func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) e
 		return fmt.Errorf("interface %v is not running", iface.Name)
 	}
 
-	ifaceAddrs, err := interfaceProvider.AddrsOf(iface)
-	if err != nil {
-		return err
-	}
+	ifaceAddrs := interfaceProvider.AddrsOf(iface)
 	if len(ifaceAddrs) < 1 {
 		return fmt.Errorf("interface %v has no IP addresses", iface.Name)
 	}

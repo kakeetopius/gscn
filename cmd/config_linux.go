@@ -7,6 +7,8 @@ import (
 	"path"
 )
 
+// go: build linux
+
 func ConfigDir() (string, error) {
 	home := ""
 	if os.Geteuid() == 0 {

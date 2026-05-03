@@ -67,10 +67,6 @@ func initialiseConfig() error {
 		// Use config file from the flag.
 		config.SetConfigFile(cfgFile)
 	} else {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
 		configDir, err := ConfigDir()
 		if err != nil {
 			return err
@@ -78,7 +74,6 @@ func initialiseConfig() error {
 		config.SetConfigName("gscn")
 		config.SetConfigType("toml")
 		config.AddConfigPath(configDir)
-		config.AddConfigPath(cwd)
 	}
 
 	config.AutomaticEnv() // read in environment variables that match
