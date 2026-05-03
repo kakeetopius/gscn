@@ -3,6 +3,7 @@ package discover
 import (
 	"fmt"
 	"net/netip"
+	"runtime"
 	"syscall"
 
 	"github.com/jsimonetti/rtnetlink/rtnl"
@@ -11,6 +12,9 @@ import (
 )
 
 func NDPResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) (*scanner.NDPScanResults, error) {
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
+	}
 	results := scanner.NDPScanResults{
 		ResultSet: make([]scanner.NDPScanResult, 0, 5),
 	}

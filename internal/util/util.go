@@ -15,8 +15,13 @@ import (
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
 
 type Interface struct {
-	Name string
+	// PcapName is the interface's name that can be used by pcap.OpenLive() function to set up a pcap handle. On linux it is the same as the Name field
+	// in net.Interface but on Windows it is different.
+	PcapName string
+
 	net.Interface
+
+	// Addresses of the interface all converted to netip.Prefix.
 	address []netip.Prefix
 }
 
@@ -27,6 +32,7 @@ type NetInterfaceProvider interface {
 	// Returns IP Addresses of a particular interface.
 	AddrsOf(*Interface) []netip.Prefix
 
+	// Returns an interface with the given name
 	InterfaceByName(name string) (*Interface, error)
 }
 
@@ -99,6 +105,8 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	return netip.PrefixFrom(addr, ones), nil
 }
 
+// AddrSliceToPrefixSlice converts a slice of net.Addr to a slice of netip.Prefix.
+// It returns an error if any address is not an *net.IPNet or if conversion fails.
 func AddrSliceToPrefixSlice(addrs []net.Addr) ([]netip.Prefix, error) {
 	prefixes := make([]netip.Prefix, 0, len(addrs))
 	for _, addr := range addrs {
@@ -184,6 +192,7 @@ outer:
 		}
 	}
 
+	// If an address on the same network as one of the targets was not found, default to the fisrt IP address found on the interface of the same address family.
 	if ip6 && ifaceAddr == nil {
 		defaultIP6Addr, err := GetFirstIfaceIPNet(interfaceProvider, iface, true)
 		if err != nil {
@@ -246,4 +255,26 @@ func Service(s string) string {
 // MACVendor returns the vendor name for a given MAC address.
 func MACVendor(mac string) string {
 	return oui.Vendor(mac)
+}
+
+// VerifyInterface validates whether iface is suitable for scanning operations.
+//
+// The interface must not be loopback, must be administratively up, must be
+// running, and must have at least one assigned address as reported by
+// interfaceProvider. It returns an error describing the first failed check.
+func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) error {
+	if iface.Flags&net.FlagLoopback != 0 {
+		return fmt.Errorf("cannot scan on a loopback interface")
+	} else if iface.Flags&net.FlagUp == 0 {
+		return fmt.Errorf("interface %v is administratively down", iface.Name)
+	} else if iface.Flags&net.FlagRunning == 0 {
+		return fmt.Errorf("interface %v is not running", iface.Name)
+	}
+
+	ifaceAddrs := interfaceProvider.AddrsOf(iface)
+	if len(ifaceAddrs) < 1 {
+		return fmt.Errorf("interface %v has no IP addresses", iface.Name)
+	}
+
+	return nil
 }

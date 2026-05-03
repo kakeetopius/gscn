@@ -86,7 +86,7 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 
 func (s *TCPFullScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
-		return nil
+		return fmt.Errorf("tcpfullscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
