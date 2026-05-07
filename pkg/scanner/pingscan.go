@@ -193,8 +193,13 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 	for job := range jobs {
 		pinger := probing.New(job.Target.String())
 		pinger.SetPrivileged(true)
+
 		pinger.Count = job.PingCount
-		pinger.Timeout = scanner.PingTimeout
+		pingTimeout := scanner.PingTimeout
+		if pingTimeout == 0*time.Second {
+			pingTimeout = time.Duration(job.PingCount) * time.Second
+		}
+		pinger.Timeout = pingTimeout
 
 		pingResult := PingResult{
 			HostState: HostStateDown,
