@@ -12,17 +12,21 @@ func DiscoverCmd() *cobra.Command {
 	discoverOpts.Debug = true
 
 	discoverCmd := cobra.Command{
-		Use:     "discover",
+		Use:     "discover [targets]",
 		Short:   "Discover hosts on the local network using ARP for IPv4 or ICMP Neighbour Discovery for IPv6.",
 		Aliases: []string{"d"},
 		Example: "\nTargets can be provided in the following formats:\n" +
-			"  gscn discover -t 10.1.1.1 # Single Host\n" +
-			"  gscn discover -t 10.1.1.1/24 # CIDR Notation\n" +
-			"  gscn discover -t 10.1.1.1-5 # IP Range\n" +
-			"  gscn discover -t 10.1.1.1,10.2.2.2/24,10.4.4.4-10 # Comma Separated List\n",
+			"  gscn discover 10.1.1.1 # Single Host\n" +
+			"  gscn discover 10.1.1.1/24 # CIDR Notation\n" +
+			"  gscn discover 10.1.1.1-5 # IP Range\n" +
+			"  gscn discover 10.1.1.1,10.2.2.2/24,10.4.4.4-10 # Comma Separated List\n",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			discoverOpts.Notify = true
+			discoverOpts.Notify = notify
 			discoverOpts.Config = config
+			if len(args) == 1 {
+				discoverOpts.TargetsString = args[0]
+			}
 			return discover.RunDiscover(discoverOpts)
 		},
 	}
@@ -30,7 +34,6 @@ func DiscoverCmd() *cobra.Command {
 	discoverCmd.Flags().SortFlags = false
 	discoverCmd.PersistentFlags().SortFlags = false
 
-	discoverCmd.Flags().StringVarP(&discoverOpts.TargetsString, "target", "t", "", "IP address(es) of the host to scan.")
 	discoverCmd.Flags().StringVarP(&discoverOpts.InterfaceString, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnet the interface is in is scanned.")
 	discoverCmd.Flags().StringVarP(&discoverOpts.SourceAddrString, "source", "s", "", "Source IP Address to put in the solicting packets.")
 

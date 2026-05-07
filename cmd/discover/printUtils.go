@@ -30,10 +30,10 @@ func displayARPResults(arpResults *scanner.ARPScanResults, arpStats *scanner.ARP
 				if hostName == "" {
 					hostName = "(unknown)"
 				}
-				tableData = append(tableData, []string{result.IPAddr, result.MacAddr, vendor, hostName})
+				tableData = append(tableData, []string{result.IPAddr.String(), result.MacAddr.String(), vendor, hostName})
 				continue
 			}
-			tableData = append(tableData, []string{result.IPAddr, result.MacAddr, vendor})
+			tableData = append(tableData, []string{result.IPAddr.String(), result.MacAddr.String(), vendor})
 		}
 		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
 	}
@@ -68,10 +68,10 @@ func displayNDPResults(ndpResults *scanner.NDPScanResults, ndpStats *scanner.NDP
 				if hostName == "" {
 					hostName = "(unknown)"
 				}
-				tableData = append(tableData, []string{result.IPAddr, result.MacAddr, vendor, hostName})
+				tableData = append(tableData, []string{result.IPAddr.String(), result.MacAddr, vendor, hostName})
 				continue
 			}
-			tableData = append(tableData, []string{result.IPAddr, result.MacAddr, vendor})
+			tableData = append(tableData, []string{result.IPAddr.String(), result.MacAddr, vendor})
 		}
 		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
 	}

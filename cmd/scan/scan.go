@@ -116,7 +116,7 @@ func RunScan(opts ScanOpts) error {
 		if err != nil {
 			return err
 		}
-		results := pingScanner.Results().(scanner.PingScanResults)
+		results := pingScanner.SortedResults()
 		stats := pingScanner.Stats().(scanner.PingStats)
 		printPingScanResults(results, stats, &opts)
 		if notify {
@@ -217,7 +217,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOp
 			hostStateStyle = pterm.FgRed
 		}
 		fmt.Printf("Host State: %s\n", hostStateStyle.Sprint(hostResults.HostState))
-		fmt.Println("Average RTT: ", hostResults.AverageRTT.Truncate(time.Millisecond))
+		fmt.Println("Average RTT: ", hostResults.AverageRTT.Truncate(time.Microsecond))
 		if len(tableData) > 1 && hostResults.HostState == scanner.HostStateUp {
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 		}
@@ -234,16 +234,16 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOp
 	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
 }
 
-func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats, opts *ScanOpts) {
+func printPingScanResults(results []scanner.PingResult, stats scanner.PingStats, opts *ScanOpts) {
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State", "Average RTT"}}
 	totalHosts := stats.DownHosts + stats.UpHosts
-	for host, result := range results.ResultMap {
+	for _, result := range results {
 		if result.HostState == scanner.HostStateDown && opts.PrintOnlyUp {
 			continue
 		}
 
-		hostIdentity := host.String()
+		hostIdentity := result.IP.String()
 		if result.HostState == scanner.HostStateDown && totalHosts > 256 {
 			continue // do not add hosts that are down if scanned hosts are above 10
 		}
@@ -257,7 +257,7 @@ func printPingScanResults(results scanner.PingScanResults, stats scanner.PingSta
 		case scanner.HostStateDown:
 			hostStateStyle = pterm.FgRed
 		}
-		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState), result.AverageRTT.Truncate(time.Millisecond).String()})
+		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState), result.AverageRTT.Truncate(time.Microsecond).String()})
 	}
 	if len(tableData) > 1 {
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()

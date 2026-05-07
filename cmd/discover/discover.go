@@ -68,7 +68,7 @@ func RunDiscover(opts DiscoverOpts) error {
 		}
 	} else {
 		if len(targets) == 0 {
-			return fmt.Errorf("could not determine which hosts scan. Use gscn discover --help for mor information")
+			return fmt.Errorf("could not determine which hosts scan. Use gscn discover --help for more information")
 		}
 		// if no interface given but we have some IPs then find an interface on the same network as one of the targets.
 		for _, target := range targets {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,13 @@ import (
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
+
+type ARPScanner struct {
+	*ARPScanOptions
+	results ARPScanResults
+	stats   ARPScanStats
+	logger  log.Logger
+}
 
 type ARPScanOptions struct {
 	Targets             []netip.Prefix
@@ -29,51 +37,22 @@ type ARPScanOptions struct {
 	MessageNotifier     notifier.Notifier
 }
 
-type ARPScanResult struct {
-	IPAddr   string
-	MacAddr  string
-	HostName string
-	Vendor   string
-}
-
 type ARPScanResults struct {
 	ResultSet    []ARPScanResult
 	hasHostnames bool
 	hasVendors   bool
 }
 
-func (r *ARPScanResults) HasHostNames() bool {
-	return r.hasHostnames
-}
-
-func (r *ARPScanResults) HasVendors() bool {
-	return r.hasVendors
-}
-
-func (ARPScanResults) ResultType() ScanResultType {
-	return ARPScanResultType
-}
-
-func (r ARPScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
-
-	for _, result := range r.ResultSet {
-		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
-	}
-
-	return stringBuilder.String()
+type ARPScanResult struct {
+	IPAddr   netip.Addr
+	MacAddr  net.HardwareAddr
+	HostName string
+	Vendor   string
 }
 
 type ARPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
-}
-type ARPScanner struct {
-	*ARPScanOptions
-	results ARPScanResults
-	stats   ARPScanStats
-	logger  log.Logger
 }
 
 func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
@@ -114,7 +93,7 @@ func (s *ARPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.ResponseTimeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr.String(), s.ResponseTimeout)
 			bar.Increment()
 		}
 		bar.Stop()
@@ -122,9 +101,15 @@ func (s *ARPScanner) Results() ScanResults {
 	if s.WithVendorInfo {
 		s.results.hasVendors = true
 		for i := range resultSet {
-			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
+			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr.String())
 		}
 	}
+
+	slices.SortFunc(resultSet, func(a, b ARPScanResult) int {
+		return a.IPAddr.Compare(b.IPAddr)
+	})
+
+	s.results.ResultSet = resultSet
 	return s.results
 }
 
@@ -150,6 +135,29 @@ func (s *ARPScanner) SendResultsViaNotifier() error {
 
 func (s *ARPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (r *ARPScanResults) HasHostNames() bool {
+	return r.hasHostnames
+}
+
+func (r *ARPScanResults) HasVendors() bool {
+	return r.hasVendors
+}
+
+func (ARPScanResults) ResultType() ScanResultType {
+	return ARPScanResultType
+}
+
+func (r ARPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
+
+	for _, result := range r.ResultSet {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	}
+
+	return stringBuilder.String()
 }
 
 func runArp(scanner *ARPScanner) (ARPScanResults, error) {
@@ -183,20 +191,21 @@ outer:
 
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
+		networkAddr := IPaddr
+		broadCast := broadCastAddr(target)
 		for target.Contains(IPaddr) {
-			if IPaddr == opts.Source { // skip interfaces' own ip
-				bar.Increment()
+			if (IPaddr == networkAddr || IPaddr == broadCast) && !target.IsSingleIP() {
 				IPaddr = IPaddr.Next()
 				continue
-			} else {
-				err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
-				if err != nil {
-					return ARPScanResults{}, err
-				}
-				scanner.stats.PacketsSent++
-				bar.Increment()
-				IPaddr = IPaddr.Next()
 			}
+
+			err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
+			if err != nil {
+				return ARPScanResults{}, err
+			}
+			scanner.stats.PacketsSent++
+			bar.Increment()
+			IPaddr = IPaddr.Next()
 		}
 	}
 
@@ -279,33 +288,39 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 			if !ok {
 				continue
 			}
-			if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
-				arpPacket, _ := arpLayer.(*layers.ARP)
-				if arpPacket.Operation == layers.ARPReply {
-					ipAddr, ok := netip.AddrFromSlice(arpPacket.SourceProtAddress)
-					if !ok {
-						continue
-					}
-					if !util.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
-						// skip responses outside the specified network
-						continue
-					}
-					if ipAddr == opts.Source {
-						// skip responses from the capturing interface to other devices.
-						continue
-					}
-					scanner.stats.PacketsReceived++
-					_, alreadyReceived := receivedFrom[ipAddr]
-					if alreadyReceived {
-						continue
-					}
-					receivedFrom[ipAddr] = struct{}{}
-					results = append(results, ARPScanResult{
-						IPAddr:  ipAddr.String(),
-						MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress).String(),
-					})
-				}
+			arpLayer := packet.Layer(layers.LayerTypeARP)
+			if arpLayer == nil {
+				continue
 			}
+			arpPacket, ok := arpLayer.(*layers.ARP)
+			if !ok {
+				continue
+			}
+			if arpPacket.Operation != layers.ARPReply {
+				continue
+			}
+			ipAddr, ok := netip.AddrFromSlice(arpPacket.SourceProtAddress)
+			if !ok {
+				continue
+			}
+			if !util.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
+				// skip responses outside the specified network
+				continue
+			}
+			if ipAddr == opts.Source {
+				// skip responses from the capturing interface to other devices.
+				continue
+			}
+			scanner.stats.PacketsReceived++
+			_, alreadyReceived := receivedFrom[ipAddr]
+			if alreadyReceived {
+				continue
+			}
+			receivedFrom[ipAddr] = struct{}{}
+			results = append(results, ARPScanResult{
+				IPAddr:  ipAddr,
+				MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress),
+			})
 		}
 	}
 }
@@ -322,4 +337,18 @@ func ReverseLookup(addr string, timeout time.Duration) string {
 		return names[0]
 	}
 	return ""
+}
+
+func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
+	networkAddr := networkPrefix.Masked().Addr()
+	hostBitLen := 32 - networkPrefix.Bits()
+
+	ip := networkAddr.As4()
+
+	ipUint := uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
+	mask := uint32((1 << hostBitLen) - 1)
+
+	broadCast := ipUint | mask
+
+	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,13 @@ import (
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
+
+type NDPScanner struct {
+	*NDPScanOptions
+	results NDPScanResults
+	stats   NDPScanStats
+	logger  log.Logger
+}
 
 type NDPScanOptions struct {
 	Targets             []netip.Prefix
@@ -30,8 +38,14 @@ type NDPScanOptions struct {
 	MessageNotifier     notifier.Notifier
 }
 
+type NDPScanResults struct {
+	ResultSet    []NDPScanResult
+	hasHostNames bool
+	hasVendors   bool
+}
+
 type NDPScanResult struct {
-	IPAddr   string
+	IPAddr   netip.Addr
 	MacAddr  string
 	HostName string
 	Vendor   string
@@ -40,42 +54,6 @@ type NDPScanResult struct {
 type NDPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
-}
-
-type NDPScanResults struct {
-	ResultSet    []NDPScanResult
-	hasHostNames bool
-	hasVendors   bool
-}
-
-func (NDPScanResults) ResultType() ScanResultType {
-	return NDPScanResultType
-}
-
-func (r NDPScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintln(&stringBuilder, "NDP Scan Results")
-
-	for _, result := range r.ResultSet {
-		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
-	}
-
-	return stringBuilder.String()
-}
-
-func (r NDPScanResults) HasHostNames() bool {
-	return r.hasHostNames
-}
-
-func (r NDPScanResults) HasVendors() bool {
-	return r.hasVendors
-}
-
-type NDPScanner struct {
-	*NDPScanOptions
-	results NDPScanResults
-	stats   NDPScanStats
-	logger  log.Logger
 }
 
 func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
@@ -116,7 +94,7 @@ func (s *NDPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.ResponseTimeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr.String(), s.ResponseTimeout)
 			bar.Increment()
 		}
 		bar.Stop()
@@ -127,6 +105,12 @@ func (s *NDPScanner) Results() ScanResults {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
 		}
 	}
+
+	slices.SortFunc(resultSet, func(a, b NDPScanResult) int {
+		return a.IPAddr.Compare(b.IPAddr)
+	})
+
+	s.results.ResultSet = resultSet
 	return s.results
 }
 
@@ -152,6 +136,29 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 
 func (s *NDPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (NDPScanResults) ResultType() ScanResultType {
+	return NDPScanResultType
+}
+
+func (r NDPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintln(&stringBuilder, "NDP Scan Results")
+
+	for _, result := range r.ResultSet {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	}
+
+	return stringBuilder.String()
+}
+
+func (r NDPScanResults) HasHostNames() bool {
+	return r.hasHostNames
+}
+
+func (r NDPScanResults) HasVendors() bool {
+	return r.hasVendors
 }
 
 func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
@@ -275,34 +282,36 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 			if !ok {
 				continue
 			}
-			if icmpLayer := packet.Layer(layers.LayerTypeICMPv6NeighborAdvertisement); icmpLayer != nil {
-				ip6layer := packet.Layer(layers.LayerTypeIPv6)
-				ip6packet, ok := ip6layer.(*layers.IPv6)
-				if !ok {
-					continue
-				}
-				srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-				if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
-					continue
-				}
-				scanner.stats.PacketsReceived++
-				icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
-				var hwAddr net.HardwareAddr
-				for _, icmpOption := range icmpPacket.Options {
-					if icmpOption.Type == layers.ICMPv6OptTargetAddress {
-						hwAddr = net.HardwareAddr(icmpOption.Data)
-						break
-					}
-				}
-
-				var result NDPScanResult
-				result.IPAddr = srcIP.String()
-				result.MacAddr = hwAddr.String()
-				if icmpPacket.Router() {
-					result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
-				}
-				results.ResultSet = append(results.ResultSet, result)
+			icmpLayer := packet.Layer(layers.LayerTypeICMPv6NeighborAdvertisement)
+			if icmpLayer == nil {
+				continue
 			}
+			ip6layer := packet.Layer(layers.LayerTypeIPv6)
+			ip6packet, ok := ip6layer.(*layers.IPv6)
+			if !ok {
+				continue
+			}
+			srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
+			if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
+				continue
+			}
+			scanner.stats.PacketsReceived++
+			icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
+			var hwAddr net.HardwareAddr
+			for _, icmpOption := range icmpPacket.Options {
+				if icmpOption.Type == layers.ICMPv6OptTargetAddress {
+					hwAddr = net.HardwareAddr(icmpOption.Data)
+					break
+				}
+			}
+
+			var result NDPScanResult
+			result.IPAddr = srcIP
+			result.MacAddr = hwAddr.String()
+			if icmpPacket.Router() {
+				result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
+			}
+			results.ResultSet = append(results.ResultSet, result)
 		}
 	}
 }

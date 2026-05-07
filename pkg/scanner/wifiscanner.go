@@ -11,6 +11,13 @@ import (
 	"github.com/pterm/pterm"
 )
 
+type WiFiScanner struct {
+	WiFiScannerOptions
+	results WiFiScanResults
+	stats   WiFiScanStats
+	logger  log.Logger
+}
+
 type WiFiScannerOptions struct {
 	InterfaceName   string
 	AutoInterface   bool
@@ -21,34 +28,7 @@ type WiFiScanResults struct {
 	AccessPoints []*wifi.BSS
 }
 
-func (r WiFiScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "WiFi Scan Results\n\n")
-	for _, ap := range r.AccessPoints {
-		fmt.Fprintln(&stringBuilder, "SSID: ", ap.SSID)
-		fmt.Fprintln(&stringBuilder, "BSSID: ", ap.BSSID)
-		fmt.Fprintln(&stringBuilder, "Status: ", ap.Status.String())
-		fmt.Fprintln(&stringBuilder, "Freq (MHz): ", ap.Frequency)
-		fmt.Fprintln(&stringBuilder, "Channel: ", FreqToChannel(ap.Frequency))
-		fmt.Fprintln(&stringBuilder, "Strength (dBm): ", ap.Signal/100)
-		fmt.Fprintln(&stringBuilder, "Load: ", ap.Load.String())
-		fmt.Fprintln(&stringBuilder)
-	}
-	return stringBuilder.String()
-}
-
-func (WiFiScanResults) ResultType() ScanResultType {
-	return WifiScanResultType
-}
-
 type WiFiScanStats struct{}
-
-type WiFiScanner struct {
-	WiFiScannerOptions
-	results WiFiScanResults
-	stats   WiFiScanStats
-	logger  log.Logger
-}
 
 func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 	return &WiFiScanner{
@@ -89,6 +69,26 @@ func (s *WiFiScanner) SendResultsViaNotifier() error {
 
 	spinner.Success("Results Sent")
 	return nil
+}
+
+func (r WiFiScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "WiFi Scan Results\n\n")
+	for _, ap := range r.AccessPoints {
+		fmt.Fprintln(&stringBuilder, "SSID: ", ap.SSID)
+		fmt.Fprintln(&stringBuilder, "BSSID: ", ap.BSSID)
+		fmt.Fprintln(&stringBuilder, "Status: ", ap.Status.String())
+		fmt.Fprintln(&stringBuilder, "Freq (MHz): ", ap.Frequency)
+		fmt.Fprintln(&stringBuilder, "Channel: ", FreqToChannel(ap.Frequency))
+		fmt.Fprintln(&stringBuilder, "Strength (dBm): ", ap.Signal/100)
+		fmt.Fprintln(&stringBuilder, "Load: ", ap.Load.String())
+		fmt.Fprintln(&stringBuilder)
+	}
+	return stringBuilder.String()
+}
+
+func (WiFiScanResults) ResultType() ScanResultType {
+	return WifiScanResultType
 }
 
 func runWifiScan(scanner *WiFiScanner) error {

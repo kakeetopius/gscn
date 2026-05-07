@@ -33,6 +33,7 @@ sudo make install
 
 On Windows.
 If npcap is successfully installed, you can simply install with Go.
+
 ```sh
 go install github.com/kakeetopius/gscn@latest
 ```
@@ -50,15 +51,15 @@ gscn discover [flags]
 
 - Discover a single host:
   ```sh
-  gscn discover -t 10.1.1.1
+  gscn discover 10.1.1.1
   ```
 - Discover all hosts that are up in a local subnet:
   ```sh
-  gscn discover -t 10.1.1.1/24
+  gscn discover 10.1.1.1/24
   ```
 - Check if a range of IPs are up on a local network:
   ```sh
-  gscn discover -t 10.1.1.1-5
+  gscn discover 10.1.1.1-5
   ```
 - Discover hosts on the network an interface is connected to:
   ```sh
@@ -66,11 +67,11 @@ gscn discover [flags]
   ```
 - Use IPv6 neighbor discovery:
   ```sh
-  gscn discover -6 -t 2001:abcd:db22::1
+  gscn discover -6 2001:abcd:db22::1
   ```
 - Discover hosts and send results via Discord/Email:
   ```sh
-  gscn discover -t 10.1.1.1/24 --notify
+  gscn discover 10.1.1.1/24 --notify
   ```
   </details>
 
@@ -85,27 +86,27 @@ gscn scan [flags]
 
 - Scan a single host for specific ports:
   ```sh
-  gscn scan -t 10.1.1.1 -p 80,443
+  gscn scan 10.1.1.1 -p 80,443
   ```
 - Scan a subnet for a port range:
   ```sh
-  gscn scan -t 10.1.1.1/24 -p 1-100
+  gscn scan 10.1.1.1/24 -p 1-100
   ```
 - Scan multiple targets:
   ```sh
-  gscn scan -t 10.1.1.1,bing.com,10.4.4.4-10 -p 1-100,443,8080
+  gscn scan 10.1.1.1,bing.com,10.4.4.4-10 -p 1-100,443,8080
   ```
 - Use UDP scan:
   ```sh
-  gscn scan -t 10.1.1.1,2001:acad:abcd::1 -p 53,500,989 --udp
+  gscn scan 10.1.1.1,2001:acad:abcd::1 -p 53,500,989 --udp
   ```
 - Carry out a ping scan for a whole network to check which hosts are up with 200 concurrent workers
   ```sh
-  gscn scan -t 10.1.1.1/24 --ping --workers 200
+  gscn scan 10.1.1.1/24 --ping --workers 200
   ```
 - Scan and notify results:
   ```sh
-  gscn scan -t 10.1.1.1/24 -p 1-100 --notify
+  gscn scan 10.1.1.1/24 -p 1-100 --notify
   ```
   </details>
 

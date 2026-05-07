@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,14 @@ import (
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
+
+type TCPFullScanner struct {
+	TCPFullScanOptions
+	results    TCPFullScanResults
+	stats      TCPFullScanStats
+	hostStates map[netip.Addr]PingResult
+	logger     log.Logger
+}
 
 type TCPFullScanOptions struct {
 	Targets             []netip.Prefix
@@ -33,42 +42,8 @@ type TCPFullScanResults struct {
 	ResultMap map[netip.Addr]HostResult
 }
 
-func (TCPFullScanResults) ResultType() ScanResultType {
-	return TCPFullScanScanResultType
-}
-
-func (r TCPFullScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "TCP Full Scan Results.\n\n")
-	for host, result := range r.ResultMap {
-		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
-		if result.HostName == "" {
-			fmt.Fprintf(&stringBuilder, "\n")
-		} else {
-			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
-		}
-		for _, port := range result.Ports {
-			if port.State == PortStateOpen {
-				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
-			}
-		}
-		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
-	}
-	return stringBuilder.String()
-}
-
 type TCPFullScanStats struct {
 	TotalNumOfHosts int
-}
-
-type TCPFullScanner struct {
-	TCPFullScanOptions
-	results    TCPFullScanResults
-	stats      TCPFullScanStats
-	hostStates map[netip.Addr]PingResult
-	logger     log.Logger
 }
 
 func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
@@ -127,11 +102,43 @@ func (s *TCPFullScanner) Results() ScanResults {
 			s.results.ResultMap[host] = results
 		}
 	}
+
+	for _, hostResult := range s.results.ResultMap {
+		slices.SortFunc(hostResult.Ports, func(a, b Port) int {
+			return int(a.Number - b.Number)
+		})
+	}
 	return s.results
 }
 
 func (s *TCPFullScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (TCPFullScanResults) ResultType() ScanResultType {
+	return TCPFullScanScanResultType
+}
+
+func (r TCPFullScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "TCP Full Scan Results.\n\n")
+	for host, result := range r.ResultMap {
+		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
 
 func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
@@ -192,6 +199,8 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 	scanResults := TCPFullScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
 	}
+	numberOfPortsToScan := len(scanner.TargetPorts)
+
 	defer func() {
 		scanResultsChan <- scanResults
 	}()
@@ -206,12 +215,12 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 			hostIP := result.HostIP
 			hostResults, found := scanResults.ResultMap[hostIP]
 			if !found {
-				hostResults.Ports = make(map[uint]Port)
+				hostResults.Ports = make([]Port, 0, numberOfPortsToScan)
 				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 				hostResults.AverageRTT = scanner.hostStates[hostIP].AverageRTT
 			}
-			hostResults.Ports[result.Port.Number] = result.Port
+			hostResults.Ports = append(hostResults.Ports, result.Port)
 			switch result.Port.State {
 			case PortStateOpen:
 				hostResults.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
