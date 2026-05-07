@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +17,11 @@ import (
 	"github.com/pterm/pterm"
 )
 
-type PingScanJob struct {
-	Target    netip.Addr
-	PingCount int
+type PingScanner struct {
+	PingScanOptions
+	results PingScanResults
+	stats   PingStats
+	logger  log.Logger
 }
 
 type PingScanOptions struct {
@@ -31,6 +34,10 @@ type PingScanOptions struct {
 	PingCount           int
 }
 
+type PingScanResults struct {
+	ResultMap map[netip.Addr]PingResult
+}
+
 type PingResult struct {
 	HostState
 	IP         netip.Addr
@@ -38,46 +45,14 @@ type PingResult struct {
 	AverageRTT time.Duration
 }
 
-type PingScanResults struct {
-	ResultMap map[netip.Addr]PingResult
-}
-
-func (r PingScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	up := 0
-	fmt.Fprintf(&stringBuilder, "Ping Scan Results.\n\n")
-	for addr, result := range r.ResultMap {
-		if result.HostState == HostStateDown {
-			continue
-		}
-		up++
-		fmt.Fprintf(&stringBuilder, "%v", addr.String())
-		if result.HostName != "" {
-			fmt.Fprintf(&stringBuilder, " (%v)", result.HostName)
-		}
-		fmt.Fprintf(&stringBuilder, "->\t%v\n", result.String())
-	}
-	fmt.Fprintf(&stringBuilder, "\nTotal Hosts Scanned: %v\n", len(r.ResultMap))
-	fmt.Fprintf(&stringBuilder, "Hosts that are Up: %v\n", up)
-	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r.ResultMap)-up)
-
-	return stringBuilder.String()
-}
-
-func (r PingScanResults) ResultType() ScanResultType {
-	return PingScanResultType
-}
-
 type PingStats struct {
 	UpHosts   int
 	DownHosts int
 }
 
-type PingScanner struct {
-	PingScanOptions
-	results PingScanResults
-	stats   PingStats
-	logger  log.Logger
+type PingScanJob struct {
+	Target    netip.Addr
+	PingCount int
 }
 
 func NewPingScanner(opts PingScanOptions) *PingScanner {
@@ -112,7 +87,28 @@ func (s *PingScanner) Results() ScanResults {
 			s.results.ResultMap[host] = results
 		}
 	}
+
 	return s.results
+}
+
+func (s *PingScanner) SortedResults() []PingResult {
+	pingScanResults := s.Results().(PingScanResults)
+	ipAddrs := make([]netip.Addr, 0, len(pingScanResults.ResultMap))
+
+	for addr := range pingScanResults.ResultMap {
+		ipAddrs = append(ipAddrs, addr)
+	}
+
+	slices.SortFunc(ipAddrs, func(a, b netip.Addr) int {
+		return a.Compare(b)
+	})
+
+	sortedResults := make([]PingResult, 0, len(pingScanResults.ResultMap))
+	for _, addr := range ipAddrs {
+		sortedResults = append(sortedResults, pingScanResults.ResultMap[addr])
+	}
+
+	return sortedResults
 }
 
 func (s *PingScanner) SendResultsViaNotifier() error {
@@ -137,6 +133,32 @@ func (s *PingScanner) SendResultsViaNotifier() error {
 
 func (s *PingScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (r PingScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	up := 0
+	fmt.Fprintf(&stringBuilder, "Ping Scan Results.\n\n")
+	for addr, result := range r.ResultMap {
+		if result.HostState == HostStateDown {
+			continue
+		}
+		up++
+		fmt.Fprintf(&stringBuilder, "%v", addr.String())
+		if result.HostName != "" {
+			fmt.Fprintf(&stringBuilder, " (%v)", result.HostName)
+		}
+		fmt.Fprintf(&stringBuilder, "->\t%v\n", result.String())
+	}
+	fmt.Fprintf(&stringBuilder, "\nTotal Hosts Scanned: %v\n", len(r.ResultMap))
+	fmt.Fprintf(&stringBuilder, "Hosts that are Up: %v\n", up)
+	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r.ResultMap)-up)
+
+	return stringBuilder.String()
+}
+
+func (r PingScanResults) ResultType() ScanResultType {
+	return PingScanResultType
 }
 
 func runPing(scanner *PingScanner, targets []netip.Prefix) error {
@@ -193,8 +215,13 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 	for job := range jobs {
 		pinger := probing.New(job.Target.String())
 		pinger.SetPrivileged(true)
+
 		pinger.Count = job.PingCount
-		pinger.Timeout = scanner.PingTimeout
+		pingTimeout := scanner.PingTimeout
+		if pingTimeout == 0*time.Second {
+			pingTimeout = time.Duration(job.PingCount) * time.Second
+		}
+		pinger.Timeout = pingTimeout
 
 		pingResult := PingResult{
 			HostState: HostStateDown,
