@@ -7,9 +7,8 @@ import (
 
 // go: build linux
 
-var wifiIface string
-
 func WifiCmd() *cobra.Command {
+	var wifiIface string
 	wifiCmd := cobra.Command{
 		Use:     "wifi",
 		Short:   "Carry out different operations on Wi-Fi networks",
