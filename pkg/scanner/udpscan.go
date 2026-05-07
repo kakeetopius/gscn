@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,14 @@ import (
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
+
+type UDPScanner struct {
+	UDPScanOptions
+	results    UDPScanResults
+	stats      UDPScanStats
+	hostStates map[netip.Addr]PingResult
+	logger     log.Logger
+}
 
 type UDPScanOptions struct {
 	Targets             []netip.Prefix
@@ -34,42 +43,12 @@ type UDPScanResults struct {
 	ResultMap map[netip.Addr]HostResult
 }
 
-func (UDPScanResults) ResultType() ScanResultType {
-	return UDPScanResultType
-}
-
-func (r UDPScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "UDP Scan Results.\n\n")
-	for host, result := range r.ResultMap {
-		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
-		if result.HostName == "" {
-			fmt.Fprintf(&stringBuilder, "\n")
-		} else {
-			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
-		}
-		for _, port := range result.Ports {
-			if port.State == PortStateOpen {
-				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
-			}
-		}
-		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
-	}
-	return stringBuilder.String()
-}
-
 type UDPScanStats struct {
 	TotalNumOfHosts int
 }
 
-type UDPScanner struct {
-	UDPScanOptions
-	results    UDPScanResults
-	stats      UDPScanStats
-	hostStates map[netip.Addr]PingResult
-	logger     log.Logger
+func (UDPScanResults) ResultType() ScanResultType {
+	return UDPScanResultType
 }
 
 func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
@@ -128,11 +107,39 @@ func (s *UDPScanner) Results() ScanResults {
 			s.results.ResultMap[host] = results
 		}
 	}
+
+	for _, hostResult := range s.results.ResultMap {
+		slices.SortFunc(hostResult.Ports, func(a, b Port) int {
+			return int(a.Number - b.Number)
+		})
+	}
 	return s.results
 }
 
 func (s *UDPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (r UDPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "UDP Scan Results.\n\n")
+	for host, result := range r.ResultMap {
+		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
 
 func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
@@ -255,6 +262,7 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 	scanResults := UDPScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
 	}
+	numberOfPortsToScan := len(scanner.TargetPorts)
 	defer func() {
 		scanResultsChan <- scanResults
 	}()
@@ -270,12 +278,12 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 			hostIP := result.HostIP
 			hostResults, found := scanResults.ResultMap[hostIP]
 			if !found {
-				hostResults.Ports = make(map[uint]Port)
+				hostResults.Ports = make([]Port, 0, numberOfPortsToScan)
 				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 				hostResults.AverageRTT = scanner.hostStates[hostIP].AverageRTT
 			}
-			hostResults.Ports[result.Port.Number] = result.Port
+			hostResults.Ports = append(hostResults.Ports, result.Port)
 
 			switch result.Port.State {
 			case PortStateOpen:

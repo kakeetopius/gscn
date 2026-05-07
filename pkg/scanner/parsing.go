@@ -227,23 +227,23 @@ func parseIPRange(s string) ([]netip.Prefix, error) {
 
 	lastDelimIndex := strings.LastIndex(s, ".") // first presume IPv4
 	if lastDelimIndex == -1 {
-		lastDelimIndex = strings.LastIndex(s, ":")
+		lastDelimIndex = strings.LastIndex(s, ":") // check if IPv6
 		if lastDelimIndex == -1 {
 			return nil, fmt.Errorf("error parsing -> %v", s)
 		}
 	}
-	baseIP := s[:lastDelimIndex+1] // baseIP is something like 10.1.1. (with the dot)
+	baseIP := s[:lastDelimIndex+1] // baseIP is something like 10.1.1. (with the dot) or 2001:acad:abcd::
 
 	if lastDelimIndex > dashIndex {
 		return nil, fmt.Errorf("error parsing target %v -> Invalid Range", s)
 	}
 
-	lower, err := strconv.Atoi(s[lastDelimIndex+1 : dashIndex]) // get number from the last dot to the dash.
+	lower, err := strconv.Atoi(s[lastDelimIndex+1 : dashIndex]) // get number from the last delimiter to the dash.
 	if err != nil {
 		return nil, fmt.Errorf("error parsing target %v -> %w", s, err)
 	}
 
-	upper, err := strconv.Atoi(s[dashIndex+1:]) // get number from after the dash to the end
+	upper, err := strconv.Atoi(s[dashIndex+1:]) // get number from after the delimiter to the end
 	if err != nil {
 		return nil, fmt.Errorf("error parsing target %v -> %w", s, err)
 	}

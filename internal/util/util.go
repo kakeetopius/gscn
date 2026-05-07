@@ -137,7 +137,7 @@ func AddrIsPartOfNetworks(targets []netip.Prefix, addr *netip.Addr) bool {
 	return false
 }
 
-// HostsInIP4Network returns the total number of IPv4 addresses represented by
+// HostsInIP4Network returns the total number of usable IPv4 addresses represented by
 // the provided prefixes.
 // The calculation is IPv4-specific.
 func HostsInIP4Network(targets []netip.Prefix) int {
@@ -145,6 +145,9 @@ func HostsInIP4Network(targets []netip.Prefix) int {
 	for _, target := range targets {
 		networkAddress := target.Masked()
 		numHosts += int(math.Pow(2, float64(32-networkAddress.Bits())))
+		if !target.IsSingleIP() {
+			numHosts = numHosts - 2 // remove network and broadcast addresses
+		}
 	}
 	return numHosts
 }
