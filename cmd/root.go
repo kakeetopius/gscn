@@ -56,11 +56,10 @@ func init() {
 	)
 }
 
-// initialiseConfig initializes and reads the application configuration from a TOML file.
-// It handles both root and non-root user scenarios by determining the appropriate
-// home directory. The function looks for a "gscn.toml" config file in ~/.config
-// or the current directory.
-// Returns a configured Viper instance or an error if setup fails.
+// initialiseConfig creates and loads the application configuration.
+// It prefers an explicit config file when provided, otherwise it resolves the
+// default config directory, enables environment variable overrides, and loads
+// the resulting configuration if present.
 func initialiseConfig() error {
 	config = viper.New()
 	if cfgFile != "" {
