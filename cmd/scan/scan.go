@@ -19,6 +19,7 @@ type ScanOpts struct {
 	TargetsString    string
 	PortsString      string
 	Workers          int
+	PingCount        int
 	ResponseTimeout  time.Duration
 	PingTimeout      time.Duration
 	ResolveHostNames bool
@@ -80,6 +81,7 @@ func RunScan(opts ScanOpts) error {
 			AddUnknownHostNames: opts.ResolveHostNames,
 			ResponseTimeout:     opts.ResponseTimeout,
 			PingTimeout:         opts.PingTimeout,
+			PingCount:           opts.PingCount,
 		})
 		if notify {
 			udpScanner.MessageNotifier = notifiyObj
@@ -103,6 +105,7 @@ func RunScan(opts ScanOpts) error {
 			AddUnknownHostNames: opts.ResolveHostNames,
 			HostNames:           hostNames,
 			Workers:             numWorkers,
+			PingCount:           opts.PingCount,
 		})
 		if notify {
 			pingScanner.MessageNotifier = notifiyObj
@@ -130,6 +133,7 @@ func RunScan(opts ScanOpts) error {
 			ResponseTimeout:     opts.ResponseTimeout,
 			SkipPingScan:        opts.SkipPingScan,
 			PingTimeout:         opts.PingTimeout,
+			PingCount:           opts.PingCount,
 		})
 		if notify {
 			tcpFullScanner.MessageNotifier = notifiyObj
@@ -204,6 +208,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 			hostStateStyle = pterm.FgRed
 		}
 		fmt.Printf("Host State: %s\n", hostStateStyle.Sprint(hostResults.HostState))
+		fmt.Println("Average RTT: ", hostResults.AverageRTT.Truncate(time.Millisecond))
 		if len(tableData) > 1 && hostResults.HostState == scanner.HostStateUp {
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 		}
@@ -222,7 +227,7 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 
 func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats) {
 	var tableData [][]string
-	tableData = pterm.TableData{{"Host", "State"}}
+	tableData = pterm.TableData{{"Host", "State", "Average RTT"}}
 	totalHosts := stats.DownHosts + stats.UpHosts
 	for host, result := range results.ResultMap {
 		hostIdentity := host.String()
@@ -239,7 +244,7 @@ func printPingScanResults(results scanner.PingScanResults, stats scanner.PingSta
 		case scanner.HostStateDown:
 			hostStateStyle = pterm.FgRed
 		}
-		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState)})
+		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState), result.AverageRTT.Truncate(time.Millisecond).String()})
 	}
 	if len(tableData) > 1 {
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()

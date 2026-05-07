@@ -20,6 +20,7 @@ type TCPFullScanOptions struct {
 	Targets             []netip.Prefix
 	TargetPorts         []uint
 	Workers             uint
+	PingCount           int
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
@@ -148,7 +149,7 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	}
 
 	if !opts.SkipPingScan {
-		pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers)) // first check if hosts are up.
+		pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
 		if err != nil {
 			return TCPFullScanResults{}, err
 		}
@@ -208,6 +209,7 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 				hostResults.Ports = make(map[uint]Port)
 				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
+				hostResults.AverageRTT = scanner.hostStates[hostIP].AverageRTT
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
 			switch result.Port.State {

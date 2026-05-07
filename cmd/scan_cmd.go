@@ -12,6 +12,7 @@ func ScanCmd() *cobra.Command {
 		targetStr        string
 		ports            string
 		workers          int
+		pingCount        int
 		responseTimeout  time.Duration
 		pingTimeout      time.Duration
 		resolveHostnames bool
@@ -41,6 +42,7 @@ func ScanCmd() *cobra.Command {
 				DoPingScan:       doPingScan,
 				DoUDPScan:        doUDPScan,
 				SkipPingScan:     skipPing,
+				PingCount:        pingCount,
 				Notify:           notify,
 			})
 		},
@@ -51,12 +53,14 @@ func ScanCmd() *cobra.Command {
 	scanCmd.Flags().StringVarP(&targetStr, "target", "t", "", "IP address(es) or hostname(s) of the host to scan.")
 	scanCmd.Flags().StringVarP(&ports, "ports", "p", "", "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080")
 
-	scanCmd.Flags().IntVarP(&workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
-
+	scanCmd.Flags().BoolVarP(&resolveHostnames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
 	scanCmd.Flags().DurationVarP(&responseTimeout, "response-timeout", "T", 2*time.Second, "Amount of time to wait for responses")
+
+	scanCmd.Flags().IntVarP(&workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
+	scanCmd.Flags().IntVar(&pingCount, "ping-count", 3, "Number of ICMP Echo Request packets to send when pinging")
+
 	scanCmd.Flags().DurationVar(&pingTimeout, "ping-timeout", 2*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
-	scanCmd.Flags().BoolVarP(&resolveHostnames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
 	scanCmd.Flags().BoolVar(&skipPing, "skip-ping", false, "Skip pinging hosts before scanning ports.")
 	scanCmd.Flags().BoolVar(&doUDPScan, "udp", false, "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.")
 	scanCmd.Flags().BoolVar(&doPingScan, "ping", false, "Carry out a ping scan to check if hosts are up.")
