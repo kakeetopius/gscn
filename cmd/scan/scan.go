@@ -26,6 +26,8 @@ type ScanOpts struct {
 	DoPingScan       bool
 	DoUDPScan        bool
 	SkipPingScan     bool
+	PrintOnlyOpen    bool
+	PrintOnlyUp      bool
 	Notify           bool
 }
 
@@ -90,7 +92,7 @@ func RunScan(opts ScanOpts) error {
 		if err != nil {
 			return err
 		}
-		PrintUDPScanResults(udpScanner)
+		PrintUDPScanResults(udpScanner, &opts)
 		if notify {
 			err := udpScanner.SendResultsViaNotifier()
 			if err != nil {
@@ -116,7 +118,7 @@ func RunScan(opts ScanOpts) error {
 		}
 		results := pingScanner.Results().(scanner.PingScanResults)
 		stats := pingScanner.Stats().(scanner.PingStats)
-		printPingScanResults(results, stats)
+		printPingScanResults(results, stats, &opts)
 		if notify {
 			err := pingScanner.SendResultsViaNotifier()
 			if err != nil {
@@ -142,7 +144,7 @@ func RunScan(opts ScanOpts) error {
 		if err != nil {
 			return err
 		}
-		PrintTCPFullScanResults(tcpFullScanner)
+		PrintTCPFullScanResults(tcpFullScanner, &opts)
 		if notify {
 			err := tcpFullScanner.SendResultsViaNotifier()
 			if err != nil {
@@ -153,38 +155,42 @@ func RunScan(opts ScanOpts) error {
 	return nil
 }
 
-func PrintTCPFullScanResults(tcpFullScanner *scanner.TCPFullScanner) {
+func PrintTCPFullScanResults(tcpFullScanner *scanner.TCPFullScanner, opts *ScanOpts) {
 	var tcpFullScanResults scanner.TCPFullScanResults
 	if results, ok := tcpFullScanner.Results().(scanner.TCPFullScanResults); ok {
 		tcpFullScanResults = results
 	} else {
 		return
 	}
-	printScanResultsMap(tcpFullScanResults.ResultMap)
+	printScanResultsMap(tcpFullScanResults.ResultMap, opts)
 }
 
-func PrintUDPScanResults(udpScanner *scanner.UDPScanner) {
+func PrintUDPScanResults(udpScanner *scanner.UDPScanner, opts *ScanOpts) {
 	var tcpFullScanResults scanner.UDPScanResults
 	if results, ok := udpScanner.Results().(scanner.UDPScanResults); ok {
 		tcpFullScanResults = results
 	} else {
 		return
 	}
-	printScanResultsMap(tcpFullScanResults.ResultMap)
+	printScanResultsMap(tcpFullScanResults.ResultMap, opts)
 }
 
-func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
+func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOpts) {
 	var tableData [][]string
 	totalHosts := len(results)
 	totalUp := 0
 	for host, hostResults := range results {
+		if hostResults.HostState == scanner.HostStateDown && opts.PrintOnlyUp {
+			continue
+		}
+
 		tableData = pterm.TableData{{"Port", "State", "Service"}}
 		name := ""
 		if hostResults.HostName != "" {
 			name = fmt.Sprintf("(%v)", hostResults.HostName)
 		}
 		if hostResults.HostState == scanner.HostStateDown && totalHosts > 10 {
-			continue
+			continue // do not print hosts that are down if total hosts are above 10
 		}
 		if hostResults.HostState == scanner.HostStateUp {
 			totalUp++
@@ -193,8 +199,11 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 
 		totalPortsScanned := hostResults.TotalNumberOfPorts()
 		for _, port := range hostResults.Ports {
+			if port.State == scanner.PortStateClosed && opts.PrintOnlyOpen {
+				continue
+			}
 			if port.State == scanner.PortStateClosed && totalPortsScanned > 10 {
-				continue // no need to add closed port to table if scanned ports are above 10
+				continue // do not add closed ports to table if scanned ports are above 10
 			}
 			service := util.Service(layers.TCPPort(port.Number).String())
 			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), service})
@@ -225,14 +234,18 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult) {
 	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
 }
 
-func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats) {
+func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats, opts *ScanOpts) {
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State", "Average RTT"}}
 	totalHosts := stats.DownHosts + stats.UpHosts
 	for host, result := range results.ResultMap {
+		if result.HostState == scanner.HostStateDown && opts.PrintOnlyUp {
+			continue
+		}
+
 		hostIdentity := host.String()
 		if result.HostState == scanner.HostStateDown && totalHosts > 256 {
-			continue
+			continue // do not add hosts that are down if scanned hosts are above 10
 		}
 		if result.HostName != "" {
 			hostIdentity = fmt.Sprintf("%v (%v)", hostIdentity, result.HostName)

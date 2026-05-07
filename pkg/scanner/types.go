@@ -2,7 +2,9 @@
 // including ARP, NDP, TCP, UDP.
 package scanner
 
-import "time"
+import (
+	"time"
+)
 
 // ScanResults defines the interface that all scan result types must implement.
 // It provides methods to convert results to a string representation and identify
