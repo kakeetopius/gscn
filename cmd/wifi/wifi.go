@@ -1,6 +1,8 @@
 // Package wifi is used to carry out different operations on a wifi network.
 package wifi
 
+// go: build linux
+
 import (
 	"fmt"
 
