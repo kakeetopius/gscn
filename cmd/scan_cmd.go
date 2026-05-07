@@ -19,6 +19,8 @@ func ScanCmd() *cobra.Command {
 		skipPing         bool
 		doUDPScan        bool
 		doPingScan       bool
+		printOnlyUp      bool
+		printOnlyOpen    bool
 	)
 	scanCmd := cobra.Command{
 		Use:     "scan",
@@ -44,6 +46,8 @@ func ScanCmd() *cobra.Command {
 				SkipPingScan:     skipPing,
 				PingCount:        pingCount,
 				Notify:           notify,
+				PrintOnlyOpen:    printOnlyOpen,
+				PrintOnlyUp:      printOnlyUp,
 			})
 		},
 	}
@@ -65,5 +69,7 @@ func ScanCmd() *cobra.Command {
 	scanCmd.Flags().BoolVar(&doUDPScan, "udp", false, "Carry out a UDP scan instead of default TCP scan. A ping scan is first carried out for each target.")
 	scanCmd.Flags().BoolVar(&doPingScan, "ping", false, "Carry out a ping scan to check if hosts are up.")
 
+	scanCmd.Flags().BoolVar(&printOnlyOpen, "open", false, "Only show open and possibly filtered ports.")
+	scanCmd.Flags().BoolVar(&printOnlyUp, "up", false, "Show results for only up hosts.")
 	return &scanCmd
 }
