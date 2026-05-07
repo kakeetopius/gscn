@@ -63,7 +63,7 @@ gscn discover [flags]
   ```
 - Discover hosts on the network an interface is connected to:
   ```sh
-  gscn discover eth0
+  gscn discover -i eth0
   ```
 - Use IPv6 neighbor discovery:
   ```sh
