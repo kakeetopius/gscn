@@ -4,6 +4,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -52,8 +53,11 @@ func init() {
 	rootCmd.AddCommand(
 		DiscoverCmd(),
 		ScanCmd(),
-		WifiCmd(),
 	)
+
+	if runtime.GOOS == "linux" {
+		rootCmd.AddCommand(WifiCmd())
+	}
 }
 
 // initialiseConfig creates and loads the application configuration.

@@ -5,6 +5,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// go: build linux
+
 var wifiIface string
 
 func WifiCmd() *cobra.Command {
