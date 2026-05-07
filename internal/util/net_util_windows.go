@@ -126,7 +126,7 @@ func netInterfaceFromAddrs(givenAddrs []netip.Prefix) (net.Interface, error) {
 			}
 		}
 	}
-	return net.Interface{}, fmt.Errorf("could not get net.Interface")
+	return net.Interface{}, fmt.Errorf("could not find matching net.Interface")
 }
 
 // pcapInterfaceFromAddrs finds a pcap.Interface that contains any of the given addresses.
@@ -144,5 +144,5 @@ func pcapInterfaceFromAddrs(givenAddrs []netip.Prefix) (pcap.Interface, error) {
 			}
 		}
 	}
-	return pcap.Interface{}, fmt.Errorf("could not fing matching pcap.Interface")
+	return pcap.Interface{}, fmt.Errorf("could not find matching pcap.Interface")
 }
