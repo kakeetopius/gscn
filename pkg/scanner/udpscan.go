@@ -23,6 +23,7 @@ type UDPScanOptions struct {
 	TargetPorts         []uint
 	Workers             uint
 	PingTimeout         time.Duration
+	PingCount           int
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
@@ -149,7 +150,7 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 		return UDPScanResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
-	pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers)) // first check if hosts are up.
+	pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
 	if err != nil {
 		return UDPScanResults{}, err
 	}
@@ -272,6 +273,7 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 				hostResults.Ports = make(map[uint]Port)
 				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
+				hostResults.AverageRTT = scanner.hostStates[hostIP].AverageRTT
 			}
 			hostResults.Ports[result.Port.Number] = result.Port
 
@@ -288,11 +290,12 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 	}
 }
 
-func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int) (PingScanResults, error) {
+func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResults, error) {
 	pinger := NewPingScanner(PingScanOptions{
 		Targets:     targets,
 		PingTimeout: pingTimeout,
 		Workers:     workers,
+		PingCount:   pingCount,
 	})
 
 	err := pinger.Scan()

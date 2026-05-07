@@ -2,6 +2,8 @@
 // including ARP, NDP, TCP, UDP.
 package scanner
 
+import "time"
+
 // ScanResults defines the interface that all scan result types must implement.
 // It provides methods to convert results to a string representation and identify
 // the specific type of scan result.
@@ -82,6 +84,7 @@ type HostResult struct {
 	OpenPorts     int
 	ClosedPorts   int
 	FilteredPorts int
+	AverageRTT    time.Duration
 }
 
 func (h HostResult) TotalNumberOfPorts() int {

@@ -17,7 +17,8 @@ import (
 )
 
 type PingScanJob struct {
-	Target netip.Addr
+	Target    netip.Addr
+	PingCount int
 }
 
 type PingScanOptions struct {
@@ -27,12 +28,14 @@ type PingScanOptions struct {
 	AddUnknownHostNames bool
 	HostNames           map[netip.Addr]string
 	MessageNotifier     notifier.Notifier
+	PingCount           int
 }
 
 type PingResult struct {
 	HostState
-	IP       netip.Addr
-	HostName string
+	IP         netip.Addr
+	HostName   string
+	AverageRTT time.Duration
 }
 
 type PingScanResults struct {
@@ -166,7 +169,8 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 		IPaddr := target.Masked().Addr() // first IP in range
 		for target.Contains(IPaddr) {
 			jobs <- PingScanJob{
-				Target: IPaddr,
+				Target:    IPaddr,
+				PingCount: scanner.PingCount,
 			}
 			IPaddr = IPaddr.Next()
 		}
@@ -189,7 +193,7 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 	for job := range jobs {
 		pinger := probing.New(job.Target.String())
 		pinger.SetPrivileged(true)
-		pinger.Count = 1
+		pinger.Count = job.PingCount
 		pinger.Timeout = scanner.PingTimeout
 
 		pingResult := PingResult{
@@ -202,6 +206,7 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 			stats := pinger.Statistics()
 			if stats.PacketsRecv > 0 {
 				pingResult.HostState = HostStateUp
+				pingResult.AverageRTT = stats.AvgRtt
 			}
 		}
 		resultChan <- pingResult
