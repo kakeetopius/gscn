@@ -11,25 +11,26 @@ func ScanCmd() *cobra.Command {
 	var scanOpts scan.ScanOpts
 
 	scanCmd := cobra.Command{
-		Use:     "scan",
+		Use:     "scan <target>",
 		Short:   "Determine information about any host on any network for example open ports.",
 		Aliases: []string{"s"},
+		Args:    cobra.ExactArgs(1),
 		Example: "\nTargets can be provided in the following formats:\n" +
-			"  gscn scan -t 10.1.1.1 -p 80    # Single Host\n" +
-			"  gscn scan -t 10.1.1.1/24 -p 80,90,100    # CIDR Notation\n" +
-			"  gscn scan -t 10.1.1.1-5 -p 1-100    # IP Range\n" +
-			"  gscn scan -t bing.com -p 1-100    # Domain Name\n" +
-			"  gscn scan -t 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096 	# Comma Separated List\n",
+			"  gscn scan 10.1.1.1 -p 80    # Single Host\n" +
+			"  gscn scan 10.1.1.1/24 -p 80,90,100    # CIDR Notation\n" +
+			"  gscn scan 10.1.1.1-5 -p 1-100    # IP Range\n" +
+			"  gscn scan bing.com -p 1-100    # Domain Name\n" +
+			"  gscn scan 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096 	# Comma Separated List\n",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			scanOpts.Notify = true
+			scanOpts.Notify = notify
 			scanOpts.Config = config
+			scanOpts.TargetsString = args[0]
 			return scan.RunScan(scanOpts)
 		},
 	}
 
 	scanCmd.Flags().SortFlags = false
 
-	scanCmd.Flags().StringVarP(&scanOpts.TargetsString, "target", "t", "", "IP address(es) or hostname(s) of the host to scan.")
 	scanCmd.Flags().StringVarP(&scanOpts.PortsString, "ports", "p", "", "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080")
 
 	scanCmd.Flags().BoolVarP(&scanOpts.ResolveHostNames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
