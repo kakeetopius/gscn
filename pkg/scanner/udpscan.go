@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -127,6 +128,12 @@ func (s *UDPScanner) Results() ScanResults {
 			results.HostName = name
 			s.results.ResultMap[host] = results
 		}
+	}
+
+	for _, hostResult := range s.results.ResultMap {
+		slices.SortFunc(hostResult.Ports, func(a, b Port) int {
+			return int(a.Number - b.Number)
+		})
 	}
 	return s.results
 }
@@ -255,6 +262,7 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 	scanResults := UDPScanResults{
 		ResultMap: make(map[netip.Addr]HostResult),
 	}
+	numberOfPortsToScan := len(scanner.TargetPorts)
 	defer func() {
 		scanResultsChan <- scanResults
 	}()
@@ -270,12 +278,12 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 			hostIP := result.HostIP
 			hostResults, found := scanResults.ResultMap[hostIP]
 			if !found {
-				hostResults.Ports = make(map[uint]Port)
+				hostResults.Ports = make([]Port, 0, numberOfPortsToScan)
 				hostResults.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResults.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 				hostResults.AverageRTT = scanner.hostStates[hostIP].AverageRTT
 			}
-			hostResults.Ports[result.Port.Number] = result.Port
+			hostResults.Ports = append(hostResults.Ports, result.Port)
 
 			switch result.Port.State {
 			case PortStateOpen:
