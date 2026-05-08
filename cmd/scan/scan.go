@@ -116,7 +116,7 @@ func RunScan(opts ScanOpts) error {
 		if err != nil {
 			return err
 		}
-		results := pingScanner.Results().(scanner.PingScanResults)
+		results := pingScanner.SortedResults()
 		stats := pingScanner.Stats().(scanner.PingStats)
 		printPingScanResults(results, stats, &opts)
 		if notify {
@@ -234,16 +234,16 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOp
 	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
 }
 
-func printPingScanResults(results scanner.PingScanResults, stats scanner.PingStats, opts *ScanOpts) {
+func printPingScanResults(results []scanner.PingResult, stats scanner.PingStats, opts *ScanOpts) {
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State", "Average RTT"}}
 	totalHosts := stats.DownHosts + stats.UpHosts
-	for host, result := range results.ResultMap {
+	for _, result := range results {
 		if result.HostState == scanner.HostStateDown && opts.PrintOnlyUp {
 			continue
 		}
 
-		hostIdentity := host.String()
+		hostIdentity := result.IP.String()
 		if result.HostState == scanner.HostStateDown && totalHosts > 256 {
 			continue // do not add hosts that are down if scanned hosts are above 10
 		}

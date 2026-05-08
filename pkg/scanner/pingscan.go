@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -88,6 +89,26 @@ func (s *PingScanner) Results() ScanResults {
 	}
 
 	return s.results
+}
+
+func (s *PingScanner) SortedResults() []PingResult {
+	pingScanResults := s.Results().(PingScanResults)
+	ipAddrs := make([]netip.Addr, 0, len(pingScanResults.ResultMap))
+
+	for addr := range pingScanResults.ResultMap {
+		ipAddrs = append(ipAddrs, addr)
+	}
+
+	slices.SortFunc(ipAddrs, func(a, b netip.Addr) int {
+		return a.Compare(b)
+	})
+
+	sortedResults := make([]PingResult, 0, len(pingScanResults.ResultMap))
+	for _, addr := range ipAddrs {
+		sortedResults = append(sortedResults, pingScanResults.ResultMap[addr])
+	}
+
+	return sortedResults
 }
 
 func (s *PingScanner) SendResultsViaNotifier() error {
