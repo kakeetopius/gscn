@@ -17,6 +17,13 @@ import (
 	"github.com/pterm/pterm"
 )
 
+type ARPScanner struct {
+	*ARPScanOptions
+	results ARPScanResults
+	stats   ARPScanStats
+	logger  log.Logger
+}
+
 type ARPScanOptions struct {
 	Targets             []netip.Prefix
 	Source              netip.Addr
@@ -29,6 +36,12 @@ type ARPScanOptions struct {
 	MessageNotifier     notifier.Notifier
 }
 
+type ARPScanResults struct {
+	ResultSet    []ARPScanResult
+	hasHostnames bool
+	hasVendors   bool
+}
+
 type ARPScanResult struct {
 	IPAddr   string
 	MacAddr  string
@@ -36,44 +49,9 @@ type ARPScanResult struct {
 	Vendor   string
 }
 
-type ARPScanResults struct {
-	ResultSet    []ARPScanResult
-	hasHostnames bool
-	hasVendors   bool
-}
-
-func (r *ARPScanResults) HasHostNames() bool {
-	return r.hasHostnames
-}
-
-func (r *ARPScanResults) HasVendors() bool {
-	return r.hasVendors
-}
-
-func (ARPScanResults) ResultType() ScanResultType {
-	return ARPScanResultType
-}
-
-func (r ARPScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
-
-	for _, result := range r.ResultSet {
-		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
-	}
-
-	return stringBuilder.String()
-}
-
 type ARPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
-}
-type ARPScanner struct {
-	*ARPScanOptions
-	results ARPScanResults
-	stats   ARPScanStats
-	logger  log.Logger
 }
 
 func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
@@ -150,6 +128,29 @@ func (s *ARPScanner) SendResultsViaNotifier() error {
 
 func (s *ARPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (r *ARPScanResults) HasHostNames() bool {
+	return r.hasHostnames
+}
+
+func (r *ARPScanResults) HasVendors() bool {
+	return r.hasVendors
+}
+
+func (ARPScanResults) ResultType() ScanResultType {
+	return ARPScanResultType
+}
+
+func (r ARPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
+
+	for _, result := range r.ResultSet {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	}
+
+	return stringBuilder.String()
 }
 
 func runArp(scanner *ARPScanner) (ARPScanResults, error) {

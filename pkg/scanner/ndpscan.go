@@ -17,6 +17,13 @@ import (
 	"github.com/pterm/pterm"
 )
 
+type NDPScanner struct {
+	*NDPScanOptions
+	results NDPScanResults
+	stats   NDPScanStats
+	logger  log.Logger
+}
+
 type NDPScanOptions struct {
 	Targets             []netip.Prefix
 	Source              netip.Addr
@@ -30,6 +37,12 @@ type NDPScanOptions struct {
 	MessageNotifier     notifier.Notifier
 }
 
+type NDPScanResults struct {
+	ResultSet    []NDPScanResult
+	hasHostNames bool
+	hasVendors   bool
+}
+
 type NDPScanResult struct {
 	IPAddr   string
 	MacAddr  string
@@ -40,42 +53,6 @@ type NDPScanResult struct {
 type NDPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
-}
-
-type NDPScanResults struct {
-	ResultSet    []NDPScanResult
-	hasHostNames bool
-	hasVendors   bool
-}
-
-func (NDPScanResults) ResultType() ScanResultType {
-	return NDPScanResultType
-}
-
-func (r NDPScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintln(&stringBuilder, "NDP Scan Results")
-
-	for _, result := range r.ResultSet {
-		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
-	}
-
-	return stringBuilder.String()
-}
-
-func (r NDPScanResults) HasHostNames() bool {
-	return r.hasHostNames
-}
-
-func (r NDPScanResults) HasVendors() bool {
-	return r.hasVendors
-}
-
-type NDPScanner struct {
-	*NDPScanOptions
-	results NDPScanResults
-	stats   NDPScanStats
-	logger  log.Logger
 }
 
 func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
@@ -152,6 +129,29 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 
 func (s *NDPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (NDPScanResults) ResultType() ScanResultType {
+	return NDPScanResultType
+}
+
+func (r NDPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintln(&stringBuilder, "NDP Scan Results")
+
+	for _, result := range r.ResultSet {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	}
+
+	return stringBuilder.String()
+}
+
+func (r NDPScanResults) HasHostNames() bool {
+	return r.hasHostNames
+}
+
+func (r NDPScanResults) HasVendors() bool {
+	return r.hasVendors
 }
 
 func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {

@@ -16,9 +16,11 @@ import (
 	"github.com/pterm/pterm"
 )
 
-type PingScanJob struct {
-	Target    netip.Addr
-	PingCount int
+type PingScanner struct {
+	PingScanOptions
+	results PingScanResults
+	stats   PingStats
+	logger  log.Logger
 }
 
 type PingScanOptions struct {
@@ -31,6 +33,10 @@ type PingScanOptions struct {
 	PingCount           int
 }
 
+type PingScanResults struct {
+	ResultMap map[netip.Addr]PingResult
+}
+
 type PingResult struct {
 	HostState
 	IP         netip.Addr
@@ -38,46 +44,14 @@ type PingResult struct {
 	AverageRTT time.Duration
 }
 
-type PingScanResults struct {
-	ResultMap map[netip.Addr]PingResult
-}
-
-func (r PingScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	up := 0
-	fmt.Fprintf(&stringBuilder, "Ping Scan Results.\n\n")
-	for addr, result := range r.ResultMap {
-		if result.HostState == HostStateDown {
-			continue
-		}
-		up++
-		fmt.Fprintf(&stringBuilder, "%v", addr.String())
-		if result.HostName != "" {
-			fmt.Fprintf(&stringBuilder, " (%v)", result.HostName)
-		}
-		fmt.Fprintf(&stringBuilder, "->\t%v\n", result.String())
-	}
-	fmt.Fprintf(&stringBuilder, "\nTotal Hosts Scanned: %v\n", len(r.ResultMap))
-	fmt.Fprintf(&stringBuilder, "Hosts that are Up: %v\n", up)
-	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r.ResultMap)-up)
-
-	return stringBuilder.String()
-}
-
-func (r PingScanResults) ResultType() ScanResultType {
-	return PingScanResultType
-}
-
 type PingStats struct {
 	UpHosts   int
 	DownHosts int
 }
 
-type PingScanner struct {
-	PingScanOptions
-	results PingScanResults
-	stats   PingStats
-	logger  log.Logger
+type PingScanJob struct {
+	Target    netip.Addr
+	PingCount int
 }
 
 func NewPingScanner(opts PingScanOptions) *PingScanner {
@@ -112,6 +86,7 @@ func (s *PingScanner) Results() ScanResults {
 			s.results.ResultMap[host] = results
 		}
 	}
+
 	return s.results
 }
 
@@ -137,6 +112,32 @@ func (s *PingScanner) SendResultsViaNotifier() error {
 
 func (s *PingScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (r PingScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	up := 0
+	fmt.Fprintf(&stringBuilder, "Ping Scan Results.\n\n")
+	for addr, result := range r.ResultMap {
+		if result.HostState == HostStateDown {
+			continue
+		}
+		up++
+		fmt.Fprintf(&stringBuilder, "%v", addr.String())
+		if result.HostName != "" {
+			fmt.Fprintf(&stringBuilder, " (%v)", result.HostName)
+		}
+		fmt.Fprintf(&stringBuilder, "->\t%v\n", result.String())
+	}
+	fmt.Fprintf(&stringBuilder, "\nTotal Hosts Scanned: %v\n", len(r.ResultMap))
+	fmt.Fprintf(&stringBuilder, "Hosts that are Up: %v\n", up)
+	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r.ResultMap)-up)
+
+	return stringBuilder.String()
+}
+
+func (r PingScanResults) ResultType() ScanResultType {
+	return PingScanResultType
 }
 
 func runPing(scanner *PingScanner, targets []netip.Prefix) error {

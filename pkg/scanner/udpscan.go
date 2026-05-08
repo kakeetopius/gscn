@@ -19,6 +19,14 @@ import (
 	"github.com/pterm/pterm"
 )
 
+type UDPScanner struct {
+	UDPScanOptions
+	results    UDPScanResults
+	stats      UDPScanStats
+	hostStates map[netip.Addr]PingResult
+	logger     log.Logger
+}
+
 type UDPScanOptions struct {
 	Targets             []netip.Prefix
 	TargetPorts         []uint
@@ -35,42 +43,12 @@ type UDPScanResults struct {
 	ResultMap map[netip.Addr]HostResult
 }
 
-func (UDPScanResults) ResultType() ScanResultType {
-	return UDPScanResultType
-}
-
-func (r UDPScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "UDP Scan Results.\n\n")
-	for host, result := range r.ResultMap {
-		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
-		if result.HostName == "" {
-			fmt.Fprintf(&stringBuilder, "\n")
-		} else {
-			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
-		}
-		for _, port := range result.Ports {
-			if port.State == PortStateOpen {
-				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
-			}
-		}
-		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
-	}
-	return stringBuilder.String()
-}
-
 type UDPScanStats struct {
 	TotalNumOfHosts int
 }
 
-type UDPScanner struct {
-	UDPScanOptions
-	results    UDPScanResults
-	stats      UDPScanStats
-	hostStates map[netip.Addr]PingResult
-	logger     log.Logger
+func (UDPScanResults) ResultType() ScanResultType {
+	return UDPScanResultType
 }
 
 func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
@@ -140,6 +118,28 @@ func (s *UDPScanner) Results() ScanResults {
 
 func (s *UDPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (r UDPScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "UDP Scan Results.\n\n")
+	for host, result := range r.ResultMap {
+		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
 
 func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {

@@ -17,6 +17,14 @@ import (
 	"github.com/pterm/pterm"
 )
 
+type TCPFullScanner struct {
+	TCPFullScanOptions
+	results    TCPFullScanResults
+	stats      TCPFullScanStats
+	hostStates map[netip.Addr]PingResult
+	logger     log.Logger
+}
+
 type TCPFullScanOptions struct {
 	Targets             []netip.Prefix
 	TargetPorts         []uint
@@ -34,42 +42,8 @@ type TCPFullScanResults struct {
 	ResultMap map[netip.Addr]HostResult
 }
 
-func (TCPFullScanResults) ResultType() ScanResultType {
-	return TCPFullScanScanResultType
-}
-
-func (r TCPFullScanResults) String() string {
-	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "TCP Full Scan Results.\n\n")
-	for host, result := range r.ResultMap {
-		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
-		if result.HostName == "" {
-			fmt.Fprintf(&stringBuilder, "\n")
-		} else {
-			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
-		}
-		for _, port := range result.Ports {
-			if port.State == PortStateOpen {
-				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
-			}
-		}
-		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
-	}
-	return stringBuilder.String()
-}
-
 type TCPFullScanStats struct {
 	TotalNumOfHosts int
-}
-
-type TCPFullScanner struct {
-	TCPFullScanOptions
-	results    TCPFullScanResults
-	stats      TCPFullScanStats
-	hostStates map[netip.Addr]PingResult
-	logger     log.Logger
 }
 
 func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
@@ -139,6 +113,32 @@ func (s *TCPFullScanner) Results() ScanResults {
 
 func (s *TCPFullScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (TCPFullScanResults) ResultType() ScanResultType {
+	return TCPFullScanScanResultType
+}
+
+func (r TCPFullScanResults) String() string {
+	stringBuilder := strings.Builder{}
+	fmt.Fprintf(&stringBuilder, "TCP Full Scan Results.\n\n")
+	for host, result := range r.ResultMap {
+		fmt.Fprintf(&stringBuilder, "Results for %v", host.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
 
 func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
