@@ -45,7 +45,7 @@ type ARPScanResults struct {
 
 type ARPScanResult struct {
 	IPAddr   netip.Addr
-	MacAddr  string
+	MacAddr  net.HardwareAddr
 	HostName string
 	Vendor   string
 }
@@ -101,7 +101,7 @@ func (s *ARPScanner) Results() ScanResults {
 	if s.WithVendorInfo {
 		s.results.hasVendors = true
 		for i := range resultSet {
-			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
+			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr.String())
 		}
 	}
 
@@ -317,7 +317,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 			receivedFrom[ipAddr] = struct{}{}
 			results = append(results, ARPScanResult{
 				IPAddr:  ipAddr,
-				MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress).String(),
+				MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress),
 			})
 		}
 	}

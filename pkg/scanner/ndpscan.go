@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,7 +45,7 @@ type NDPScanResults struct {
 }
 
 type NDPScanResult struct {
-	IPAddr   string
+	IPAddr   netip.Addr
 	MacAddr  string
 	HostName string
 	Vendor   string
@@ -93,7 +94,7 @@ func (s *NDPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.ResponseTimeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr.String(), s.ResponseTimeout)
 			bar.Increment()
 		}
 		bar.Stop()
@@ -104,6 +105,12 @@ func (s *NDPScanner) Results() ScanResults {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
 		}
 	}
+
+	slices.SortFunc(resultSet, func(a, b NDPScanResult) int {
+		return a.IPAddr.Compare(b.IPAddr)
+	})
+
+	s.results.ResultSet = resultSet
 	return s.results
 }
 
@@ -299,7 +306,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 			}
 
 			var result NDPScanResult
-			result.IPAddr = srcIP.String()
+			result.IPAddr = srcIP
 			result.MacAddr = hwAddr.String()
 			if icmpPacket.Router() {
 				result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)

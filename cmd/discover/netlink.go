@@ -35,7 +35,7 @@ func NDPResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) (*sca
 		}
 		if util.AddrIsPartOfNetworks(targets, &addr) {
 			results.ResultSet = append(results.ResultSet, scanner.NDPScanResult{
-				IPAddr:  neigh.IP.String(),
+				IPAddr:  addr,
 				MacAddr: neigh.HwAddr.String(),
 				Vendor:  util.MACVendor(neigh.HwAddr.String()),
 			})
