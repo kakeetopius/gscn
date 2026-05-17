@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,7 +44,7 @@ type ARPScanResults struct {
 }
 
 type ARPScanResult struct {
-	IPAddr   string
+	IPAddr   netip.Addr
 	MacAddr  string
 	HostName string
 	Vendor   string
@@ -92,7 +93,7 @@ func (s *ARPScanner) Results() ScanResults {
 		}
 
 		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr, s.ResponseTimeout)
+			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr.String(), s.ResponseTimeout)
 			bar.Increment()
 		}
 		bar.Stop()
@@ -103,6 +104,12 @@ func (s *ARPScanner) Results() ScanResults {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
 		}
 	}
+
+	slices.SortFunc(resultSet, func(a, b ARPScanResult) int {
+		return a.IPAddr.Compare(b.IPAddr)
+	})
+
+	s.results.ResultSet = resultSet
 	return s.results
 }
 
@@ -189,15 +196,14 @@ outer:
 				bar.Increment()
 				IPaddr = IPaddr.Next()
 				continue
-			} else {
-				err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
-				if err != nil {
-					return ARPScanResults{}, err
-				}
-				scanner.stats.PacketsSent++
-				bar.Increment()
-				IPaddr = IPaddr.Next()
 			}
+			err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
+			if err != nil {
+				return ARPScanResults{}, err
+			}
+			scanner.stats.PacketsSent++
+			bar.Increment()
+			IPaddr = IPaddr.Next()
 		}
 	}
 
@@ -280,33 +286,39 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 			if !ok {
 				continue
 			}
-			if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
-				arpPacket, _ := arpLayer.(*layers.ARP)
-				if arpPacket.Operation == layers.ARPReply {
-					ipAddr, ok := netip.AddrFromSlice(arpPacket.SourceProtAddress)
-					if !ok {
-						continue
-					}
-					if !util.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
-						// skip responses outside the specified network
-						continue
-					}
-					if ipAddr == opts.Source {
-						// skip responses from the capturing interface to other devices.
-						continue
-					}
-					scanner.stats.PacketsReceived++
-					_, alreadyReceived := receivedFrom[ipAddr]
-					if alreadyReceived {
-						continue
-					}
-					receivedFrom[ipAddr] = struct{}{}
-					results = append(results, ARPScanResult{
-						IPAddr:  ipAddr.String(),
-						MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress).String(),
-					})
-				}
+			arpLayer := packet.Layer(layers.LayerTypeARP)
+			if arpLayer == nil {
+				continue
 			}
+			arpPacket, ok := arpLayer.(*layers.ARP)
+			if !ok {
+				continue
+			}
+			if arpPacket.Operation != layers.ARPReply {
+				continue
+			}
+			ipAddr, ok := netip.AddrFromSlice(arpPacket.SourceProtAddress)
+			if !ok {
+				continue
+			}
+			if !util.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
+				// skip responses outside the specified network
+				continue
+			}
+			if ipAddr == opts.Source {
+				// skip responses from the capturing interface to other devices.
+				continue
+			}
+			scanner.stats.PacketsReceived++
+			_, alreadyReceived := receivedFrom[ipAddr]
+			if alreadyReceived {
+				continue
+			}
+			receivedFrom[ipAddr] = struct{}{}
+			results = append(results, ARPScanResult{
+				IPAddr:  ipAddr,
+				MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress).String(),
+			})
 		}
 	}
 }

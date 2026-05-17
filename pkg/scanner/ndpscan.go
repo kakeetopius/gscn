@@ -275,34 +275,36 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 			if !ok {
 				continue
 			}
-			if icmpLayer := packet.Layer(layers.LayerTypeICMPv6NeighborAdvertisement); icmpLayer != nil {
-				ip6layer := packet.Layer(layers.LayerTypeIPv6)
-				ip6packet, ok := ip6layer.(*layers.IPv6)
-				if !ok {
-					continue
-				}
-				srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-				if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
-					continue
-				}
-				scanner.stats.PacketsReceived++
-				icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
-				var hwAddr net.HardwareAddr
-				for _, icmpOption := range icmpPacket.Options {
-					if icmpOption.Type == layers.ICMPv6OptTargetAddress {
-						hwAddr = net.HardwareAddr(icmpOption.Data)
-						break
-					}
-				}
-
-				var result NDPScanResult
-				result.IPAddr = srcIP.String()
-				result.MacAddr = hwAddr.String()
-				if icmpPacket.Router() {
-					result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
-				}
-				results.ResultSet = append(results.ResultSet, result)
+			icmpLayer := packet.Layer(layers.LayerTypeICMPv6NeighborAdvertisement)
+			if icmpLayer == nil {
+				continue
 			}
+			ip6layer := packet.Layer(layers.LayerTypeIPv6)
+			ip6packet, ok := ip6layer.(*layers.IPv6)
+			if !ok {
+				continue
+			}
+			srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
+			if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
+				continue
+			}
+			scanner.stats.PacketsReceived++
+			icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
+			var hwAddr net.HardwareAddr
+			for _, icmpOption := range icmpPacket.Options {
+				if icmpOption.Type == layers.ICMPv6OptTargetAddress {
+					hwAddr = net.HardwareAddr(icmpOption.Data)
+					break
+				}
+			}
+
+			var result NDPScanResult
+			result.IPAddr = srcIP.String()
+			result.MacAddr = hwAddr.String()
+			if icmpPacket.Router() {
+				result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
+			}
+			results.ResultSet = append(results.ResultSet, result)
 		}
 	}
 }
