@@ -191,12 +191,15 @@ outer:
 
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
+		networkAddr := IPaddr
+		broadCast := broadCastAddr(target)
 		for target.Contains(IPaddr) {
-			if IPaddr == opts.Source { // skip interfaces' own ip
+			if IPaddr == opts.Source || ((IPaddr == networkAddr || IPaddr == broadCast) && !target.IsSingleIP()) {
 				bar.Increment()
 				IPaddr = IPaddr.Next()
 				continue
 			}
+
 			err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
 			if err != nil {
 				return ARPScanResults{}, err
@@ -335,4 +338,18 @@ func ReverseLookup(addr string, timeout time.Duration) string {
 		return names[0]
 	}
 	return ""
+}
+
+func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
+	networkAddr := networkPrefix.Masked().Addr()
+	hostBitLen := 32 - networkPrefix.Bits()
+
+	ip := networkAddr.As4()
+
+	ipUint := uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
+	mask := uint32((1 << hostBitLen) - 1)
+
+	broadCast := ipUint | mask
+
+	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
 }
