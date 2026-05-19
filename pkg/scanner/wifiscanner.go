@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
@@ -28,7 +29,9 @@ type WiFiScanResults struct {
 	AccessPoints []*wifi.BSS
 }
 
-type WiFiScanStats struct{}
+type WiFiScanStats struct {
+	ScanTime time.Duration
+}
 
 func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 	return &WiFiScanner{
@@ -40,7 +43,14 @@ func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 }
 
 func (s *WiFiScanner) Scan() error {
-	return runWifiScan(s)
+	start := time.Now()
+	err := runWifiScan(s)
+	if err != nil {
+		return err
+	}
+	stop := time.Now()
+	s.stats.ScanTime = stop.Sub(start)
+	return nil
 }
 
 func (s *WiFiScanner) Results() ScanResults {

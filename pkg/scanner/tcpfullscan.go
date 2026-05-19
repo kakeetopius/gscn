@@ -44,6 +44,7 @@ type TCPFullScanResults struct {
 
 type TCPFullScanStats struct {
 	TotalNumOfHosts int
+	ScanTime        time.Duration
 }
 
 func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
@@ -81,10 +82,14 @@ func (s *TCPFullScanner) SendResultsViaNotifier() error {
 }
 
 func (s *TCPFullScanner) Scan() error {
+	startTime := time.Now()
 	results, err := runTCPFullScan(s)
 	if err != nil {
 		return err
 	}
+	stopTime := time.Now()
+
+	s.stats.ScanTime = stopTime.Sub(startTime)
 	s.results = results
 	return nil
 }

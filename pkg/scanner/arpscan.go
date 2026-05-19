@@ -53,6 +53,7 @@ type ARPScanResult struct {
 type ARPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
+	ScanTime        time.Duration
 }
 
 func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
@@ -71,11 +72,14 @@ func (s *ARPScanner) Scan() error {
 	if s.ARPScanOptions == nil {
 		return fmt.Errorf("no arp scan options set yet")
 	}
+	start := time.Now()
 	results, err := runArp(s)
 	if err != nil {
 		return err
 	}
+	stop := time.Now()
 	s.results = results
+	s.stats.ScanTime = stop.Sub(start)
 	return nil
 }
 

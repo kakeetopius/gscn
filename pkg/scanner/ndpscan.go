@@ -54,6 +54,7 @@ type NDPScanResult struct {
 type NDPScanStats struct {
 	PacketsSent     int
 	PacketsReceived int
+	ScanTime        time.Duration
 }
 
 func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
@@ -72,11 +73,14 @@ func (s *NDPScanner) Scan() error {
 	if s.NDPScanOptions == nil {
 		return fmt.Errorf("no ndp options set yet")
 	}
+	start := time.Now()
 	results, err := runIPv6Disc(s)
 	if err != nil {
 		return err
 	}
+	stop := time.Now()
 	s.results = results
+	s.stats.ScanTime = stop.Sub(start)
 	return nil
 }
 

@@ -162,7 +162,8 @@ func PrintTCPFullScanResults(tcpFullScanner *scanner.TCPFullScanner, opts *ScanO
 	} else {
 		return
 	}
-	printScanResultsMap(tcpFullScanResults.ResultMap, opts)
+	stats := tcpFullScanner.Stats().(scanner.TCPFullScanStats)
+	printScanResultsMap(tcpFullScanResults.ResultMap, opts, stats.ScanTime)
 }
 
 func PrintUDPScanResults(udpScanner *scanner.UDPScanner, opts *ScanOpts) {
@@ -172,10 +173,11 @@ func PrintUDPScanResults(udpScanner *scanner.UDPScanner, opts *ScanOpts) {
 	} else {
 		return
 	}
-	printScanResultsMap(tcpFullScanResults.ResultMap, opts)
+	stats := udpScanner.Stats().(scanner.UDPScanStats)
+	printScanResultsMap(tcpFullScanResults.ResultMap, opts, stats.ScanTime)
 }
 
-func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOpts) {
+func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOpts, scanTime time.Duration) {
 	var tableData [][]string
 	totalHosts := len(results)
 	totalUp := 0
@@ -222,15 +224,16 @@ func printScanResultsMap(results map[netip.Addr]scanner.HostResult, opts *ScanOp
 			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
 		}
 		fmt.Println("Ports Scanned: ", totalPortsScanned)
-		fmt.Println("Open Ports: ", hostResults.OpenPorts)
-		fmt.Println("Closed Ports: ", hostResults.ClosedPorts)
+		fmt.Println("Open Ports:    ", hostResults.OpenPorts)
+		fmt.Println("Closed Ports:  ", hostResults.ClosedPorts)
 		if hostResults.FilteredPorts > 0 {
 			fmt.Println("Filtered Ports: ", hostResults.FilteredPorts)
 		}
 	}
 	fmt.Println("\n──────────────────────────────────────────────")
+	fmt.Println("Scan Duration:      ", scanTime.Truncate(time.Millisecond))
 	fmt.Printf("Total Hosts Scanned: %v\n", totalHosts)
-	fmt.Printf("Hosts that are Up: %v\n", totalUp)
+	fmt.Printf("Hosts that are Up:   %v\n", totalUp)
 	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
 }
 
@@ -262,7 +265,8 @@ func printPingScanResults(results []scanner.PingResult, stats scanner.PingStats,
 	if len(tableData) > 1 {
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
 	}
-	fmt.Println("\nTotal Hosts Scanned: ", totalHosts)
-	fmt.Println("Hosts that are Up: ", stats.UpHosts)
-	fmt.Printf("Hosts that are down: %v\n\n", stats.DownHosts)
+	fmt.Println("\nScan Duration:        ", stats.ScanTime.Truncate(time.Millisecond))
+	fmt.Println("Total Hosts Scanned:  ", totalHosts)
+	fmt.Println("Hosts that are Up:    ", stats.UpHosts)
+	fmt.Printf("Hosts that are down:   %v\n\n", stats.DownHosts)
 }
