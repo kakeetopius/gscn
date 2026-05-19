@@ -45,6 +45,7 @@ type UDPScanResults struct {
 
 type UDPScanStats struct {
 	TotalNumOfHosts int
+	ScanTime        time.Duration
 }
 
 func (UDPScanResults) ResultType() ScanResultType {
@@ -66,10 +67,13 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 }
 
 func (s *UDPScanner) Scan() error {
+	startTime := time.Now()
 	results, err := runUDPScan(s)
 	if err != nil {
 		return err
 	}
+	stopTime := time.Now()
+	s.stats.ScanTime = stopTime.Sub(startTime)
 	s.results = results
 	return nil
 }

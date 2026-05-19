@@ -2,6 +2,7 @@ package discover
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
@@ -38,9 +39,10 @@ func displayARPResults(arpResults *scanner.ARPScanResults, arpStats *scanner.ARP
 		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
 	}
 	if arpStats != nil {
-		fmt.Println("\nPackets Sent: ", arpStats.PacketsSent)
-		fmt.Println("Packets Received: ", arpStats.PacketsReceived)
-		fmt.Println("Hosts Found: ", len(arpResults.ResultSet))
+		fmt.Println("\nScan Duration:      ", arpStats.ScanTime.Truncate(time.Millisecond))
+		fmt.Println("Packets Sent:       ", arpStats.PacketsSent)
+		fmt.Println("Packets Received:   ", arpStats.PacketsReceived)
+		fmt.Println("Hosts Found:        ", len(arpResults.ResultSet))
 
 	}
 }
@@ -77,8 +79,9 @@ func displayNDPResults(ndpResults *scanner.NDPScanResults, ndpStats *scanner.NDP
 	}
 
 	if ndpStats != nil {
-		fmt.Println("\nPackets Sent: ", ndpStats.PacketsSent)
-		fmt.Println("Packets Received: ", ndpStats.PacketsReceived)
-		fmt.Println("Hosts Found: ", len(ndpResults.ResultSet))
+		fmt.Println("\nScan Duration:     ", ndpStats.ScanTime.Truncate(time.Millisecond))
+		fmt.Println("Packets Sent:      ", ndpStats.PacketsSent)
+		fmt.Println("Packets Received:  ", ndpStats.PacketsReceived)
+		fmt.Println("Hosts Found:       ", len(ndpResults.ResultSet))
 	}
 }

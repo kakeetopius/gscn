@@ -48,6 +48,7 @@ type PingResult struct {
 type PingStats struct {
 	UpHosts   int
 	DownHosts int
+	ScanTime  time.Duration
 }
 
 type PingScanJob struct {
@@ -70,7 +71,14 @@ func NewPingScanner(opts PingScanOptions) *PingScanner {
 }
 
 func (s *PingScanner) Scan() error {
+	startTime := time.Now()
 	err := runPing(s, s.Targets)
+	if err != nil {
+		return err
+	}
+	endtime := time.Now()
+
+	s.stats.ScanTime = endtime.Sub(startTime)
 	return err
 }
 
