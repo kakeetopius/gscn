@@ -37,6 +37,9 @@ type UDPScanOptions struct {
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
 	MessageNotifier     notifier.Notifier
+
+	PrintUpOnly   bool
+	PrintOpenOnly bool
 }
 
 type UDPScanResults struct {
@@ -46,10 +49,6 @@ type UDPScanResults struct {
 type UDPScanStats struct {
 	TotalNumOfHosts int
 	ScanTime        time.Duration
-}
-
-func (UDPScanResults) ResultType() ScanResultType {
-	return UDPScanResultType
 }
 
 func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
@@ -75,6 +74,8 @@ func (s *UDPScanner) Scan() error {
 	stopTime := time.Now()
 	s.stats.ScanTime = stopTime.Sub(startTime)
 	s.results = results
+
+	s.addResultsInfo()
 	return nil
 }
 
@@ -84,9 +85,16 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
-		spinner.Fail()
 		return err
 	}
+
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
 
 	err = s.MessageNotifier.SendMessage(s.results.String())
 	if err != nil {
@@ -94,19 +102,32 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 		return err
 	}
 
-	spinner.Success("Results Sent")
 	return nil
 }
 
-func (s *UDPScanner) Results() ScanResults {
+func (s *UDPScanner) PrintResults() {
+	printScanResultsMap(s.results.ResultMap, s.stats.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
+}
+
+func (s *UDPScanner) Results() UDPScanResults {
+	return s.results
+}
+
+func (s *UDPScanner) Stats() UDPScanStats {
+	return s.stats
+}
+
+func (s *UDPScanner) addResultsInfo() {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Success("Resolving Done")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
 			}
-			name := ReverseLookup(host.String(), 2*time.Second)
+			name := util.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.results.ResultMap[host] = results
 		}
@@ -117,11 +138,6 @@ func (s *UDPScanner) Results() ScanResults {
 			return int(a.Number - b.Number)
 		})
 	}
-	return s.results
-}
-
-func (s *UDPScanner) Stats() ScanStats {
-	return s.stats
 }
 
 func (r UDPScanResults) String() string {
@@ -314,7 +330,7 @@ func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, p
 	if err != nil {
 		return PingScanResults{}, err
 	}
-	results := pinger.Results().(PingScanResults)
+	results := pinger.Results()
 
 	return results, nil
 }

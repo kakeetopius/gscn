@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/mdlayher/wifi"
 	"github.com/pterm/pterm"
@@ -16,7 +15,6 @@ type WiFiScanner struct {
 	WiFiScannerOptions
 	results WiFiScanResults
 	stats   WiFiScanStats
-	logger  log.Logger
 }
 
 type WiFiScannerOptions struct {
@@ -38,7 +36,6 @@ func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 		WiFiScannerOptions: opts,
 		results:            WiFiScanResults{},
 		stats:              WiFiScanStats{},
-		logger:             log.NewLogger(true),
 	}
 }
 
@@ -53,23 +50,22 @@ func (s *WiFiScanner) Scan() error {
 	return nil
 }
 
-func (s *WiFiScanner) Results() ScanResults {
-	return s.results
-}
-
-func (s *WiFiScanner) Stats() ScanStats {
-	return s.stats
-}
-
 func (s *WiFiScanner) SendResultsViaNotifier() error {
 	if s.MessageNotifier == nil {
 		return fmt.Errorf("wifiscanner: no notifier is set")
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
-		spinner.Fail()
 		return err
 	}
+
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
 
 	err = s.MessageNotifier.SendMessage(s.results.String())
 	if err != nil {
@@ -77,8 +73,19 @@ func (s *WiFiScanner) SendResultsViaNotifier() error {
 		return err
 	}
 
-	spinner.Success("Results Sent")
 	return nil
+}
+
+func (s *WiFiScanner) Results() WiFiScanResults {
+	return s.results
+}
+
+func (s *WiFiScanner) Stats() WiFiScanStats {
+	return s.stats
+}
+
+func (s *WiFiScanner) PrintResults() {
+	displayWifiScanResults(s)
 }
 
 func (r WiFiScanResults) String() string {
@@ -95,10 +102,6 @@ func (r WiFiScanResults) String() string {
 		fmt.Fprintln(&stringBuilder)
 	}
 	return stringBuilder.String()
-}
-
-func (WiFiScanResults) ResultType() ScanResultType {
-	return WifiScanResultType
 }
 
 func runWifiScan(scanner *WiFiScanner) error {
@@ -192,4 +195,27 @@ func FreqToChannel(freq int) int {
 	}
 
 	return 0
+}
+
+func displayWifiScanResults(wifiScanner *WiFiScanner) {
+	results := wifiScanner.Results()
+
+	tableData := pterm.TableData{{"SSID", "BSSID", "Status", "Freq (Mhz)", "Channel", "Strength (dBm)", "Stations"}}
+	for _, ap := range results.AccessPoints {
+		style := pterm.NewStyle(pterm.FgDefault)
+		if ap.Status == wifi.BSSStatusAssociated {
+			style = pterm.NewStyle(pterm.Bold)
+		}
+		ssid := style.Sprint(ap.SSID)
+		bssid := style.Sprint(ap.BSSID)
+		status := style.Sprint(ap.Status)
+		freq := style.Sprint(ap.Frequency)
+		channel := style.Sprint(FreqToChannel(ap.Frequency))
+		signal := style.Sprint(ap.Signal / 100)
+		stations := style.Sprint(ap.Load.StationCount)
+
+		tableData = append(tableData, []string{ssid, bssid, status, freq, channel, signal, stations})
+	}
+
+	pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("-").WithBoxed().WithData(tableData).Render()
 }

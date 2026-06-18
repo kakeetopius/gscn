@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/pterm/pterm"
 )
@@ -21,7 +21,6 @@ type PingScanner struct {
 	PingScanOptions
 	results PingScanResults
 	stats   PingStats
-	logger  log.Logger
 }
 
 type PingScanOptions struct {
@@ -32,10 +31,13 @@ type PingScanOptions struct {
 	HostNames           map[netip.Addr]string
 	MessageNotifier     notifier.Notifier
 	PingCount           int
+	SortResults         bool
+	PrintOnlyUp         bool
 }
 
 type PingScanResults struct {
-	ResultMap map[netip.Addr]PingResult
+	ResultMap     map[netip.Addr]PingResult
+	SortedResults []PingResult
 }
 
 type PingResult struct {
@@ -65,8 +67,7 @@ func NewPingScanner(opts PingScanOptions) *PingScanner {
 		results: PingScanResults{
 			ResultMap: make(map[netip.Addr]PingResult),
 		},
-		stats:  PingStats{},
-		logger: log.NewLogger(true),
+		stats: PingStats{},
 	}
 }
 
@@ -79,28 +80,65 @@ func (s *PingScanner) Scan() error {
 	endtime := time.Now()
 
 	s.stats.ScanTime = endtime.Sub(startTime)
-	return err
-}
 
-func (s *PingScanner) Results() ScanResults {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Success("Resolving Done")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
 			}
-			name := ReverseLookup(host.String(), 2*time.Second)
+
+			name := util.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.results.ResultMap[host] = results
 		}
 	}
 
+	s.sortResults()
+	return err
+}
+
+func (s *PingScanner) SendResultsViaNotifier() error {
+	if s.MessageNotifier == nil {
+		return fmt.Errorf("pingscanner: no notifier is set")
+	}
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
+
+	err = s.MessageNotifier.SendMessage(s.results.String())
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *PingScanner) Stats() PingStats {
+	return s.stats
+}
+
+func (s *PingScanner) Results() PingScanResults {
 	return s.results
 }
 
-func (s *PingScanner) SortedResults() []PingResult {
-	pingScanResults := s.Results().(PingScanResults)
+func (s *PingScanner) PrintResults() {
+	printPingScanResults(s.results.SortedResults, s.stats, s.PrintOnlyUp)
+}
+
+func (s *PingScanner) sortResults() {
+	pingScanResults := s.results
 	ipAddrs := make([]netip.Addr, 0, len(pingScanResults.ResultMap))
 
 	for addr := range pingScanResults.ResultMap {
@@ -116,31 +154,7 @@ func (s *PingScanner) SortedResults() []PingResult {
 		sortedResults = append(sortedResults, pingScanResults.ResultMap[addr])
 	}
 
-	return sortedResults
-}
-
-func (s *PingScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("pingscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		spinner.Fail()
-		return err
-	}
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		spinner.Fail()
-		return err
-	}
-
-	spinner.Success("Results Sent")
-	return nil
-}
-
-func (s *PingScanner) Stats() ScanStats {
-	return s.stats
+	s.results.SortedResults = sortedResults
 }
 
 func (r PingScanResults) String() string {
@@ -163,10 +177,6 @@ func (r PingScanResults) String() string {
 	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r.ResultMap)-up)
 
 	return stringBuilder.String()
-}
-
-func (r PingScanResults) ResultType() ScanResultType {
-	return PingScanResultType
 }
 
 func runPing(scanner *PingScanner, targets []netip.Prefix) error {
@@ -273,4 +283,38 @@ func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResults
 			scanResults.ResultMap[result.IP] = result
 		}
 	}
+}
+
+func printPingScanResults(results []PingResult, stats PingStats, printUpOnly bool) {
+	var tableData [][]string
+	tableData = pterm.TableData{{"Host", "State", "Average RTT"}}
+	totalHosts := stats.DownHosts + stats.UpHosts
+	for _, result := range results {
+		if result.HostState == HostStateDown && printUpOnly {
+			continue
+		}
+
+		hostIdentity := result.IP.String()
+		if result.HostState == HostStateDown && totalHosts > 256 {
+			continue // do not add hosts that are down if scanned hosts are above 10
+		}
+		if result.HostName != "" {
+			hostIdentity = fmt.Sprintf("%v (%v)", hostIdentity, result.HostName)
+		}
+		hostStateStyle := pterm.FgDefault
+		switch result.HostState {
+		case HostStateUp:
+			hostStateStyle = pterm.FgGreen
+		case HostStateDown:
+			hostStateStyle = pterm.FgRed
+		}
+		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState), result.AverageRTT.Truncate(time.Microsecond).String()})
+	}
+	if len(tableData) > 1 {
+		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
+	}
+	fmt.Println("\nScan Duration:        ", stats.ScanTime.Truncate(time.Millisecond))
+	fmt.Println("Total Hosts Scanned:  ", totalHosts)
+	fmt.Println("Hosts that are Up:    ", stats.UpHosts)
+	fmt.Printf("Hosts that are down:   %v\n\n", stats.DownHosts)
 }

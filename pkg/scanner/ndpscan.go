@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/internal/util"
@@ -34,14 +37,15 @@ type NDPScanOptions struct {
 	WithVendorInfo      bool
 	WithHostNames       bool
 	AddUnknownHostNames bool
+	FromCache           bool
 	Workers             int
 	MessageNotifier     notifier.Notifier
 }
 
 type NDPScanResults struct {
 	ResultSet    []NDPScanResult
-	hasHostNames bool
-	hasVendors   bool
+	HasHostNames bool
+	HasVendors   bool
 }
 
 type NDPScanResult struct {
@@ -74,48 +78,23 @@ func (s *NDPScanner) Scan() error {
 		return fmt.Errorf("no ndp options set yet")
 	}
 	start := time.Now()
-	results, err := runIPv6Disc(s)
+
+	var results NDPScanResults
+	var err error
+	if s.FromCache {
+		results, err = ndpResultsUsingNetlink(&s.Interface, s.Targets)
+	} else {
+		results, err = runIPv6Disc(s)
+	}
 	if err != nil {
 		return err
 	}
+
 	stop := time.Now()
 	s.results = results
 	s.stats.ScanTime = stop.Sub(start)
-	return nil
-}
 
-func (s *NDPScanner) Results() ScanResults {
-	resultSet := s.results.ResultSet
-	if s.AddUnknownHostNames {
-		s.results.hasHostNames = true
-		fmt.Println()
-		s.logger.Info("Trying to resolve hostnames")
-		numHosts := len(resultSet)
-		bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
-		if err != nil {
-			fmt.Println(err)
-			return nil
-		}
-
-		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr.String(), s.ResponseTimeout)
-			bar.Increment()
-		}
-		bar.Stop()
-	}
-	if s.WithVendorInfo {
-		s.results.hasVendors = true
-		for i := range resultSet {
-			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
-		}
-	}
-
-	slices.SortFunc(resultSet, func(a, b NDPScanResult) int {
-		return a.IPAddr.Compare(b.IPAddr)
-	})
-
-	s.results.ResultSet = resultSet
-	return s.results
+	return s.addResultInfo()
 }
 
 func (s *NDPScanner) SendResultsViaNotifier() error {
@@ -124,26 +103,70 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
-		spinner.Fail()
 		return err
 	}
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
 
 	err = s.MessageNotifier.SendMessage(s.results.String())
 	if err != nil {
-		spinner.Fail()
 		return err
 	}
 
-	spinner.Success("Results Sent")
 	return nil
 }
 
-func (s *NDPScanner) Stats() ScanStats {
+func (s *NDPScanner) PrintResults() {
+	displayNDPResults(&s.results, &s.stats)
+}
+
+func (s *NDPScanner) Results() NDPScanResults {
+	return s.results
+}
+
+func (s *NDPScanner) Stats() NDPScanStats {
 	return s.stats
 }
 
-func (NDPScanResults) ResultType() ScanResultType {
-	return NDPScanResultType
+func (s *NDPScanner) addResultInfo() error {
+	resultSet := s.results.ResultSet
+	numHosts := len(resultSet)
+	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
+	if err != nil {
+		return err
+	}
+	defer bar.Stop()
+
+	if s.AddUnknownHostNames {
+		s.results.HasHostNames = true
+		fmt.Println()
+		s.logger.Info("Trying to resolve hostnames")
+	}
+	if s.WithVendorInfo {
+		s.results.HasVendors = true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
+	defer cancel()
+	for i := range resultSet {
+		if s.WithVendorInfo {
+			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
+		}
+		if s.AddUnknownHostNames {
+			resultSet[i].HostName = util.ReverseLookup(ctx, resultSet[i].IPAddr.String())
+			bar.Increment()
+		}
+	}
+
+	slices.SortFunc(resultSet, func(a, b NDPScanResult) int {
+		return a.IPAddr.Compare(b.IPAddr)
+	})
+	return nil
 }
 
 func (r NDPScanResults) String() string {
@@ -155,14 +178,6 @@ func (r NDPScanResults) String() string {
 	}
 
 	return stringBuilder.String()
-}
-
-func (r NDPScanResults) HasHostNames() bool {
-	return r.hasHostNames
-}
-
-func (r NDPScanResults) HasVendors() bool {
-	return r.hasVendors
 }
 
 func runIPv6Disc(scanner *NDPScanner) (NDPScanResults, error) {
@@ -320,6 +335,39 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	}
 }
 
+func ndpResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) (NDPScanResults, error) {
+	if runtime.GOOS != "linux" {
+		return NDPScanResults{}, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
+	}
+	results := NDPScanResults{
+		ResultSet: make([]NDPScanResult, 0, 5),
+	}
+	conn, err := rtnl.Dial(nil)
+	if err != nil {
+		return NDPScanResults{}, fmt.Errorf("failed to establish connection to netlink subsystem: %v", err)
+	}
+	defer conn.Close()
+
+	neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET6)
+	if err != nil {
+		return NDPScanResults{}, err
+	}
+	for _, neigh := range neighbours {
+		addr, ok := netip.AddrFromSlice(neigh.IP)
+		if !ok {
+			continue
+		}
+		if util.AddrIsPartOfNetworks(targets, &addr) {
+			results.ResultSet = append(results.ResultSet, NDPScanResult{
+				IPAddr:  addr,
+				MacAddr: neigh.HwAddr.String(),
+				Vendor:  util.MACVendor(neigh.HwAddr.String()),
+			})
+		}
+	}
+	return results, nil
+}
+
 func solicitedNodeMacAddress(targetIP netip.Addr) net.HardwareAddr {
 	// Format is 33:33:33:xx:xx:xx where xx:xx:xx is last 24 bits of the IPv6 Address
 	addr := targetIP.As16()
@@ -346,4 +394,48 @@ func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
 
 	copy(solIP[13:16], last24Bits)
 	return solIP
+}
+
+func displayNDPResults(ndpResults *NDPScanResults, ndpStats *NDPScanStats) {
+	if len(ndpResults.ResultSet) == 0 {
+		fmt.Println()
+		pterm.Info.Println("Host(s) not found on that network.")
+	} else {
+		fmt.Println()
+		var tableData [][]string
+		tableData = pterm.TableData{{"IP Address", "Mac Address"}}
+		if ndpResults.HasVendors {
+			tableData[0] = append(tableData[0], "Vendor")
+		}
+		if ndpResults.HasHostNames {
+			tableData[0] = append(tableData[0], "HostNames")
+		}
+
+		for _, result := range ndpResults.ResultSet {
+			row := []string{result.IPAddr.String(), result.MacAddr}
+			if ndpResults.HasVendors {
+				vendor := result.Vendor
+				if vendor == "" {
+					vendor = "(unknown)"
+				}
+				row = append(row, vendor)
+			}
+			if ndpResults.HasHostNames {
+				hostName := result.HostName
+				if hostName == "" {
+					hostName = "(unknown)"
+				}
+				row = append(row, hostName)
+			}
+			tableData = append(tableData, row)
+		}
+		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
+	}
+
+	if ndpStats != nil {
+		fmt.Println("\nScan Duration:     ", ndpStats.ScanTime.Truncate(time.Millisecond))
+		fmt.Println("Packets Sent:      ", ndpStats.PacketsSent)
+		fmt.Println("Packets Received:  ", ndpStats.PacketsReceived)
+		fmt.Println("Hosts Found:       ", len(ndpResults.ResultSet))
+	}
 }
