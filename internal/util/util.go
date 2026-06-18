@@ -2,6 +2,7 @@
 package util
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -280,4 +281,15 @@ func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) e
 	}
 
 	return nil
+}
+
+func ReverseLookup(ctx context.Context, addr string) string {
+	resolver := net.Resolver{}
+	resolver.PreferGo = true
+
+	names, err := resolver.LookupAddr(ctx, addr)
+	if err == nil && len(names) > 0 {
+		return names[0]
+	}
+	return ""
 }
