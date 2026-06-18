@@ -49,22 +49,7 @@ Most commands accept one or more targets as the first positional argument. Targe
 | Domain name                 | `example.com`                               |
 | Comma-separated combination | `10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24` |
 
-> [!NOTE]
-> `gscn discover arp` only accepts IPv4 targets. `gscn discover ndp` only accepts IPv6 targets. All `gscn scan` subcommands accept both.
-
 ## Usage
-
-### Global Flags
-
-These flags are available on every command:
-
-| Flag              | Description                                                                                                |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `--config <path>` | Path to config file. Falls back to `$HOME/.config/gscn.toml` on Linux or `%APPDATA%\gscn.toml` on Windows. |
-| `--notify`        | Send scan results via a configured notifier (see [Configuration](#configuration)).                         |
-| `--debug`         | Run in debug mode. Prints extra information such as the config file in use.                                |
-
----
 
 ### Discover Hosts on a Local Network
 
@@ -76,7 +61,7 @@ gscn discover <subcommand> [flags]
 
 #### `gscn discover arp` — IPv4 host discovery via ARP
 
-Sends ARP requests to target IPv4 addresses and listens for replies. This is the most reliable method for discovering hosts on a local IPv4 subnet.
+Sends ARP requests to target IPv4 addresses and listens for replies.
 
 ```sh
 gscn discover arp [targets] [flags]
@@ -166,7 +151,7 @@ gscn scan <subcommand> [flags]
 
 #### `gscn scan tcp` — TCP full connect scan
 
-Attempts a full TCP connection (`SYN` → `SYN-ACK` → `ACK`) on each target port. This is the most accurate and compatible TCP scan method, though it is more visible to firewalls and IDS than a SYN-only scan.
+Attempts a full TCP connection on each port.
 
 ```sh
 gscn scan tcp <targets> [flags]
