@@ -19,7 +19,7 @@ import (
 )
 
 type ARPScanner struct {
-	*ARPScanOptions
+	ARPScanOptions
 	results ARPScanResults
 	stats   ARPScanStats
 	logger  log.Logger
@@ -56,7 +56,7 @@ type ARPScanStats struct {
 	ScanTime        time.Duration
 }
 
-func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
+func NewARPScanner(opts ARPScanOptions) *ARPScanner {
 	if opts.HostNames == nil {
 		opts.HostNames = make(map[netip.Addr]string)
 	}
@@ -69,9 +69,6 @@ func NewARPScanner(opts *ARPScanOptions) *ARPScanner {
 }
 
 func (s *ARPScanner) Scan() error {
-	if s.ARPScanOptions == nil {
-		return fmt.Errorf("no arp scan options set yet")
-	}
 	start := time.Now()
 	results, err := runArp(s)
 	if err != nil {
@@ -124,16 +121,18 @@ func (s *ARPScanner) Stats() ARPScanStats {
 func (s *ARPScanner) addResultInfo() error {
 	resultSet := s.results.ResultSet
 	numHosts := len(resultSet)
-	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
-	if err != nil {
-		return err
-	}
-	defer bar.Stop()
 
+	var bar *pterm.ProgressbarPrinter
+	var err error
 	if s.AddUnknownHostNames {
-		s.results.HasHostNames = true
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
+		bar, err = pterm.DefaultProgressbar.WithTotal(numHosts).Start()
+		if err != nil {
+			return err
+		}
+		defer bar.Stop()
+		s.results.HasHostNames = true
 	}
 	if s.WithVendorInfo {
 		s.results.HasVendors = true

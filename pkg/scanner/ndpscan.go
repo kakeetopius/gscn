@@ -22,7 +22,7 @@ import (
 )
 
 type NDPScanner struct {
-	*NDPScanOptions
+	NDPScanOptions
 	results NDPScanResults
 	stats   NDPScanStats
 	logger  log.Logger
@@ -61,7 +61,7 @@ type NDPScanStats struct {
 	ScanTime        time.Duration
 }
 
-func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
+func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
 	if opts.HostNames == nil {
 		opts.HostNames = make(map[netip.Addr]string)
 	}
@@ -74,9 +74,6 @@ func NewNDPScanner(opts *NDPScanOptions) *NDPScanner {
 }
 
 func (s *NDPScanner) Scan() error {
-	if s.NDPScanOptions == nil {
-		return fmt.Errorf("no ndp options set yet")
-	}
 	start := time.Now()
 
 	var results NDPScanResults
@@ -136,16 +133,18 @@ func (s *NDPScanner) Stats() NDPScanStats {
 func (s *NDPScanner) addResultInfo() error {
 	resultSet := s.results.ResultSet
 	numHosts := len(resultSet)
-	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
-	if err != nil {
-		return err
-	}
-	defer bar.Stop()
 
+	var bar *pterm.ProgressbarPrinter
+	var err error
 	if s.AddUnknownHostNames {
-		s.results.HasHostNames = true
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
+		bar, err = pterm.DefaultProgressbar.WithTotal(numHosts).Start()
+		if err != nil {
+			return err
+		}
+		defer bar.Stop()
+		s.results.HasHostNames = true
 	}
 	if s.WithVendorInfo {
 		s.results.HasVendors = true

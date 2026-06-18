@@ -28,7 +28,7 @@ type TCPFullScanner struct {
 type TCPFullScanOptions struct {
 	Targets             []netip.Prefix
 	TargetPorts         []uint
-	Workers             uint
+	Workers             int
 	PingCount           int
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string

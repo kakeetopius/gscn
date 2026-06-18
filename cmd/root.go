@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	cfgFile string
-	notify  bool
-	config  *viper.Viper
-	debug   bool
+	cfgFile   string
+	notify    bool
+	appConfig *viper.Viper
+	debug     bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -65,24 +65,24 @@ func init() {
 // default config directory, enables environment variable overrides, and loads
 // the resulting configuration if present.
 func initialiseConfig() error {
-	config = viper.New()
+	appConfig = viper.New()
 	if cfgFile != "" {
 		// Use config file from the flag.
-		config.SetConfigFile(cfgFile)
+		appConfig.SetConfigFile(cfgFile)
 	} else {
 		configDir, err := ConfigDir()
 		if err != nil {
 			return err
 		}
-		config.SetConfigName("gscn")
-		config.SetConfigType("toml")
-		config.AddConfigPath(configDir)
+		appConfig.SetConfigName("gscn")
+		appConfig.SetConfigType("toml")
+		appConfig.AddConfigPath(configDir)
 	}
 
-	config.AutomaticEnv() // read in environment variables that match
+	appConfig.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
-	err := config.ReadInConfig()
+	err := appConfig.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return err
@@ -91,7 +91,7 @@ func initialiseConfig() error {
 		return nil
 	}
 	if debug {
-		info := pterm.Info.Sprintln("Using config file:", config.ConfigFileUsed())
+		info := pterm.Info.Sprintln("Using config file:", appConfig.ConfigFileUsed())
 		fmt.Fprintln(os.Stderr, info)
 	}
 

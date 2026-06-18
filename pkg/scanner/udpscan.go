@@ -30,7 +30,7 @@ type UDPScanner struct {
 type UDPScanOptions struct {
 	Targets             []netip.Prefix
 	TargetPorts         []uint
-	Workers             uint
+	Workers             int
 	PingTimeout         time.Duration
 	PingCount           int
 	ResponseTimeout     time.Duration
