@@ -75,7 +75,6 @@ func initialiseConfig() error {
 			return err
 		}
 		appConfig.SetConfigName("gscn")
-		appConfig.SetConfigType("toml")
 		appConfig.AddConfigPath(configDir)
 	}
 
