@@ -39,8 +39,8 @@ type ARPScanOptions struct {
 
 type ARPScanResults struct {
 	ResultSet    []ARPScanResult
-	hasHostnames bool
-	hasVendors   bool
+	HasHostNames bool
+	HasVendors   bool
 }
 
 type ARPScanResult struct {
@@ -80,32 +80,74 @@ func (s *ARPScanner) Scan() error {
 	stop := time.Now()
 	s.results = results
 	s.stats.ScanTime = stop.Sub(start)
+
+	return s.addResultInfo()
+}
+
+func (s *ARPScanner) SendResultsViaNotifier() (err error) {
+	if s.MessageNotifier == nil {
+		return fmt.Errorf("arpscanner: no notifier is set")
+	}
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
+
+	err = s.MessageNotifier.SendMessage(s.results.String())
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (s *ARPScanner) Results() ScanResults {
+func (s *ARPScanner) Results() ARPScanResults {
+	return s.results
+}
+
+func (s *ARPScanner) PrintResults() {
+	displayARPResults(&s.results, &s.stats)
+}
+
+func (s *ARPScanner) Stats() ARPScanStats {
+	return s.stats
+}
+
+func (s *ARPScanner) addResultInfo() error {
 	resultSet := s.results.ResultSet
+	numHosts := len(resultSet)
+	bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
+	if err != nil {
+		return err
+	}
+	defer bar.Stop()
+
 	if s.AddUnknownHostNames {
-		s.results.hasHostnames = true
+		s.results.HasHostNames = true
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
-		numHosts := len(resultSet)
-		bar, err := pterm.DefaultProgressbar.WithTotal(numHosts).Start()
-		if err != nil {
-			fmt.Println(err)
-			return nil
-		}
-
-		for i := range resultSet {
-			resultSet[i].HostName = ReverseLookup(resultSet[i].IPAddr.String(), s.ResponseTimeout)
-			bar.Increment()
-		}
-		bar.Stop()
 	}
 	if s.WithVendorInfo {
-		s.results.hasVendors = true
-		for i := range resultSet {
+		s.results.HasVendors = true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
+	defer cancel()
+	for i := range resultSet {
+		if s.WithVendorInfo {
 			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr.String())
+		}
+		if s.AddUnknownHostNames {
+			resultSet[i].HostName = util.ReverseLookup(ctx, resultSet[i].IPAddr.String())
+			bar.Increment()
 		}
 	}
 
@@ -113,44 +155,7 @@ func (s *ARPScanner) Results() ScanResults {
 		return a.IPAddr.Compare(b.IPAddr)
 	})
 
-	s.results.ResultSet = resultSet
-	return s.results
-}
-
-func (s *ARPScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("arpscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		spinner.Fail()
-		return err
-	}
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		spinner.Fail()
-		return err
-	}
-
-	spinner.Success("Results Sent")
 	return nil
-}
-
-func (s *ARPScanner) Stats() ScanStats {
-	return s.stats
-}
-
-func (r *ARPScanResults) HasHostNames() bool {
-	return r.hasHostnames
-}
-
-func (r *ARPScanResults) HasVendors() bool {
-	return r.hasVendors
-}
-
-func (ARPScanResults) ResultType() ScanResultType {
-	return ARPScanResultType
 }
 
 func (r ARPScanResults) String() string {
@@ -329,20 +334,6 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 	}
 }
 
-func ReverseLookup(addr string, timeout time.Duration) string {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	resolver := net.Resolver{}
-	resolver.PreferGo = true
-
-	names, err := resolver.LookupAddr(ctx, addr)
-	if err == nil && len(names) > 0 {
-		return names[0]
-	}
-	return ""
-}
-
 func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
 	networkAddr := networkPrefix.Masked().Addr()
 	hostBitLen := 32 - networkPrefix.Bits()
@@ -355,4 +346,48 @@ func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
 	broadCast := ipUint | mask
 
 	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
+}
+
+func displayARPResults(arpResults *ARPScanResults, arpStats *ARPScanStats) {
+	if len(arpResults.ResultSet) == 0 {
+		fmt.Println()
+		pterm.Info.Println("Host(s) not found on that network.")
+	} else {
+		fmt.Println()
+		var tableData [][]string
+		tableData = pterm.TableData{{"IP Address", "Mac Address"}}
+		if arpResults.HasVendors {
+			tableData[0] = append(tableData[0], "Vendor")
+		}
+		if arpResults.HasHostNames {
+			tableData[0] = append(tableData[0], "HostNames")
+		}
+
+		for _, result := range arpResults.ResultSet {
+			row := []string{result.IPAddr.String(), result.MacAddr.String()}
+			if arpResults.HasVendors {
+				vendor := result.Vendor
+				if vendor == "" {
+					vendor = "(unknown)"
+				}
+				row = append(row, vendor)
+			}
+			if arpResults.HasHostNames {
+				hostName := result.HostName
+				if hostName == "" {
+					hostName = "(unknown)"
+				}
+				row = append(row, hostName)
+			}
+			tableData = append(tableData, row)
+		}
+		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
+	}
+	if arpStats != nil {
+		fmt.Println("\nScan Duration:      ", arpStats.ScanTime.Truncate(time.Millisecond))
+		fmt.Println("Packets Sent:       ", arpStats.PacketsSent)
+		fmt.Println("Packets Received:   ", arpStats.PacketsReceived)
+		fmt.Println("Hosts Found:        ", len(arpResults.ResultSet))
+
+	}
 }

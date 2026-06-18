@@ -6,14 +6,23 @@ import (
 	"time"
 )
 
+type ScanType int
+
+const (
+	ARPScan ScanType = iota + 1
+	NDPScan
+	TCPFullScan
+	UDPScan
+	PingScan
+	WifiScan
+)
+
 // ScanResults defines the interface that all scan result types must implement.
 // It provides methods to convert results to a string representation and identify
 // the specific type of scan result.
 type ScanResults interface {
 	// String returns a string representation of the scan result.
 	String() string
-	// ResultType returns the type of scan result.
-	ResultType() ScanResultType
 }
 
 type ScanStats any
@@ -31,18 +40,9 @@ type Scanner interface {
 	Stats() ScanStats
 	// SendResultsViaNotifier sends scan results using the configured notifier
 	SendResultsViaNotifier() error
+
+	PrintResults()
 }
-
-type ScanResultType int
-
-const (
-	ARPScanResultType ScanResultType = iota + 1
-	NDPScanResultType
-	TCPFullScanScanResultType
-	UDPScanResultType
-	PingScanResultType
-	WifiScanResultType
-)
 
 type PortState uint8
 

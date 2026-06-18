@@ -36,6 +36,9 @@ type TCPFullScanOptions struct {
 	PingTimeout         time.Duration
 	SkipPingScan        bool
 	MessageNotifier     notifier.Notifier
+
+	PrintUpOnly   bool
+	PrintOpenOnly bool
 }
 
 type TCPFullScanResults struct {
@@ -67,17 +70,21 @@ func (s *TCPFullScanner) SendResultsViaNotifier() error {
 	}
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
-		spinner.Fail()
 		return err
 	}
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
 
 	err = s.MessageNotifier.SendMessage(s.results.String())
 	if err != nil {
-		spinner.Fail()
 		return err
 	}
 
-	spinner.Success("Results Sent")
 	return nil
 }
 
@@ -91,18 +98,34 @@ func (s *TCPFullScanner) Scan() error {
 
 	s.stats.ScanTime = stopTime.Sub(startTime)
 	s.results = results
+	s.addResultsInfo()
 	return nil
 }
 
-func (s *TCPFullScanner) Results() ScanResults {
+func (s *TCPFullScanner) Results() TCPFullScanResults {
+	return s.results
+}
+
+func (s *TCPFullScanner) PrintResults() {
+	printScanResultsMap(s.results.ResultMap, s.stats.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
+}
+
+func (s *TCPFullScanner) Stats() TCPFullScanStats {
+	return s.stats
+}
+
+func (s *TCPFullScanner) addResultsInfo() {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Success("Resolving done")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
 		for host, results := range s.results.ResultMap {
 			if results.HostName != "" {
 				continue
 			}
-			name := ReverseLookup(host.String(), 2*time.Second)
+			name := util.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.results.ResultMap[host] = results
 		}
@@ -113,15 +136,6 @@ func (s *TCPFullScanner) Results() ScanResults {
 			return int(a.Number - b.Number)
 		})
 	}
-	return s.results
-}
-
-func (s *TCPFullScanner) Stats() ScanStats {
-	return s.stats
-}
-
-func (TCPFullScanResults) ResultType() ScanResultType {
-	return TCPFullScanScanResultType
 }
 
 func (r TCPFullScanResults) String() string {
