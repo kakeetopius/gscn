@@ -1,5 +1,5 @@
 // Package scanner provides functionality for scanning network devices using various network protocols,
-// including ARP, NDP, TCP, UDP.
+// including ARP, NDP, TCP, UDP etc
 package scanner
 
 import (
@@ -8,7 +8,11 @@ import (
 	"github.com/kakeetopius/gscn/internal/notify"
 )
 
-type ScanType int
+type (
+	ScanType  int
+	PortState int
+	HostState int
+)
 
 const (
 	ARPScan ScanType = iota + 1
@@ -19,20 +23,18 @@ const (
 	WifiScan
 )
 
-// ScanResults defines the interface that all scan result types must implement.
-// It provides methods to convert results to a string representation and identify
-// the specific type of scan result.
-type ScanResults interface {
-	// String returns a string representation of the scan result.
-	String() string
-}
+const (
+	HostStateUp HostState = iota + 1
+	HostStateDown
+)
 
-type ScanStats any
+const (
+	PortStateOpen PortState = iota + 1
+	PortStateClosed
+	PortStatePossibleFilter // used during udp scan when a host's port state cant be known definitevly
+)
 
 // Scanner defines the interface for network scanning operations.
-//
-// It provides methods to configure and execute network scans, retrieve results and statistics,
-// and customize scanning behavior.
 type Scanner interface {
 	// Scan executes the network scan and returns an error if the scan fails.
 	Scan() error
@@ -42,32 +44,28 @@ type Scanner interface {
 	Stats() ScanStats
 	// SendResultsViaNotifier sends scan results using the configured notifier
 	SendResultsViaNotifier() error
-
+	// PrintResults outputs the scan findings to standard output.
 	PrintResults()
-
+	// SetNotifier configures the notifier instance used to send the results.
 	SetNotifier(n notify.Notifier)
 }
 
-type PortState uint8
-
-const (
-	PortStateOpen PortState = iota + 1
-	PortStateClosed
-	PortStatePossibleFilter // used during udp scan when a host does not return a connection refused error, but returns an i/o timeout. So port state cant be known definitevly
-)
-
-func (p PortState) String() string {
-	var s string
-	switch p {
-	case PortStateOpen:
-		s = "open"
-	case PortStateClosed:
-		s = "closed"
-	case PortStatePossibleFilter:
-		s = "open | filtered"
-	}
-
-	return s
+// HostResult is the result of a single host after port scanning
+type HostResult struct {
+	// HostState indicates the overall state of the host (e.g., up or down).
+	HostState
+	// Ports contains the specific details for each port scanned on the host.
+	Ports []Port
+	// HostName is the resolved DNS name of the host.
+	HostName string
+	// OpenPorts represents the total count of ports found open.
+	OpenPorts int
+	// ClosedPorts represents the total count of ports found closed.
+	ClosedPorts int
+	// FilteredPorts represents the total count of ports where traffic was dropped or blocked (where the port state is uncertain)
+	FilteredPorts int
+	// AverageRTT is the mean round-trip time for packets sent to the host.
+	AverageRTT time.Duration
 }
 
 // Port represents a network port with its metadata.
@@ -82,27 +80,28 @@ type Port struct {
 	State PortState
 }
 
-// HostResult is the result of a single host after port scanning
-type HostResult struct {
-	Ports    []Port
-	HostName string
-	HostState
-	OpenPorts     int
-	ClosedPorts   int
-	FilteredPorts int
-	AverageRTT    time.Duration
+// ScanResults defines the interface that all scan result types must implement.
+// It provides methods to convert results to a string representation and identify
+// the specific type of scan result.
+type ScanResults interface {
+	// String returns a string representation of the scan result.
+	String() string
 }
 
-func (h HostResult) TotalNumberOfPorts() int {
-	return h.OpenPorts + h.ClosedPorts + h.FilteredPorts
+type ScanStats any
+
+func (p PortState) String() string {
+	switch p {
+	case PortStateOpen:
+		return "open"
+	case PortStateClosed:
+		return "closed"
+	case PortStatePossibleFilter:
+		return "open | filtered"
+	default:
+		return "unknown"
+	}
 }
-
-type HostState int
-
-const (
-	HostStateUp HostState = iota + 1
-	HostStateDown
-)
 
 func (s HostState) String() string {
 	switch s {
@@ -113,4 +112,8 @@ func (s HostState) String() string {
 	default:
 		return "unknown"
 	}
+}
+
+func (r HostResult) TotalNumberOfPorts() int {
+	return r.OpenPorts + r.ClosedPorts + r.FilteredPorts
 }

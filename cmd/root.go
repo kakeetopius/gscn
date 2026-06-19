@@ -71,6 +71,7 @@ func versionCmd() *cobra.Command {
 	}
 }
 
+// buildVersion constructs and returns the application's version information.
 func buildVersion() goversion.Info {
 	return goversion.GetVersionInfo(
 		goversion.WithAppDetails("gscn", "Network Scanning Utility.", ""),
@@ -114,6 +115,9 @@ func initialiseConfig() error {
 	return nil
 }
 
+// doScan starts the scanning process using the provided scanner.
+// If notifications are enabled, it initializes a notifier, attaches it to the scanner,
+// and sends the scan results upon completion. It also prints the findings to standard output.
 func doScan(scanner scanner.Scanner) error {
 	if sendNotification {
 		notifier, err := getNotifier()

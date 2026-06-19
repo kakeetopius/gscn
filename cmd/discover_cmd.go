@@ -122,11 +122,15 @@ func discoverNDPCmd() *cobra.Command {
 	return &ndpScan
 }
 
+// getTargetsAndIface processes target and interface arguments to determine the network
+// prefixes to scan and the network interface to use. It validates IP addressing (IPv4 vs IPv6)
+// based on the isIP6 flag. If targets are omitted, it attempts to infer them from the provided
+// interface's network. If the interface is omitted, it infers it based on the provided targets.
 func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix, *util.Interface, error) {
 	var iface *util.Interface
 	var err error
-
-	logger := log.NewLogger(debug)
+	netInterfaceProvider := util.RealNetInterfaceProvider{}
+	logger := log.NewLogger(true)
 
 	targets := make([]netip.Prefix, 0)
 	if targetStr != "" {
@@ -135,37 +139,14 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 			return nil, nil, err
 		}
 	}
-
-	for _, target := range targets {
-		if target.Addr().Is6() != isIP6 {
-			if isIP6 {
-				return nil, nil, fmt.Errorf("%v is not an IPv6 address", target)
-			} else {
-				return nil, nil, fmt.Errorf("%v is not an IPv4 address", target)
-			}
-		}
-	}
-
-	netInterfaceProvider := util.RealNetInterfaceProvider{}
-
 	if ifaceStr != "" {
 		iface, err = netInterfaceProvider.InterfaceByName(ifaceStr)
 		if err != nil {
 			return nil, nil, err
 		}
+	}
 
-		var neterr error
-		if len(targets) == 0 {
-			var target *netip.Prefix
-			target, neterr = util.GetFirstIfaceIPNet(&netInterfaceProvider, iface, isIP6)
-			if neterr != nil {
-				return nil, nil, neterr
-			}
-			logger.Info("No targets Provided. Scanning for hosts on the interface's network: ", target.Masked())
-			fmt.Println()
-			targets = append(targets, *target)
-		}
-	} else {
+	if iface == nil && len(targets) != 0 {
 		// if no interface given we find an interface on the same network as one of the targets.
 		for _, target := range targets {
 			iface, err = util.GetIfaceByIP(&netInterfaceProvider, target.Addr())
@@ -178,11 +159,32 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 			break
 		}
 	}
+	if len(targets) == 0 && iface != nil {
+		// if no targets given but we have an interface, use the interface's first network of the given address family
+		var target *netip.Prefix
+		target, err = util.GetFirstIfaceIPNet(&netInterfaceProvider, iface, isIP6)
+		if err != nil {
+			return nil, nil, err
+		}
+		logger.Infof("No targets Provided. Scanning for hosts on the network %s using interface %s\n", target.Masked(), iface.Name)
+		fmt.Println()
+		targets = append(targets, *target)
+	}
 
 	if iface == nil {
-		return nil, nil, fmt.Errorf("could not determine which interface to use. Use -i option to provide an interface or provide one target with an IP connected to one of the interface networks")
+		return nil, nil, fmt.Errorf("could not determine which interface to use. Use -i option to provide an interface or provide one target with an IP connected to one of the interface's networks")
 	} else if len(targets) == 0 {
-		return nil, nil, fmt.Errorf("could not determine which targets to scan. Use the gscn discover --help for more information")
+		return nil, nil, fmt.Errorf("could not determine which targets to scan. Try gscn discover --help for more information")
+	}
+
+	for _, target := range targets {
+		if target.Addr().Is6() != isIP6 {
+			if isIP6 {
+				return nil, nil, fmt.Errorf("%v is not an IPv6 address", target)
+			} else {
+				return nil, nil, fmt.Errorf("%v is not an IPv4 address", target)
+			}
+		}
 	}
 
 	err = util.VerifyInterface(&netInterfaceProvider, iface)
@@ -193,6 +195,10 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 	return targets, iface, nil
 }
 
+// getSourceAddr determines the appropriate source IP address to use for scanning.
+// If a specific addr string is provided, it parses and returns that address.
+// Otherwise, it automatically selects the best source IP from the provided network
+// interface based on the targets provided and the address family.
 func getSourceAddr(addr string, iface *util.Interface, targets []netip.Prefix, ip6 bool) (netip.Addr, error) {
 	var sourceAddr netip.Addr
 	netInterfaceProvider := util.RealNetInterfaceProvider{}
