@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 
+	goversion "github.com/caarlos0/go-version"
 	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
@@ -25,6 +26,7 @@ var rootCmd = &cobra.Command{
 	Use:          "gscn",
 	Short:        "A simple command line tool to carry out different operations on a network.",
 	SilenceUsage: true,
+	Version:      buildVersion().GitVersion,
 	// Runs after flags are passed but before RunE runs
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return initialiseConfig()
@@ -50,11 +52,29 @@ func init() {
 	rootCmd.AddCommand(
 		DiscoverCmd(),
 		ScanCmd(),
+		versionCmd(),
 	)
 
 	if runtime.GOOS == "linux" {
 		rootCmd.AddCommand(WifiCmd())
 	}
+}
+
+func versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "version",
+		Short:   "Show detailed version information",
+		Aliases: []string{"v"},
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(buildVersion().String())
+		},
+	}
+}
+
+func buildVersion() goversion.Info {
+	return goversion.GetVersionInfo(
+		goversion.WithAppDetails("gscn", "Network Scanning Utility.", ""),
+	)
 }
 
 // initialiseConfig creates and loads the application configuration.
