@@ -49,23 +49,26 @@ Most commands accept one or more targets as the first positional argument. Targe
 | Domain name                 | `example.com`                               |
 | Comma-separated combination | `10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24` |
 
-## Usage
+---
 
-### Discover Hosts on a Local Network
+## Commands
 
-```sh
-gscn discover <subcommand> [flags]
-```
+### `discover` - Host Discovery
 
-`discover` has two subcommands depending on the protocol you want to use. Both require raw packet access, so `gscn discover` typically needs to be run as root or with the appropriate capabilities (`CAP_NET_RAW`).
+Both subcommands require raw packet access and typically need to be run as root or with `CAP_NET_RAW` on Linux.
 
-#### `gscn discover arp` — IPv4 host discovery via ARP
+---
 
-Sends ARP requests to target IPv4 addresses and listens for replies.
+1. #### `discover arp` - IPv4 host discovery via ARP
 
 ```sh
 gscn discover arp [targets] [flags]
 ```
+
+Sends ARP requests to target IPv4 addresses and listens for replies.
+
+<details>
+<summary>Flags</summary>
 
 | Flag                                | Description                                                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -74,6 +77,8 @@ gscn discover arp [targets] [flags]
 | `-t, --response-timeout <duration>` | Time to wait for ARP replies (e.g. `500ms`, `3s`).                                                                 |
 | `-H, --hostnames`                   | Perform a reverse DNS lookup on each discovered address to resolve hostnames.                                      |
 | `--vendors`                         | Include MAC address vendor information in results. Enabled by default; pass `--vendors=false` to disable.          |
+
+</details>
 
 <details>
 <summary>Examples</summary>
@@ -100,13 +105,16 @@ gscn discover arp 10.1.1.1/24 --notify
 
 </details>
 
-#### `gscn discover ndp` — IPv6 host discovery via Neighbour Discovery Protocol
-
-Sends ICMPv6 Neighbour Solicitation messages to discover hosts on an IPv6 subnet. Can also read from the kernel's cached neighbour table without sending any packets.
+2. #### `discover ndp` - IPv6 host discovery via Neighbour Discovery Protocol
 
 ```sh
 gscn discover ndp [targets] [flags]
 ```
+
+Sends ICMPv6 Neighbour Solicitation messages to discover hosts on an IPv6 subnet. Can also read from the kernel's cached neighbour table without sending any packets.
+
+<details>
+<summary>Flags</summary>
 
 | Flag                                | Description                                                                                                                         |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -116,6 +124,8 @@ gscn discover ndp [targets] [flags]
 | `-H, --hostnames`                   | Perform a reverse DNS lookup on each discovered address to resolve hostnames.                                                       |
 | `--from-cache`                      | Read from the kernel's neighbour cache instead of actively probing hosts. Faster and passive, but may miss hosts not recently seen. |
 | `--vendors`                         | Include MAC address vendor information in results. Enabled by default; pass `--vendors=false` to disable.                           |
+
+</details>
 
 <details>
 <summary>Examples</summary>
@@ -141,21 +151,22 @@ gscn discover ndp -i eth0 --from-cache
 
 ---
 
-### Scan Hosts
+### `scan` - Port & Ping Scanning
 
-```sh
-gscn scan <subcommand> [flags]
-```
+Before scanning ports, `tcp` and `udp` will by default first ping each target to check if it is up, skipping hosts that don't respond. Use `--skip-ping` to scan all targets unconditionally.
 
-`scan` has three subcommands: `tcp`, `udp`, and `ping`. Before scanning ports, `tcp` and `udp` will by default first ping each target to check if it is up, skipping hosts that don't respond. Use `--skip-ping` to disable this behaviour and scan all targets unconditionally.
+---
 
-#### `gscn scan tcp` — TCP full connect scan
-
-Attempts a full TCP connection on each port.
+1. #### `scan tcp` - TCP full connect scan
 
 ```sh
 gscn scan tcp <targets> [flags]
 ```
+
+Attempts a full TCP connection on each port.
+
+<details>
+<summary>Flags</summary>
 
 | Flag                                | Description                                                                                         |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -168,6 +179,8 @@ gscn scan tcp <targets> [flags]
 | `--skip-ping`                       | Skip the pre-scan ping check and attempt to scan all targets regardless of reachability.            |
 | `--open`                            | Only show ports that are open or possibly filtered.                                                 |
 | `--up`                              | Only show results for hosts that responded to the ping check.                                       |
+
+</details>
 
 <details>
 <summary>Examples</summary>
@@ -197,13 +210,16 @@ gscn scan tcp 10.1.1.1/24 -p 1-100 --notify
 
 </details>
 
-#### `gscn scan udp` — UDP scan
-
-Sends UDP packets to each target port and infers port state from ICMP Port Unreachable responses (closed) or the absence of a response (open|filtered).
+2. #### `scan udp` - UDP scan
 
 ```sh
 gscn scan udp <targets> [flags]
 ```
+
+Sends UDP packets to each target port and infers port state from ICMP Port Unreachable responses (closed) or the absence of a response (open|filtered).
+
+<details>
+<summary>Flags</summary>
 
 | Flag                                | Description                                                                       |
 | ----------------------------------- | --------------------------------------------------------------------------------- |
@@ -215,6 +231,8 @@ gscn scan udp <targets> [flags]
 | `--ping-timeout <duration>`         | Time to wait for ping replies. Defaults to 1s multiplied by `--ping-count`.       |
 | `--open`                            | Only show ports that are open or possibly filtered.                               |
 | `--up`                              | Only show results for hosts that responded to the ping check.                     |
+
+</details>
 
 <details>
 <summary>Examples</summary>
@@ -235,13 +253,16 @@ gscn scan udp 10.1.1.1 -p 53,161 --response-timeout 5s
 
 </details>
 
-#### `gscn scan ping` — Ping scan
-
-Sends ICMP Echo Requests to each target to determine which hosts are up, without scanning any ports.
+3. #### `scan ping` - Ping scan
 
 ```sh
 gscn scan ping <targets> [flags]
 ```
+
+Sends ICMP Echo Requests to each target to determine which hosts are up, without scanning any ports.
+
+<details>
+<summary>Flags</summary>
 
 | Flag                       | Description                                                            |
 | -------------------------- | ---------------------------------------------------------------------- |
@@ -250,6 +271,8 @@ gscn scan ping <targets> [flags]
 | `-c, --count <n>`          | Number of ICMP Echo Request packets to send per host.                  |
 | `-t, --timeout <duration>` | Time to wait for ping replies. Defaults to 1s multiplied by `--count`. |
 | `--up`                     | Only show results for hosts that are up.                               |
+
+</details>
 
 <details>
 <summary>Examples</summary>
@@ -278,17 +301,22 @@ gscn scan ping 10.1.1.1/24 --notify
 
 ---
 
-### Wi-Fi Scanning (Linux only)
-
-Scans for nearby Wi-Fi networks and displays details such as SSID, BSSID, signal strength, channel, and security type.
+### `wifi` - Wi-Fi Scanning (Linux only)
 
 ```sh
 gscn wifi [flags]
 ```
 
+Scans for nearby Wi-Fi networks and displays details such as SSID, BSSID, signal strength, channel, and security type.
+
+<details>
+<summary>Flags</summary>
+
 | Flag                 | Description                                                           |
 | -------------------- | --------------------------------------------------------------------- |
 | `-i, --iface <name>` | Wi-Fi interface to use when scanning. Auto-detected if not specified. |
+
+</details>
 
 <details>
 <summary>Examples</summary>
@@ -336,7 +364,7 @@ sender_name = "gscn network scanner"
 app_password = "your_app_password"
 ```
 
-To use a config file at a custom path, pass `--config` before the subcommand:
+To use a config file at a custom path, use `--config` flag:
 
 ```sh
 gscn --config /path/to/gscn.toml scan tcp 10.1.1.1 -p 80 --notify
