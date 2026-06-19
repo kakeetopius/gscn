@@ -41,14 +41,6 @@ func discoverArpCmd() *cobra.Command {
 			"  gscn discover arp 10.1.1.1-5\n",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if notify {
-				notifyObj, err := getNotifier()
-				if err != nil {
-					return err
-				}
-				opts.MessageNotifier = notifyObj
-			}
-
 			targetStr := ""
 			if len(args) > 0 {
 				targetStr = args[0]
@@ -67,15 +59,7 @@ func discoverArpCmd() *cobra.Command {
 			opts.Source = sourceIP
 
 			arpScanner := scanner.NewARPScanner(opts)
-			err = arpScanner.Scan()
-			if err != nil {
-				return err
-			}
-			arpScanner.PrintResults()
-			if notify {
-				return arpScanner.SendResultsViaNotifier()
-			}
-			return nil
+			return doScan(arpScanner)
 		},
 	}
 
@@ -104,14 +88,6 @@ func discoverNDPCmd() *cobra.Command {
 			"  gscn discover ndp 2001:acad::1-10\n",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if notify {
-				notifyObj, err := getNotifier()
-				if err != nil {
-					return err
-				}
-				opts.MessageNotifier = notifyObj
-			}
-
 			targetStr := ""
 			if len(args) > 0 {
 				targetStr = args[0]
@@ -130,15 +106,7 @@ func discoverNDPCmd() *cobra.Command {
 			opts.Source = sourceIP
 
 			ndpScanner := scanner.NewNDPScanner(opts)
-			err = ndpScanner.Scan()
-			if err != nil {
-				return err
-			}
-			ndpScanner.PrintResults()
-			if notify {
-				return ndpScanner.SendResultsViaNotifier()
-			}
-			return nil
+			return doScan(ndpScanner)
 		},
 	}
 

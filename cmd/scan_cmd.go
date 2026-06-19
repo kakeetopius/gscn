@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/notifier"
 	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/spf13/cobra"
 )
@@ -44,12 +43,8 @@ func tcpFullScanCmd() *cobra.Command {
 			"  gscn scan tcp 2001:acad::1,10.1.1.1 -p 80\n" +
 			"  gscn scan tcp 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096\n",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if notify {
-				notifyObj, err := getNotifier()
-				if err != nil {
-					return err
-				}
-				opts.MessageNotifier = notifyObj
+			if opts.Workers > 500 {
+				return fmt.Errorf("number of workers cannot go above 500")
 			}
 			var err error
 			opts.Targets, opts.HostNames, err = getTargets(args[0])
@@ -62,16 +57,7 @@ func tcpFullScanCmd() *cobra.Command {
 			}
 
 			tcpScanner := scanner.NewTCPFullScanner(opts)
-			err = tcpScanner.Scan()
-			if err != nil {
-				return err
-			}
-			tcpScanner.PrintResults()
-			if notify {
-				return tcpScanner.SendResultsViaNotifier()
-			}
-
-			return nil
+			return doScan(tcpScanner)
 		},
 	}
 
@@ -111,14 +97,6 @@ func udpScanCmd() *cobra.Command {
 			"  gscn scan udp 2001:acad::1,10.1.1.1 -p 80\n" +
 			"  gscn scan udp 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096\n",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if notify {
-				notifyObj, err := getNotifier()
-				if err != nil {
-					return err
-				}
-				opts.MessageNotifier = notifyObj
-			}
-
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
@@ -134,16 +112,7 @@ func udpScanCmd() *cobra.Command {
 			}
 
 			udpScanner := scanner.NewUDPScanner(opts)
-			err = udpScanner.Scan()
-			if err != nil {
-				return err
-			}
-			udpScanner.PrintResults()
-			if notify {
-				return udpScanner.SendResultsViaNotifier()
-			}
-
-			return nil
+			return doScan(udpScanner)
 		},
 	}
 	udpCmd.Flags().SortFlags = false
@@ -178,14 +147,6 @@ func pingScanCmd() *cobra.Command {
 			"  gscn scan ping 2001:acad::1,10.1.1.1\n" +
 			"  gscn scan ping 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24\n",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if notify {
-				notifyObj, err := getNotifier()
-				if err != nil {
-					return err
-				}
-				opts.MessageNotifier = notifyObj
-			}
-
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
@@ -198,16 +159,7 @@ func pingScanCmd() *cobra.Command {
 			opts.SortResults = true
 
 			pingScanner := scanner.NewPingScanner(opts)
-			err = pingScanner.Scan()
-			if err != nil {
-				return err
-			}
-			pingScanner.PrintResults()
-			if notify {
-				return pingScanner.SendResultsViaNotifier()
-			}
-
-			return nil
+			return doScan(pingScanner)
 		},
 	}
 
@@ -256,12 +208,4 @@ func getPorts(portString string) (ports []uint, err error) {
 	}
 
 	return
-}
-
-func getNotifier() (notifier.Notifier, error) {
-	notifierName := appConfig.GetString("notifier.type")
-	if notifierName == "" {
-		return nil, fmt.Errorf("no notifier type set in the config file")
-	}
-	return notifier.NotifierByName(notifierName, appConfig)
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
-	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
@@ -39,7 +39,7 @@ type NDPScanOptions struct {
 	AddUnknownHostNames bool
 	FromCache           bool
 	Workers             int
-	MessageNotifier     notifier.Notifier
+	MessageNotifier     notify.Notifier
 }
 
 type NDPScanResults struct {
@@ -122,12 +122,16 @@ func (s *NDPScanner) PrintResults() {
 	displayNDPResults(&s.results, &s.stats)
 }
 
-func (s *NDPScanner) Results() NDPScanResults {
+func (s *NDPScanner) Results() ScanResults {
 	return s.results
 }
 
-func (s *NDPScanner) Stats() NDPScanStats {
+func (s *NDPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (s *NDPScanner) SetNotifier(n notify.Notifier) {
+	s.MessageNotifier = n
 }
 
 func (s *NDPScanner) addResultInfo() error {

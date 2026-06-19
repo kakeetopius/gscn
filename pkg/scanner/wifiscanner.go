@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/mdlayher/wifi"
 	"github.com/pterm/pterm"
 )
@@ -20,7 +20,7 @@ type WiFiScanner struct {
 type WiFiScannerOptions struct {
 	InterfaceName   string
 	AutoInterface   bool
-	MessageNotifier notifier.Notifier
+	MessageNotifier notify.Notifier
 }
 
 type WiFiScanResults struct {
@@ -76,16 +76,20 @@ func (s *WiFiScanner) SendResultsViaNotifier() error {
 	return nil
 }
 
-func (s *WiFiScanner) Results() WiFiScanResults {
+func (s *WiFiScanner) Results() ScanResults {
 	return s.results
 }
 
-func (s *WiFiScanner) Stats() WiFiScanStats {
+func (s *WiFiScanner) Stats() ScanStats {
 	return s.stats
 }
 
 func (s *WiFiScanner) PrintResults() {
 	displayWifiScanResults(s)
+}
+
+func (s *WiFiScanner) SetNotifier(n notify.Notifier) {
+	s.MessageNotifier = n
 }
 
 func (r WiFiScanResults) String() string {
@@ -198,7 +202,8 @@ func FreqToChannel(freq int) int {
 }
 
 func displayWifiScanResults(wifiScanner *WiFiScanner) {
-	results := wifiScanner.Results()
+	res := wifiScanner.Results()
+	results := res.(WiFiScanResults)
 
 	tableData := pterm.TableData{{"SSID", "BSSID", "Status", "Freq (Mhz)", "Channel", "Strength (dBm)", "Stations"}}
 	for _, ap := range results.AccessPoints {
