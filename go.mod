@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
+	github.com/caarlos0/go-version v0.2.2
 	github.com/endobit/oui v0.6.0
 	github.com/google/gopacket v1.1.19
 	github.com/jsimonetti/rtnetlink v1.4.2
