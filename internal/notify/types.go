@@ -1,5 +1,5 @@
-// Package notifier is used to send notifications to a user for scan results.
-package notifier
+// Package notify is used to send messages to a user for scan results.
+package notify
 
 import (
 	"fmt"

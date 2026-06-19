@@ -4,6 +4,8 @@ package scanner
 
 import (
 	"time"
+
+	"github.com/kakeetopius/gscn/internal/notify"
 )
 
 type ScanType int
@@ -42,6 +44,8 @@ type Scanner interface {
 	SendResultsViaNotifier() error
 
 	PrintResults()
+
+	SetNotifier(n notify.Notifier)
 }
 
 type PortState uint8

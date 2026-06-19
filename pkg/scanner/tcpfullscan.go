@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
-	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
@@ -35,7 +35,7 @@ type TCPFullScanOptions struct {
 	AddUnknownHostNames bool
 	PingTimeout         time.Duration
 	SkipPingScan        bool
-	MessageNotifier     notifier.Notifier
+	MessageNotifier     notify.Notifier
 
 	PrintUpOnly   bool
 	PrintOpenOnly bool
@@ -102,7 +102,7 @@ func (s *TCPFullScanner) Scan() error {
 	return nil
 }
 
-func (s *TCPFullScanner) Results() TCPFullScanResults {
+func (s *TCPFullScanner) Results() ScanResults {
 	return s.results
 }
 
@@ -110,8 +110,12 @@ func (s *TCPFullScanner) PrintResults() {
 	printScanResultsMap(s.results.ResultMap, s.stats.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
 }
 
-func (s *TCPFullScanner) Stats() TCPFullScanStats {
+func (s *TCPFullScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (s *TCPFullScanner) SetNotifier(n notify.Notifier) {
+	s.MessageNotifier = n
 }
 
 func (s *TCPFullScanner) addResultsInfo() {

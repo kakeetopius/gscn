@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
-	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
@@ -36,7 +36,7 @@ type UDPScanOptions struct {
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
-	MessageNotifier     notifier.Notifier
+	MessageNotifier     notify.Notifier
 
 	PrintUpOnly   bool
 	PrintOpenOnly bool
@@ -109,12 +109,16 @@ func (s *UDPScanner) PrintResults() {
 	printScanResultsMap(s.results.ResultMap, s.stats.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
 }
 
-func (s *UDPScanner) Results() UDPScanResults {
+func (s *UDPScanner) Results() ScanResults {
 	return s.results
 }
 
-func (s *UDPScanner) Stats() UDPScanStats {
+func (s *UDPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (s *UDPScanner) SetNotifier(n notify.Notifier) {
+	s.MessageNotifier = n
 }
 
 func (s *UDPScanner) addResultsInfo() {
@@ -332,5 +336,5 @@ func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, p
 	}
 	results := pinger.Results()
 
-	return results, nil
+	return results.(PingScanResults), nil
 }

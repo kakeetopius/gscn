@@ -27,25 +27,7 @@ func WifiCmd() *cobra.Command {
 				InterfaceName: ifaceName,
 			})
 
-			if notify {
-				notifyObj, err := getNotifier()
-				if err != nil {
-					return err
-				}
-				wifiScanner.MessageNotifier = notifyObj
-			}
-
-			err := wifiScanner.Scan()
-			if err != nil {
-				return err
-			}
-
-			wifiScanner.PrintResults()
-
-			if notify {
-				err = wifiScanner.SendResultsViaNotifier()
-			}
-			return err
+			return doScan(wifiScanner)
 		},
 	}
 

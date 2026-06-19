@@ -6,16 +6,18 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/kakeetopius/gscn/internal/notify"
+	"github.com/kakeetopius/gscn/pkg/scanner"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	cfgFile   string
-	notify    bool
-	appConfig *viper.Viper
-	debug     bool
+	cfgFile          string
+	sendNotification bool
+	appConfig        *viper.Viper
+	debug            bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -25,12 +27,7 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 	// Runs after flags are passed but before RunE runs
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		err := initialiseConfig()
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return initialiseConfig()
 	},
 }
 
@@ -47,7 +44,7 @@ func init() {
 	rootCmd.PersistentFlags().SortFlags = false
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/gscn.toml)")
-	rootCmd.PersistentFlags().BoolVar(&notify, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
+	rootCmd.PersistentFlags().BoolVar(&sendNotification, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run in debug mode")
 
 	rootCmd.AddCommand(
@@ -95,4 +92,33 @@ func initialiseConfig() error {
 	}
 
 	return nil
+}
+
+func doScan(scanner scanner.Scanner) error {
+	if sendNotification {
+		notifier, err := getNotifier()
+		if err != nil {
+			return err
+		}
+		scanner.SetNotifier(notifier)
+	}
+
+	err := scanner.Scan()
+	if err != nil {
+		return err
+	}
+	scanner.PrintResults()
+	if sendNotification {
+		return scanner.SendResultsViaNotifier()
+	}
+
+	return nil
+}
+
+func getNotifier() (notify.Notifier, error) {
+	notifierName := appConfig.GetString("notifier.type")
+	if notifierName == "" {
+		return nil, fmt.Errorf("no notifier type set in the config file")
+	}
+	return notify.NotifierByName(notifierName, appConfig)
 }

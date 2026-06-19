@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/pterm/pterm"
@@ -29,7 +29,7 @@ type PingScanOptions struct {
 	Workers             int
 	AddUnknownHostNames bool
 	HostNames           map[netip.Addr]string
-	MessageNotifier     notifier.Notifier
+	MessageNotifier     notify.Notifier
 	PingCount           int
 	SortResults         bool
 	PrintOnlyUp         bool
@@ -125,12 +125,16 @@ func (s *PingScanner) SendResultsViaNotifier() error {
 	return nil
 }
 
-func (s *PingScanner) Stats() PingStats {
+func (s *PingScanner) Stats() ScanStats {
 	return s.stats
 }
 
-func (s *PingScanner) Results() PingScanResults {
+func (s *PingScanner) Results() ScanResults {
 	return s.results
+}
+
+func (s *PingScanner) SetNotifier(n notify.Notifier) {
+	s.MessageNotifier = n
 }
 
 func (s *PingScanner) PrintResults() {

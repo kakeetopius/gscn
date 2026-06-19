@@ -13,7 +13,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/log"
-	"github.com/kakeetopius/gscn/internal/notifier"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
@@ -34,7 +34,7 @@ type ARPScanOptions struct {
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
 	Workers             int
-	MessageNotifier     notifier.Notifier
+	MessageNotifier     notify.Notifier
 }
 
 type ARPScanResults struct {
@@ -106,7 +106,7 @@ func (s *ARPScanner) SendResultsViaNotifier() (err error) {
 	return nil
 }
 
-func (s *ARPScanner) Results() ARPScanResults {
+func (s *ARPScanner) Results() ScanResults {
 	return s.results
 }
 
@@ -114,8 +114,12 @@ func (s *ARPScanner) PrintResults() {
 	displayARPResults(&s.results, &s.stats)
 }
 
-func (s *ARPScanner) Stats() ARPScanStats {
+func (s *ARPScanner) Stats() ScanStats {
 	return s.stats
+}
+
+func (s *ARPScanner) SetNotifier(n notify.Notifier) {
+	s.MessageNotifier = n
 }
 
 func (s *ARPScanner) addResultInfo() error {
