@@ -26,13 +26,13 @@ func sendPacket(packet []byte, iface *util.Interface) error {
 }
 
 func setUpSocket(iface *util.Interface) error {
-	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ARP))
+	sockfd, err := unix.Socket(unix.AF_PACKET, unix.SOCK_RAW, bits.Htons(unix.ETH_P_ALL))
 	if err != nil {
 		return err
 	}
 	addr := &unix.SockaddrLinklayer{
 		Ifindex:  iface.Index,
-		Protocol: uint16(bits.Htons(unix.ETH_P_ARP)),
+		Protocol: uint16(bits.Htons(unix.ETH_P_ALL)),
 	}
 
 	socket = &socketInfo{
