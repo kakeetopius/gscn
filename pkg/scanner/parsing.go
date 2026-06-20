@@ -27,20 +27,31 @@ type ipParseError struct {
 //
 // Example: "10.1.1.1/24,10.1.1.1,10.1.1.1-2"
 //
-// Returns an error if any target string cannot be parsed.
+// Returns an error if any target string cannot be parsed or the string is empty
 func TargetsFromString(s string) ([]netip.Prefix, error) {
+	if s == "" {
+		return nil, fmt.Errorf("no targets provided")
+	}
+
 	targetStrings := strings.Split(s, ",")
 	targets := make([]netip.Prefix, 0, 5)
+	seenStrings := make(map[string]struct{})
 
 	for _, targetString := range targetStrings {
 		if targetString == "" {
-			return nil, fmt.Errorf("error parsing targets -> one of the targets is empty")
+			return nil, fmt.Errorf("invalid target specification string: %s", s)
 		}
+		if _, seen := seenStrings[targetString]; seen {
+			continue
+		}
+		targetString = strings.Trim(targetString, " ")
 		targetaddrs, err := parseTargetString(targetString)
 		if err != nil {
 			return nil, err
 		}
 		targets = append(targets, targetaddrs...)
+
+		seenStrings[targetString] = struct{}{}
 	}
 
 	return util.Unique(targets), nil
@@ -60,25 +71,33 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 // Returns:
 //   - A deduplicated slice of netip.Prefix values
 //   - A map of resolved IP addresses to their original hostname strings
-//   - An error if DNS lookup fails for any unresolvable target
+//   - An error if DNS lookup fails for any unresolvable target or if the string provided is empty.
 func TargetsFromStringWithDNSLookup(s string) ([]netip.Prefix, map[netip.Addr]string, error) {
-	// For dns lookup incase ip address parsing fails.
+	if s == "" {
+		return nil, nil, fmt.Errorf("no targets provided")
+	}
 	resolver := net.Resolver{}
 	commaSeparatedTargets := strings.Split(s, ",")
 	targets := make([]netip.Prefix, 0, 5)
 	hostNames := make(map[netip.Addr]string)
 
+	seenStrings := make(map[string]struct{})
+
 	for _, targetString := range commaSeparatedTargets {
 		if targetString == "" {
-			return nil, nil, fmt.Errorf("error parsing targets -> one of the targets is empty")
+			return nil, nil, fmt.Errorf("invalid target specification string: %s", s)
 		}
+		if _, seen := seenStrings[targetString]; seen {
+			continue
+		}
+		targetString = strings.Trim(targetString, " ")
 		targetAddr, err := parseTargetString(targetString)
 		if err != nil {
 			if err, ok := err.(ipParseError); ok && err.skipResolving {
 				return nil, nil, err
 			}
 
-			// if some errors occured while Parsing assume it is domain name
+			// if some other error occured while Parsing assume it is domain name
 			IPs, resolverErr := resolver.LookupIP(context.Background(), "ip4", strings.TrimSpace(targetString))
 			if resolverErr != nil {
 				return nil, nil, resolverErr
@@ -99,6 +118,8 @@ func TargetsFromStringWithDNSLookup(s string) ([]netip.Prefix, map[netip.Addr]st
 		} else {
 			targets = append(targets, targetAddr...)
 		}
+
+		seenStrings[targetString] = struct{}{}
 	}
 
 	return util.Unique(targets), hostNames, nil
@@ -153,29 +174,41 @@ func parseTargetString(s string) ([]netip.Prefix, error) {
 // be a valid integer. The function returns an error for malformed tokens,
 // invalid ranges, or non-numeric values.
 func PortsFromString(s string) ([]uint, error) {
+	if s == "" {
+		return nil, fmt.Errorf("no ports provided")
+	}
 	// format: 10,1,3,9-15
 	portStrings := strings.Split(s, ",")
 	targetPorts := make([]uint, 0, len(portStrings))
 
+	seenStrings := make(map[string]struct{})
 	for _, portString := range portStrings {
+		if portString == "" {
+			return nil, fmt.Errorf("invalid port specification string: %s", s)
+		}
+		if _, seen := seenStrings[portString]; seen {
+			continue
+		}
+		portString = strings.Trim(portString, " ")
 		if strings.ContainsRune(portString, '-') {
 			// Port Range Provided eg 10-20
-			dashIndex := strings.LastIndex(portString, "-") // assured to exist due to the above check
-			if dashIndex == len(portString)-1 {             // if '-' is at the end
+			dashIndex := strings.LastIndex(portString, "-")
+			if dashIndex == len(portString)-1 { // if '-' is at the end
 				return nil, fmt.Errorf("error parsing port range %v -> invalid range", portString)
 			}
 
 			var lower int
 			var err error
 			if dashIndex > 0 {
-				// if dash is at the start (index 0), lower remains 0
-				lower, err = strconv.Atoi(portString[:dashIndex])
+				lowerPort := strings.Trim(portString[:dashIndex], " ")
+				lower, err = strconv.Atoi(lowerPort)
 				if err != nil {
 					return nil, fmt.Errorf("error parsing port range %v -> %v", portString, err)
 				}
 			}
 
-			upper, err := strconv.Atoi(portString[dashIndex+1:])
+			upperPort := strings.Trim(portString[dashIndex+1:], " ")
+			upper, err := strconv.Atoi(upperPort)
 			if err != nil {
 				return nil, fmt.Errorf("error parsing port range %v -> %v", portString, err)
 			}
@@ -198,8 +231,15 @@ func PortsFromString(s string) ([]uint, error) {
 			if err != nil {
 				return nil, fmt.Errorf("error parsing port specification %v -> %v", portString, err)
 			}
+			if portNum < 0 {
+				return nil, fmt.Errorf("error parsing port range %v -> port numbers cannot be below 0", portString)
+			}
+			if portNum > 65535 {
+				return nil, fmt.Errorf("error parsing port range %v -> port numbers cannot go above 65535", portString)
+			}
 			targetPorts = append(targetPorts, uint(portNum))
 		}
+		seenStrings[portString] = struct{}{}
 	}
 
 	slices.Sort(targetPorts)
@@ -248,18 +288,24 @@ func parseIPRange(s string) ([]netip.Prefix, error) {
 		return nil, fmt.Errorf("error parsing target %v -> %w", s, err)
 	}
 
-	if lower > upper {
+	if upper > 255 {
 		return nil, ipParseError{
-			error:         fmt.Errorf("error parsing target %v -> invalid range", s),
+			error:         fmt.Errorf("error parsing target %v -> range cannot go above 255", s),
 			skipResolving: true,
 		}
-	} else if lower < 0 {
+	}
+	if lower < 0 {
 		return nil, ipParseError{
 			error:         fmt.Errorf("error parsing target %v -> range cannot be below zero", s),
 			skipResolving: true,
 		}
 	}
-
+	if lower > upper {
+		return nil, ipParseError{
+			error:         fmt.Errorf("error parsing target %v -> invalid range", s),
+			skipResolving: true,
+		}
+	}
 	if upper-lower > 1000 {
 		return nil, ipParseError{
 			skipResolving: true,
