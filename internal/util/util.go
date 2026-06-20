@@ -144,6 +144,9 @@ func AddrIsPartOfNetworks(targets []netip.Prefix, addr *netip.Addr) bool {
 func HostsInIP4Network(targets []netip.Prefix) int {
 	numHosts := 0
 	for _, target := range targets {
+		if !target.Addr().Is4() {
+			continue
+		}
 		networkAddress := target.Masked()
 		numHosts += int(math.Pow(2, float64(32-networkAddress.Bits())))
 		if !target.IsSingleIP() {
@@ -174,7 +177,7 @@ func OnlyIPInRange(addr netip.Prefix) bool {
 // Returns:
 //   - *netip.Addr: The selected source IP address.
 //   - error: Any error encountered during address selection.
-func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *Interface, targets []netip.Prefix, ip6 bool) (*netip.Addr, error) {
+func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *Interface, targets []netip.Prefix, isIP6 bool) (*netip.Addr, error) {
 	ifaceAddrs := interfaceProvider.AddrsOf(iface)
 	if len(ifaceAddrs) < 1 {
 		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
@@ -182,7 +185,7 @@ func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *Int
 	var ifaceAddr *netip.Prefix
 outer:
 	for _, addr := range ifaceAddrs {
-		if ip6 != addr.Addr().Is6() {
+		if isIP6 != addr.Addr().Is6() {
 			// if an IPv4 address is needed but the current address is not IPv6 and vice versa
 			continue
 		}
@@ -197,24 +200,19 @@ outer:
 	}
 
 	// If an address on the same network as one of the targets was not found, default to the fisrt IP address found on the interface of the same address family.
-	if ip6 && ifaceAddr == nil {
-		defaultIP6Addr, err := GetFirstIfaceIPNet(interfaceProvider, iface, true)
+	if ifaceAddr == nil {
+		defaultIPAddr, err := GetFirstIfaceIPNet(interfaceProvider, iface, isIP6)
 		if err != nil {
 			return nil, err
 		}
-		if defaultIP6Addr == nil {
-			return nil, fmt.Errorf("no IPv6 addresses found on interface %v", iface.Name)
+		if defaultIPAddr == nil {
+			if isIP6 {
+				return nil, fmt.Errorf("no IPv6 addresses found on interface %v", iface.Name)
+			} else {
+				return nil, fmt.Errorf("no IPv4 addresses found on interface %v", iface.Name)
+			}
 		}
-		ifaceAddr = defaultIP6Addr
-	} else if ifaceAddr == nil {
-		defaultIP4Addr, err := GetFirstIfaceIPNet(interfaceProvider, iface, false)
-		if err != nil {
-			return nil, err
-		}
-		if defaultIP4Addr == nil {
-			return nil, fmt.Errorf("no IPv4 addresses found on interface %v", iface.Name)
-		}
-		ifaceAddr = defaultIP4Addr
+		ifaceAddr = defaultIPAddr
 	}
 	srcAddr := ifaceAddr.Addr()
 	return &srcAddr, nil
