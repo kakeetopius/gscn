@@ -22,7 +22,6 @@ type PortScanJob struct {
 
 func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan chan PortScanJob, targets []netip.Prefix, ports []uint, scanTimeout time.Duration) {
 	defer func() {
-		close(jobChan)
 		done <- struct{}{}
 	}()
 

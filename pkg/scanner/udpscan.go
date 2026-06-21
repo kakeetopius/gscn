@@ -210,8 +210,11 @@ func runUDPScan(scanner *UDPScanner) (UDPScanResults, error) {
 	scanResultsChan := make(chan UDPScanResults)
 	go getUDPScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
-	<-senderDone             // wait for sender to send all jobs
-	wg.Wait()                // wait for all the workers to finish
+	<-senderDone // wait for sender to send all jobs
+
+	close(jobs) // wait for all the workers to finish
+	wg.Wait()
+
 	close(workerResultsChan) // tell the main Woker to stop and send results
 
 	scanResults := <-scanResultsChan
