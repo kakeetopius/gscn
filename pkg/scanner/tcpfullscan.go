@@ -209,8 +209,11 @@ func runTCPFullScan(scanner *TCPFullScanner) (TCPFullScanResults, error) {
 	scanResultsChan := make(chan TCPFullScanResults)
 	go getTCPFullScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
 
-	<-senderDone             // wait for sender to send all jobs
-	wg.Wait()                // wait for all to workers to finish
+	<-senderDone // wait for sender to send all jobs
+
+	close(jobs) // wait for all to workers to finish
+	wg.Wait()
+
 	close(workerResultsChan) // tell main worker to stop
 
 	scanResults := <-scanResultsChan
