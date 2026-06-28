@@ -4,7 +4,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"runtime"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 var (
@@ -141,7 +141,8 @@ func doScan(scanner scanner.Scanner) error {
 		return err
 	}
 
-	var writer io.Writer
+	out := os.Stdout
+	var output []byte
 
 	if outputFile != "" {
 		f, openErr := os.OpenFile(outputFile, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o754)
@@ -149,22 +150,29 @@ func doScan(scanner scanner.Scanner) error {
 			return openErr
 		}
 		defer f.Close()
-		writer = f
-	} else {
-		writer = os.Stdout
+		out = f
 	}
+
+	var printDefault bool // no json output or any future output formats
 
 	if outputJSON {
 		jsonBytes, jsonErr := getJSONResults(scanner.Results())
 		if jsonErr != nil {
 			return jsonErr
 		}
-		_, err = writer.Write(jsonBytes)
+		output = jsonBytes
+	} else {
+		output = []byte(scanner.Results().String())
+		printDefault = true
+	}
+
+	if isTTY(out) && printDefault {
+		scanner.PrintResults()
+	} else {
+		_, err = out.Write(output)
 		if err != nil {
 			return err
 		}
-	} else {
-		scanner.PrintResults()
 	}
 
 	if sendNotification {
@@ -188,4 +196,8 @@ func getNotifier() (notify.Notifier, error) {
 		return nil, fmt.Errorf("no notifier type set in the config file")
 	}
 	return notify.NotifierByName(notifierName, appConfig)
+}
+
+func isTTY(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
 }
