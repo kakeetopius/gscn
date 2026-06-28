@@ -1,0 +1,26 @@
+# This is an example nfpm configuration file.
+# Make sure to check the documentation at https://nfpm.goreleaser.com
+
+name: "gscn"
+arch: "amd64"
+platform: "linux"
+version: "0.2.1"
+section: "default"
+priority: "extra"
+provides:
+  - gscn
+depends:
+  - libpcap-dev
+maintainer: "Kakeeto Pius <piusk7003@gmail.com>"
+description: |
+  A simple command line tool to carry out different operations on a network.
+vendor: "GoReleaser"
+license: "MIT"
+contents:
+  - dst: /usr/local/bin/gscn
+    src: ./gscn
+    expand: true
+overrides:
+  rpm:
+    depends:
+      - libpcap-devel
