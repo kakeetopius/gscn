@@ -16,7 +16,7 @@ func DiscoverCmd() *cobra.Command {
 	discoverCmd := cobra.Command{
 		Use:     "discover <targets>",
 		Short:   "Discover hosts on the local network using ARP for IPv4 or ICMP Neighbour Discovery for IPv6.",
-		Aliases: []string{"d"},
+		Aliases: []string{"disc", "d"},
 	}
 
 	discoverCmd.AddCommand(
