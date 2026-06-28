@@ -37,17 +37,13 @@ type ARPScanOptions struct {
 	MessageNotifier     notify.Notifier
 }
 
-type ARPScanResults struct {
-	ResultSet    []ARPScanResult
-	HasHostNames bool
-	HasVendors   bool
-}
+type ARPScanResults []ARPScanResult
 
 type ARPScanResult struct {
-	IPAddr   netip.Addr
-	MacAddr  net.HardwareAddr
-	HostName string
-	Vendor   string
+	IPAddr   netip.Addr `json:"ip"`
+	MacAddr  MAC        `json:"mac"`
+	HostName string     `json:"hostname"`
+	Vendor   string     `json:"vendor"`
 }
 
 type ARPScanStats struct {
@@ -70,7 +66,7 @@ func NewARPScanner(opts ARPScanOptions) *ARPScanner {
 
 func (s *ARPScanner) Scan() error {
 	start := time.Now()
-	results, err := runArp(s)
+	results, err := s.runArp()
 	if err != nil {
 		return err
 	}
@@ -111,7 +107,7 @@ func (s *ARPScanner) Results() ScanResults {
 }
 
 func (s *ARPScanner) PrintResults() {
-	displayARPResults(&s.results, &s.stats)
+	displayARPResults(s.results, &s.stats, s.AddUnknownHostNames, s.WithVendorInfo)
 }
 
 func (s *ARPScanner) Stats() ScanStats {
@@ -123,7 +119,7 @@ func (s *ARPScanner) SetNotifier(n notify.Notifier) {
 }
 
 func (s *ARPScanner) addResultInfo() error {
-	resultSet := s.results.ResultSet
+	resultSet := s.results
 	numHosts := len(resultSet)
 
 	var bar *pterm.ProgressbarPrinter
@@ -136,10 +132,6 @@ func (s *ARPScanner) addResultInfo() error {
 			return err
 		}
 		defer bar.Stop()
-		s.results.HasHostNames = true
-	}
-	if s.WithVendorInfo {
-		s.results.HasVendors = true
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
@@ -163,25 +155,32 @@ func (s *ARPScanner) addResultInfo() error {
 
 func (r ARPScanResults) String() string {
 	stringBuilder := strings.Builder{}
-	fmt.Fprintln(&stringBuilder, "ARP Scan Results")
+	fmt.Fprintf(&stringBuilder, "ARP Scan Results\n\n")
 
-	for _, result := range r.ResultSet {
-		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v\nVendor: %v\nHostName: %v\n\n", result.IPAddr, result.MacAddr, result.Vendor, result.HostName)
+	for _, result := range r {
+		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v", result.IPAddr, result.MacAddr)
+		if result.Vendor != "" {
+			fmt.Fprintf(&stringBuilder, "\nVendor: %s", result.Vendor)
+		}
+		if result.HostName != "" {
+			fmt.Fprintf(&stringBuilder, "\nHostName: %s", result.HostName)
+		}
+		fmt.Fprintf(&stringBuilder, "\n\n")
 	}
 
 	return stringBuilder.String()
 }
 
-func runArp(scanner *ARPScanner) (ARPScanResults, error) {
+func (s *ARPScanner) runArp() (ARPScanResults, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	opts := scanner.ARPScanOptions
+	opts := s.ARPScanOptions
 
 	resultsChan := make(chan []ARPScanResult)
 	startSending := make(chan struct{})
 	errorChan := make(chan error)
 
-	go getARPReplies(ctx, scanner, resultsChan, startSending, errorChan)
+	go getARPReplies(ctx, s, resultsChan, startSending, errorChan)
 
 outer:
 	for {
@@ -193,7 +192,7 @@ outer:
 		}
 	}
 
-	scanner.logger.Info("Probing host(s) on interface: " + opts.Interface.Name)
+	s.logger.Info("Probing host(s) on interface: " + opts.Interface.Name)
 	numHosts := util.HostsInIP4Network(opts.Targets)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
@@ -215,17 +214,17 @@ outer:
 			if err != nil {
 				return ARPScanResults{}, err
 			}
-			scanner.stats.PacketsSent++
+			s.stats.PacketsSent++
 			bar.Increment()
 			IPaddr = IPaddr.Next()
 		}
 	}
 
-	scanner.logger.WaitTimeout(opts.ResponseTimeout, "response")
+	s.logger.WaitTimeout(opts.ResponseTimeout, "response")
 	cancel() // tell packet receiving routine to stop
 	results := <-resultsChan
 
-	return ARPScanResults{ResultSet: results}, nil
+	return results, nil
 }
 
 func sendArpPacket(iface *util.Interface, srcIP *netip.Addr, dstIP *netip.Addr) error {
@@ -331,7 +330,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 			receivedFrom[ipAddr] = struct{}{}
 			results = append(results, ARPScanResult{
 				IPAddr:  ipAddr,
-				MacAddr: net.HardwareAddr(arpPacket.SourceHwAddress),
+				MacAddr: MAC(arpPacket.SourceHwAddress),
 			})
 		}
 	}
@@ -351,31 +350,31 @@ func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
 	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
 }
 
-func displayARPResults(arpResults *ARPScanResults, arpStats *ARPScanStats) {
-	if len(arpResults.ResultSet) == 0 {
+func displayARPResults(arpResults ARPScanResults, arpStats *ARPScanStats, withHostNames bool, withVendors bool) {
+	if len(arpResults) == 0 {
 		fmt.Println()
 		pterm.Info.Println("Host(s) not found on that network.")
 	} else {
 		fmt.Println()
 		var tableData [][]string
 		tableData = pterm.TableData{{"IP Address", "Mac Address"}}
-		if arpResults.HasVendors {
+		if withVendors {
 			tableData[0] = append(tableData[0], "Vendor")
 		}
-		if arpResults.HasHostNames {
+		if withHostNames {
 			tableData[0] = append(tableData[0], "HostNames")
 		}
 
-		for _, result := range arpResults.ResultSet {
+		for _, result := range arpResults {
 			row := []string{result.IPAddr.String(), result.MacAddr.String()}
-			if arpResults.HasVendors {
+			if withVendors {
 				vendor := result.Vendor
 				if vendor == "" {
 					vendor = "(unknown)"
 				}
 				row = append(row, vendor)
 			}
-			if arpResults.HasHostNames {
+			if withHostNames {
 				hostName := result.HostName
 				if hostName == "" {
 					hostName = "(unknown)"
@@ -390,7 +389,7 @@ func displayARPResults(arpResults *ARPScanResults, arpStats *ARPScanStats) {
 		fmt.Println("\nScan Duration:      ", arpStats.ScanTime.Truncate(time.Millisecond))
 		fmt.Println("Packets Sent:       ", arpStats.PacketsSent)
 		fmt.Println("Packets Received:   ", arpStats.PacketsReceived)
-		fmt.Println("Hosts Found:        ", len(arpResults.ResultSet))
+		fmt.Println("Hosts Found:        ", len(arpResults))
 
 	}
 }

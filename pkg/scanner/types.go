@@ -3,6 +3,11 @@
 package scanner
 
 import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/notify"
@@ -34,6 +39,8 @@ const (
 	PortStatePossibleFilter // used during udp scan when a host's port state cant be known definitevly
 )
 
+type MAC net.HardwareAddr
+
 // Scanner defines the interface for network scanning operations.
 type Scanner interface {
 	// Scan executes the network scan and returns an error if the scan fails.
@@ -53,31 +60,33 @@ type Scanner interface {
 // HostResult is the result of a single host after port scanning
 type HostResult struct {
 	// HostState indicates the overall state of the host (e.g., up or down).
-	HostState
-	// Ports contains the specific details for each port scanned on the host.
-	Ports []Port
+	HostState HostState `json:"state"`
 	// HostName is the resolved DNS name of the host.
-	HostName string
+	HostName string `json:"hostname"`
 	// OpenPorts represents the total count of ports found open.
-	OpenPorts int
+	OpenPorts int `json:"open"`
 	// ClosedPorts represents the total count of ports found closed.
-	ClosedPorts int
+	ClosedPorts int `json:"closed"`
 	// FilteredPorts represents the total count of ports where traffic was dropped or blocked (where the port state is uncertain)
-	FilteredPorts int
+	FilteredPorts int `json:"filtered"`
 	// AverageRTT is the mean round-trip time for packets sent to the host.
-	AverageRTT time.Duration
+	AverageRTT time.Duration `json:"rtt"`
+	// Ports contains the specific details for each port scanned on the host.
+	Ports []Port `json:"ports"`
 }
+
+type HostResults map[netip.Addr]HostResult
 
 // Port represents a network port with its metadata.
 type Port struct {
 	// Number is the port number (0-65535).
-	Number uint
+	Number uint `json:"number"`
 	// Name is the service name associated with the port.
-	Name string
+	Name string `json:"name"`
 	// Protocol is the transport protocol (tcp, udp, etc.).
-	Protocol string
+	Protocol string `json:"protocol"`
 	// State describes the current state of the port.
-	State PortState
+	State PortState `json:"state"`
 }
 
 // ScanResults defines the interface that all scan result types must implement.
@@ -103,17 +112,54 @@ func (p PortState) String() string {
 	}
 }
 
+func (p PortState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
+}
+
 func (s HostState) String() string {
 	switch s {
 	case HostStateUp:
-		return "Up"
+		return "up"
 	case HostStateDown:
-		return "Down"
+		return "down"
 	default:
 		return "unknown"
 	}
 }
 
-func (r HostResult) TotalNumberOfPorts() int {
-	return r.OpenPorts + r.ClosedPorts + r.FilteredPorts
+func (s HostState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
+func (s HostResult) TotalNumberOfPorts() int {
+	return s.OpenPorts + s.ClosedPorts + s.FilteredPorts
+}
+
+func (m MAC) String() string {
+	return net.HardwareAddr(m).String()
+}
+
+func (m MAC) MarshalJSON() ([]byte, error) {
+	return json.Marshal(net.HardwareAddr(m).String())
+}
+
+func (r HostResults) String() string {
+	stringBuilder := strings.Builder{}
+	for addr, result := range r {
+		fmt.Fprintf(&stringBuilder, "Results for %v", addr.String())
+		if result.HostName == "" {
+			fmt.Fprintf(&stringBuilder, "\n")
+		} else {
+			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
+		}
+		for _, port := range result.Ports {
+			if port.State == PortStateOpen {
+				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
+			}
+		}
+		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
+		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
+	}
+	return stringBuilder.String()
 }
