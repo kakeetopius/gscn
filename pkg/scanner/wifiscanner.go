@@ -24,7 +24,7 @@ type WiFiScannerOptions struct {
 }
 
 type WiFiScanResults struct {
-	AccessPoints []*wifi.BSS
+	AccessPoints []*wifi.BSS `json:"aps"`
 }
 
 type WiFiScanStats struct {

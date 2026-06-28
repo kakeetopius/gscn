@@ -65,12 +65,12 @@ func tcpFullScanCmd() *cobra.Command {
 	tcpCmd.Flags().StringVarP(&ports, "ports", "p", "", "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080")
 
 	tcpCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
-	tcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time to wait for responses")
+	tcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time to wait for responses")
 
 	tcpCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
 	tcpCmd.Flags().IntVar(&opts.PingCount, "ping-count", 3, "Number of ICMP Echo Request packets to send when pinging")
 
-	tcpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 0*time.Second, "Amount of time to wait for ping replies when doing scans.(Default is 1s times the ping count)")
+	tcpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 1*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
 	tcpCmd.Flags().BoolVar(&opts.SkipPingScan, "skip-ping", false, "Skip pinging hosts before scanning ports.")
 
@@ -119,12 +119,12 @@ func udpScanCmd() *cobra.Command {
 	udpCmd.Flags().StringVarP(&ports, "ports", "p", "", "Specify a range of ports to scan for example 1-100 or 80,443,8080 or 1-100,443,8080")
 
 	udpCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
-	udpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time to wait for responses")
+	udpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time to wait for responses")
 
 	udpCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
 	udpCmd.Flags().IntVar(&opts.PingCount, "ping-count", 3, "Number of ICMP Echo Request packets to send when pinging")
 
-	udpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 0*time.Second, "Amount of time to wait for ping replies when doing scans.(Default is 1s times the ping count)")
+	udpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 1*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
 	udpCmd.Flags().BoolVar(&opts.PrintOpenOnly, "open", false, "Only show open and possibly filtered ports.")
 	udpCmd.Flags().BoolVar(&opts.PrintUpOnly, "up", false, "Show results for only up hosts.")
@@ -169,7 +169,7 @@ func pingScanCmd() *cobra.Command {
 	pingCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
 	pingCmd.Flags().IntVarP(&opts.PingCount, "count", "c", 4, "Number of ICMP Echo Request packets to send when pinging")
 
-	pingCmd.Flags().DurationVarP(&opts.PingTimeout, "timeout", "t", 0*time.Second, "Amount of time to wait for ping replies when doing scans.(Default is 1s times the ping count)")
+	pingCmd.Flags().DurationVarP(&opts.PingTimeout, "timeout", "t", 1*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
 	pingCmd.Flags().BoolVar(&opts.PrintOnlyUp, "up", false, "Show results for only up hosts.")
 	return &pingCmd

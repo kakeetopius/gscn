@@ -67,7 +67,7 @@ func discoverArpCmd() *cobra.Command {
 
 	arpCmd.Flags().StringVarP(&ifaceStr, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnet the interface is in is scanned.")
 	arpCmd.Flags().StringVarP(&sourceAddr, "source", "s", "", "Source IP Address to put in the ARP packets.")
-	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
+	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
 	arpCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	arpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
 
@@ -114,7 +114,7 @@ func discoverNDPCmd() *cobra.Command {
 
 	ndpScan.Flags().StringVarP(&ifaceStr, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnet the interface is in is scanned.")
 	ndpScan.Flags().StringVarP(&sourceAddr, "source", "s", "", "Source IP Address to put in NDP packets.")
-	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
+	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
 	ndpScan.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	ndpScan.Flags().BoolVar(&opts.FromCache, "from-cache", false, "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.")
 	ndpScan.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")

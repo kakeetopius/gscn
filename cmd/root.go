@@ -2,7 +2,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 
@@ -19,6 +21,9 @@ var (
 	sendNotification bool
 	appConfig        *viper.Viper
 	debug            bool
+	outputFile       string
+	outputJSON       bool
+	jsonPretty       bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -46,9 +51,13 @@ func init() {
 	rootCmd.PersistentFlags().SortFlags = false
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/gscn.toml)")
-	rootCmd.PersistentFlags().BoolVar(&sendNotification, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run in debug mode")
+	rootCmd.PersistentFlags().StringVarP(&outputFile, "out", "o", "", "Save scan results to an output file")
+	rootCmd.PersistentFlags().BoolVarP(&outputJSON, "json", "j", false, "Print scan results in json format.")
+	rootCmd.PersistentFlags().BoolVarP(&jsonPretty, "pretty", "P", false, "Print scan results in pretty json format.")
+	rootCmd.PersistentFlags().BoolVar(&sendNotification, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
 
+	rootCmd.MarkFlagFilename("out")
 	rootCmd.AddCommand(
 		DiscoverCmd(),
 		ScanCmd(),
@@ -117,7 +126,7 @@ func initialiseConfig() error {
 
 // doScan starts the scanning process using the provided scanner.
 // If notifications are enabled, it initializes a notifier, attaches it to the scanner,
-// and sends the scan results upon completion. It also prints the findings to standard output.
+// and sends the scan results upon completion. It also prints the findings to standard output or to an output file.
 func doScan(scanner scanner.Scanner) error {
 	if sendNotification {
 		notifier, err := getNotifier()
@@ -131,12 +140,46 @@ func doScan(scanner scanner.Scanner) error {
 	if err != nil {
 		return err
 	}
-	scanner.PrintResults()
+
+	var writer io.Writer
+
+	if outputFile != "" {
+		f, openErr := os.OpenFile(outputFile, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o754)
+		if openErr != nil {
+			return openErr
+		}
+		defer f.Close()
+		writer = f
+	} else {
+		writer = os.Stdout
+	}
+
+	if outputJSON {
+		jsonBytes, jsonErr := getJSONResults(scanner.Results())
+		if jsonErr != nil {
+			return jsonErr
+		}
+		_, err = writer.Write(jsonBytes)
+		if err != nil {
+			return err
+		}
+	} else {
+		scanner.PrintResults()
+	}
+
 	if sendNotification {
 		return scanner.SendResultsViaNotifier()
 	}
 
 	return nil
+}
+
+func getJSONResults(r scanner.ScanResults) ([]byte, error) {
+	if jsonPretty {
+		return json.MarshalIndent(r, "", "  ")
+	} else {
+		return json.Marshal(r)
+	}
 }
 
 func getNotifier() (notify.Notifier, error) {

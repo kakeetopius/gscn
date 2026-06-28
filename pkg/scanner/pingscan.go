@@ -19,8 +19,10 @@ import (
 
 type PingScanner struct {
 	PingScanOptions
-	results PingScanResults
-	stats   PingStats
+
+	scanResults PingScanResults
+	resultMap   PingScanResultsMap
+	stats       PingStats
 }
 
 type PingScanOptions struct {
@@ -35,16 +37,15 @@ type PingScanOptions struct {
 	PrintOnlyUp         bool
 }
 
-type PingScanResults struct {
-	ResultMap     map[netip.Addr]PingResult
-	SortedResults []PingResult
-}
+type PingScanResults []PingResult
+
+type PingScanResultsMap map[netip.Addr]PingResult
 
 type PingResult struct {
-	HostState
-	IP         netip.Addr
-	HostName   string
-	AverageRTT time.Duration
+	IP         netip.Addr    `json:"ip"`
+	HostName   string        `json:"hostname"`
+	HostState  HostState     `json:"state"`
+	AverageRTT time.Duration `json:"rtt"`
 }
 
 type PingStats struct {
@@ -64,16 +65,14 @@ func NewPingScanner(opts PingScanOptions) *PingScanner {
 	}
 	return &PingScanner{
 		PingScanOptions: opts,
-		results: PingScanResults{
-			ResultMap: make(map[netip.Addr]PingResult),
-		},
-		stats: PingStats{},
+		resultMap:       make(map[netip.Addr]PingResult),
+		stats:           PingStats{},
 	}
 }
 
 func (s *PingScanner) Scan() error {
 	startTime := time.Now()
-	err := runPing(s, s.Targets)
+	err := s.runPing()
 	if err != nil {
 		return err
 	}
@@ -86,14 +85,14 @@ func (s *PingScanner) Scan() error {
 		defer spinner.Success("Resolving Done")
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		for host, results := range s.results.ResultMap {
+		for host, results := range s.resultMap {
 			if results.HostName != "" {
 				continue
 			}
 
 			name := util.ReverseLookup(ctx, host.String())
 			results.HostName = name
-			s.results.ResultMap[host] = results
+			s.resultMap[host] = results
 		}
 	}
 
@@ -117,7 +116,7 @@ func (s *PingScanner) SendResultsViaNotifier() error {
 		}
 	}()
 
-	err = s.MessageNotifier.SendMessage(s.results.String())
+	err = s.MessageNotifier.SendMessage(s.scanResults.String())
 	if err != nil {
 		return err
 	}
@@ -130,7 +129,11 @@ func (s *PingScanner) Stats() ScanStats {
 }
 
 func (s *PingScanner) Results() ScanResults {
-	return s.results
+	return s.scanResults
+}
+
+func (s *PingScanner) ResultMap() PingScanResultsMap {
+	return s.resultMap
 }
 
 func (s *PingScanner) SetNotifier(n notify.Notifier) {
@@ -138,14 +141,14 @@ func (s *PingScanner) SetNotifier(n notify.Notifier) {
 }
 
 func (s *PingScanner) PrintResults() {
-	printPingScanResults(s.results.SortedResults, s.stats, s.PrintOnlyUp)
+	printPingScanResults(s.scanResults, s.stats, s.PrintOnlyUp)
 }
 
 func (s *PingScanner) sortResults() {
-	pingScanResults := s.results
-	ipAddrs := make([]netip.Addr, 0, len(pingScanResults.ResultMap))
+	resultMap := s.resultMap
+	ipAddrs := make([]netip.Addr, 0, len(resultMap))
 
-	for addr := range pingScanResults.ResultMap {
+	for addr := range resultMap {
 		ipAddrs = append(ipAddrs, addr)
 	}
 
@@ -153,37 +156,37 @@ func (s *PingScanner) sortResults() {
 		return a.Compare(b)
 	})
 
-	sortedResults := make([]PingResult, 0, len(pingScanResults.ResultMap))
+	sortedResults := make([]PingResult, 0, len(resultMap))
 	for _, addr := range ipAddrs {
-		sortedResults = append(sortedResults, pingScanResults.ResultMap[addr])
+		sortedResults = append(sortedResults, resultMap[addr])
 	}
 
-	s.results.SortedResults = sortedResults
+	s.scanResults = sortedResults
 }
 
 func (r PingScanResults) String() string {
 	stringBuilder := strings.Builder{}
 	up := 0
 	fmt.Fprintf(&stringBuilder, "Ping Scan Results.\n\n")
-	for addr, result := range r.ResultMap {
+	for _, result := range r {
 		if result.HostState == HostStateDown {
 			continue
 		}
 		up++
-		fmt.Fprintf(&stringBuilder, "%v", addr.String())
+		fmt.Fprintf(&stringBuilder, "%v", result.IP.String())
 		if result.HostName != "" {
 			fmt.Fprintf(&stringBuilder, " (%v)", result.HostName)
 		}
-		fmt.Fprintf(&stringBuilder, "->\t%v\n", result.String())
+		fmt.Fprintf(&stringBuilder, "->\t%v\n", result.HostState.String())
 	}
-	fmt.Fprintf(&stringBuilder, "\nTotal Hosts Scanned: %v\n", len(r.ResultMap))
+	fmt.Fprintf(&stringBuilder, "\nTotal Hosts Scanned: %v\n", len(r))
 	fmt.Fprintf(&stringBuilder, "Hosts that are Up: %v\n", up)
-	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r.ResultMap)-up)
+	fmt.Fprintf(&stringBuilder, "Hosts that are Down: %v\n", len(r)-up)
 
 	return stringBuilder.String()
 }
 
-func runPing(scanner *PingScanner, targets []netip.Prefix) error {
+func (s *PingScanner) runPing() error {
 	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
 		return fmt.Errorf("ping scan requires root permissions")
 	}
@@ -193,28 +196,28 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 		return err
 	}
 
-	jobs := make(chan PingScanJob, scanner.Workers)
-	workerResultsChan := make(chan PingResult, scanner.Workers)
+	jobs := make(chan PingScanJob, s.Workers)
+	workerResultsChan := make(chan PingResult, s.Workers)
 	wg := &sync.WaitGroup{}
-	for range scanner.Workers {
+	for range s.Workers {
 		wg.Add(1)
-		go pingScanHost(scanner, wg, jobs, workerResultsChan)
+		go pingHost(s, wg, jobs, workerResultsChan)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	scanResultsChan := make(chan PingScanResults)
+	scanResultsChan := make(chan PingScanResultsMap)
 	// start workers
-	go getPingScanResults(ctx, scanner, workerResultsChan, scanResultsChan)
+	go getPingScanResults(ctx, s, workerResultsChan, scanResultsChan)
 
 	// send jobs
-	for _, target := range targets {
+	for _, target := range s.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
 		for target.Contains(IPaddr) {
 			jobs <- PingScanJob{
 				Target:    IPaddr,
-				PingCount: scanner.PingCount,
+				PingCount: s.PingCount,
 			}
 			IPaddr = IPaddr.Next()
 		}
@@ -225,12 +228,12 @@ func runPing(scanner *PingScanner, targets []netip.Prefix) error {
 	close(workerResultsChan) // tell main worker to stop
 
 	pingScanResults := <-scanResultsChan
-	scanner.results = pingScanResults
+	s.resultMap = pingScanResults
 	spinner.Success("Pinging done")
 	return nil
 }
 
-func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingResult) {
+func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingResult) {
 	// To be run by workers
 	defer wg.Done()
 
@@ -241,7 +244,7 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 		pinger.Count = job.PingCount
 		pingTimeout := scanner.PingTimeout
 		if pingTimeout == 0*time.Second {
-			pingTimeout = time.Duration(job.PingCount) * time.Second
+			pingTimeout = 1 * time.Second
 		}
 		pinger.Timeout = pingTimeout
 
@@ -262,11 +265,9 @@ func pingScanHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJo
 	}
 }
 
-func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResultsChan chan PingResult, scanResultsChan chan PingScanResults) {
+func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResultsChan chan PingResult, scanResultsChan chan PingScanResultsMap) {
 	// To Be Run By Main Worker (aggregator)
-	scanResults := PingScanResults{
-		ResultMap: make(map[netip.Addr]PingResult),
-	}
+	scanResults := make(map[netip.Addr]PingResult)
 	defer func() {
 		scanResultsChan <- scanResults
 	}()
@@ -284,7 +285,7 @@ func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResults
 			case HostStateUp:
 				scanner.stats.UpHosts++
 			}
-			scanResults.ResultMap[result.IP] = result
+			scanResults[result.IP] = result
 		}
 	}
 }
