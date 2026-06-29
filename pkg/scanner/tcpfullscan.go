@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"net"
 	"net/netip"
 	"slices"
@@ -21,7 +22,6 @@ type TCPFullScanner struct {
 	TCPFullScanOptions
 
 	results    TCPFullScanResults
-	stats      TCPFullScanStats
 	hostStates PingScanResultsMap
 	logger     log.Logger
 }
@@ -42,11 +42,14 @@ type TCPFullScanOptions struct {
 	PrintOpenOnly bool
 }
 
-type TCPFullScanResults HostResults
+type TCPFullScanResults struct {
+	HostResults      `json:"results"`
+	TCPFullScanStats `json:"stats"`
+}
 
 type TCPFullScanStats struct {
-	TotalNumOfHosts int
-	ScanTime        time.Duration
+	TotalNumOfHosts int           `json:"total_scanned"`
+	ScanTime        time.Duration `json:"scan_duration"`
 }
 
 func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
@@ -55,9 +58,10 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 	}
 	return &TCPFullScanner{
 		TCPFullScanOptions: opts,
-		results:            make(map[netip.Addr]HostResult),
-		stats:              TCPFullScanStats{},
-		logger:             log.NewLogger(true),
+		results: TCPFullScanResults{
+			HostResults: make(HostResults),
+		},
+		logger: log.NewLogger(true),
 	}
 }
 
@@ -87,14 +91,15 @@ func (s *TCPFullScanner) SendResultsViaNotifier() error {
 
 func (s *TCPFullScanner) Scan() error {
 	startTime := time.Now()
-	results, err := s.runTCPFullScan()
+	hostResults, err := s.runTCPFullScan()
 	if err != nil {
 		return err
 	}
 	stopTime := time.Now()
 
-	s.stats.ScanTime = stopTime.Sub(startTime)
-	s.results = results
+	s.results.HostResults = hostResults
+	s.results.ScanTime = stopTime.Sub(startTime)
+
 	s.addResultsInfo()
 	return nil
 }
@@ -104,11 +109,7 @@ func (s *TCPFullScanner) Results() ScanResults {
 }
 
 func (s *TCPFullScanner) PrintResults() {
-	printScanResultsMap(s.results, s.stats.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
-}
-
-func (s *TCPFullScanner) Stats() ScanStats {
-	return s.stats
+	printScanResultsMap(s.results.HostResults, s.results.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
 }
 
 func (s *TCPFullScanner) SetNotifier(n notify.Notifier) {
@@ -122,17 +123,17 @@ func (s *TCPFullScanner) addResultsInfo() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		for host, results := range s.results {
+		for host, results := range s.results.HostResults {
 			if results.HostName != "" {
 				continue
 			}
 			name := util.ReverseLookup(ctx, host.String())
 			results.HostName = name
-			s.results[host] = results
+			s.results.HostResults[host] = results
 		}
 	}
 
-	for _, hostResult := range s.results {
+	for _, hostResult := range s.results.HostResults {
 		slices.SortFunc(hostResult.Ports, func(a, b Port) int {
 			return int(a.Number - b.Number)
 		})
@@ -141,13 +142,15 @@ func (s *TCPFullScanner) addResultsInfo() {
 
 func (r TCPFullScanResults) String() string {
 	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "TCP Full Scan Results.\n\n")
 
-	stringBuilder.WriteString(HostResults(r).String())
+	hostTmpl := template.Must(template.New("host_result").Parse(HostResultTemplate))
+	tmpl := template.Must(hostTmpl.New("tcp_full_scan").Parse(TCPFullScanResultsTemplate))
+
+	tmpl.Execute(&stringBuilder, r)
 	return stringBuilder.String()
 }
 
-func (s *TCPFullScanner) runTCPFullScan() (TCPFullScanResults, error) {
+func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 	opts := s.TCPFullScanOptions
 	targets := opts.Targets
 	ports := opts.TargetPorts
@@ -155,16 +158,16 @@ func (s *TCPFullScanner) runTCPFullScan() (TCPFullScanResults, error) {
 	numWorkers := opts.Workers
 
 	if len(targets) == 0 {
-		return TCPFullScanResults{}, fmt.Errorf("no hosts to scan provided")
+		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
 	if len(ports) == 0 {
-		return TCPFullScanResults{}, fmt.Errorf("no ports provided for scanning")
+		return HostResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
 	if !opts.SkipPingScan {
 		pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
 		if err != nil {
-			return TCPFullScanResults{}, err
+			return HostResults{}, err
 		}
 		s.hostStates = pingResults
 	}
@@ -178,7 +181,7 @@ func (s *TCPFullScanner) runTCPFullScan() (TCPFullScanResults, error) {
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
-		return TCPFullScanResults{}, err
+		return HostResults{}, err
 	}
 	defer spinner.Success("Scanning Done")
 
@@ -189,7 +192,7 @@ func (s *TCPFullScanner) runTCPFullScan() (TCPFullScanResults, error) {
 
 	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
 
-	scanResultsChan := make(chan TCPFullScanResults)
+	scanResultsChan := make(chan HostResults)
 	go getTCPFullScanResults(ctx, s, workerResultsChan, scanResultsChan)
 
 	<-senderDone // wait for sender to send all jobs
@@ -203,9 +206,9 @@ func (s *TCPFullScanner) runTCPFullScan() (TCPFullScanResults, error) {
 	return scanResults, nil
 }
 
-func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan TCPFullScanResults) {
+func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan HostResults) {
 	// To Be Run By Main Worker (aggregator)
-	scanResults := make(TCPFullScanResults)
+	scanResults := make(HostResults)
 	numberOfPortsToScan := len(scanner.TargetPorts)
 
 	defer func() {
@@ -222,10 +225,13 @@ func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerR
 			hostIP := result.HostIP
 			hostResult, found := scanResults[hostIP]
 			if !found {
+				hostResult.Addr = hostIP
 				hostResult.Ports = make([]Port, 0, numberOfPortsToScan)
 				hostResult.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResult.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 				hostResult.AverageRTT = scanner.hostStates[hostIP].AverageRTT
+
+				scanner.results.TotalNumOfHosts++
 			}
 			hostResult.Ports = append(hostResult.Ports, result.Port)
 			switch result.Port.State {

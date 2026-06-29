@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"strings"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 type WiFiScanner struct {
 	WiFiScannerOptions
 	results WiFiScanResults
-	stats   WiFiScanStats
 }
 
 type WiFiScannerOptions struct {
@@ -24,18 +24,18 @@ type WiFiScannerOptions struct {
 }
 
 type WiFiScanResults struct {
-	AccessPoints []*wifi.BSS `json:"aps"`
+	AccessPoints  []*wifi.BSS `json:"aps"`
+	WiFiScanStats `json:"stats"`
 }
 
 type WiFiScanStats struct {
-	ScanTime time.Duration
+	ScanDuration time.Duration `json:"scan_duration"`
 }
 
 func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 	return &WiFiScanner{
 		WiFiScannerOptions: opts,
 		results:            WiFiScanResults{},
-		stats:              WiFiScanStats{},
 	}
 }
 
@@ -46,7 +46,7 @@ func (s *WiFiScanner) Scan() error {
 		return err
 	}
 	stop := time.Now()
-	s.stats.ScanTime = stop.Sub(start)
+	s.results.ScanDuration = stop.Sub(start)
 	return nil
 }
 
@@ -80,10 +80,6 @@ func (s *WiFiScanner) Results() ScanResults {
 	return s.results
 }
 
-func (s *WiFiScanner) Stats() ScanStats {
-	return s.stats
-}
-
 func (s *WiFiScanner) PrintResults() {
 	displayWifiScanResults(s)
 }
@@ -94,17 +90,10 @@ func (s *WiFiScanner) SetNotifier(n notify.Notifier) {
 
 func (r WiFiScanResults) String() string {
 	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "WiFi Scan Results\n\n")
-	for _, ap := range r.AccessPoints {
-		fmt.Fprintln(&stringBuilder, "SSID: ", ap.SSID)
-		fmt.Fprintln(&stringBuilder, "BSSID: ", ap.BSSID)
-		fmt.Fprintln(&stringBuilder, "Status: ", ap.Status.String())
-		fmt.Fprintln(&stringBuilder, "Freq (MHz): ", ap.Frequency)
-		fmt.Fprintln(&stringBuilder, "Channel: ", FreqToChannel(ap.Frequency))
-		fmt.Fprintln(&stringBuilder, "Strength (dBm): ", ap.Signal/100)
-		fmt.Fprintln(&stringBuilder, "Load: ", ap.Load.String())
-		fmt.Fprintln(&stringBuilder)
-	}
+
+	tmpl := template.Must(template.New("wifi_scan_results").Parse(WiFiScanResultsTemplate))
+	tmpl.Execute(&stringBuilder, r)
+
 	return stringBuilder.String()
 }
 

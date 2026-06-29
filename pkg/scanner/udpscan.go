@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"net"
 	"net/netip"
 	"os"
@@ -21,8 +22,8 @@ import (
 
 type UDPScanner struct {
 	UDPScanOptions
+
 	results    UDPScanResults
-	stats      UDPScanStats
 	hostStates PingScanResultsMap
 	logger     log.Logger
 }
@@ -42,11 +43,14 @@ type UDPScanOptions struct {
 	PrintOpenOnly bool
 }
 
-type UDPScanResults HostResults
+type UDPScanResults struct {
+	HostResults  `json:"results"`
+	UDPScanStats `json:"stats"`
+}
 
 type UDPScanStats struct {
-	TotalNumOfHosts int
-	ScanTime        time.Duration
+	TotalNumOfHosts int           `json:"total_scanned"`
+	ScanTime        time.Duration `json:"scan_duration"`
 }
 
 func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
@@ -55,21 +59,23 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 	}
 	return &UDPScanner{
 		UDPScanOptions: opts,
-		results:        make(UDPScanResults),
-		stats:          UDPScanStats{},
-		logger:         log.NewLogger(true),
+		results: UDPScanResults{
+			HostResults: make(HostResults),
+		},
+		logger: log.NewLogger(true),
 	}
 }
 
 func (s *UDPScanner) Scan() error {
 	startTime := time.Now()
-	results, err := s.runUDPScan()
+	hostResults, err := s.runUDPScan()
 	if err != nil {
 		return err
 	}
 	stopTime := time.Now()
-	s.stats.ScanTime = stopTime.Sub(startTime)
-	s.results = results
+
+	s.results.HostResults = hostResults
+	s.results.ScanTime = stopTime.Sub(startTime)
 
 	s.addResultsInfo()
 	return nil
@@ -102,15 +108,11 @@ func (s *UDPScanner) SendResultsViaNotifier() error {
 }
 
 func (s *UDPScanner) PrintResults() {
-	printScanResultsMap(s.results, s.stats.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
+	printScanResultsMap(s.results.HostResults, s.results.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
 }
 
 func (s *UDPScanner) Results() ScanResults {
 	return s.results
-}
-
-func (s *UDPScanner) Stats() ScanStats {
-	return s.stats
 }
 
 func (s *UDPScanner) SetNotifier(n notify.Notifier) {
@@ -123,17 +125,17 @@ func (s *UDPScanner) addResultsInfo() {
 		defer spinner.Success("Resolving Done")
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		for host, results := range s.results {
+		for host, results := range s.results.HostResults {
 			if results.HostName != "" {
 				continue
 			}
 			name := util.ReverseLookup(ctx, host.String())
 			results.HostName = name
-			s.results[host] = results
+			s.results.HostResults[host] = results
 		}
 	}
 
-	for _, hostResult := range s.results {
+	for _, hostResult := range s.results.HostResults {
 		slices.SortFunc(hostResult.Ports, func(a, b Port) int {
 			return int(a.Number - b.Number)
 		})
@@ -142,13 +144,15 @@ func (s *UDPScanner) addResultsInfo() {
 
 func (r UDPScanResults) String() string {
 	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "UDP Scan Results.\n\n")
 
-	stringBuilder.WriteString(HostResults(r).String())
+	hostTmpl := template.Must(template.New("host_result").Parse(HostResultTemplate))
+	tmpl := template.Must(hostTmpl.New("udp_full_scan").Parse(UDPScanResultsTemplate))
+
+	tmpl.Execute(&stringBuilder, r)
 	return stringBuilder.String()
 }
 
-func (s *UDPScanner) runUDPScan() (UDPScanResults, error) {
+func (s *UDPScanner) runUDPScan() (HostResults, error) {
 	opts := s.UDPScanOptions
 	targets := opts.Targets
 	ports := opts.TargetPorts
@@ -157,15 +161,15 @@ func (s *UDPScanner) runUDPScan() (UDPScanResults, error) {
 
 	pterm.Warning.Println("UDP Scans are not reliable and may show inconsistent or wrong results.")
 	if len(targets) == 0 {
-		return UDPScanResults{}, fmt.Errorf("no hosts to scan provided")
+		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
 	if len(ports) == 0 {
-		return UDPScanResults{}, fmt.Errorf("no ports provided for scanning")
+		return HostResults{}, fmt.Errorf("no ports provided for scanning")
 	}
 
 	pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
 	if err != nil {
-		return UDPScanResults{}, err
+		return HostResults{}, err
 	}
 	s.hostStates = pingResults
 
@@ -179,7 +183,7 @@ func (s *UDPScanner) runUDPScan() (UDPScanResults, error) {
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
-		return UDPScanResults{}, err
+		return HostResults{}, err
 	}
 	defer spinner.Success("Scanning Done")
 
@@ -189,7 +193,7 @@ func (s *UDPScanner) runUDPScan() (UDPScanResults, error) {
 
 	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
 
-	scanResultsChan := make(chan UDPScanResults)
+	scanResultsChan := make(chan HostResults)
 	go getUDPScanResults(ctx, s, workerResultsChan, scanResultsChan)
 
 	<-senderDone // wait for sender to send all jobs
@@ -266,9 +270,9 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 	}
 }
 
-func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan UDPScanResults) {
+func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan HostResults) {
 	// To Be Run By Main Worker
-	scanResults := make(UDPScanResults)
+	scanResults := make(HostResults)
 	numberOfPortsToScan := len(scanner.TargetPorts)
 	defer func() {
 		scanResultsChan <- scanResults
@@ -285,10 +289,13 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 			hostIP := result.HostIP
 			hostResult, found := scanResults[hostIP]
 			if !found {
+				hostResult.Addr = hostIP
 				hostResult.Ports = make([]Port, 0, numberOfPortsToScan)
 				hostResult.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
 				hostResult.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
 				hostResult.AverageRTT = scanner.hostStates[hostIP].AverageRTT
+
+				scanner.results.TotalNumOfHosts++
 			}
 			hostResult.Ports = append(hostResult.Ports, result.Port)
 

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/notify"
@@ -36,19 +35,17 @@ const (
 const (
 	PortStateOpen PortState = iota + 1
 	PortStateClosed
-	PortStatePossibleFilter // used during udp scan when a host's port state cant be known definitevly
+	PortStatePossibleFilter // used a host's port state cant be known definitevly
 )
 
 type MAC net.HardwareAddr
 
 // Scanner defines the interface for network scanning operations.
 type Scanner interface {
-	// Scan executes the network scan and returns an error if the scan fails.
+	// Scan executes the network scan and returns an error if any.
 	Scan() error
 	// Results returns the results of the completed scan.
 	Results() ScanResults
-	// Stats returns statistics about the completed scan.
-	Stats() ScanStats
 	// SendResultsViaNotifier sends scan results using the configured notifier
 	SendResultsViaNotifier() error
 	// PrintResults outputs the scan findings to standard output.
@@ -59,6 +56,7 @@ type Scanner interface {
 
 // HostResult is the result of a single host after port scanning
 type HostResult struct {
+	Addr netip.Addr
 	// HostState indicates the overall state of the host (e.g., up or down).
 	HostState HostState `json:"state"`
 	// HostName is the resolved DNS name of the host.
@@ -90,14 +88,9 @@ type Port struct {
 }
 
 // ScanResults defines the interface that all scan result types must implement.
-// It provides methods to convert results to a string representation and identify
-// the specific type of scan result.
 type ScanResults interface {
-	// String returns a string representation of the scan result.
-	String() string
+	fmt.Stringer
 }
-
-type ScanStats any
 
 func (p PortState) String() string {
 	switch p {
@@ -112,10 +105,6 @@ func (p PortState) String() string {
 	}
 }
 
-func (p PortState) MarshalJSON() ([]byte, error) {
-	return json.Marshal(p.String())
-}
-
 func (s HostState) String() string {
 	switch s {
 	case HostStateUp:
@@ -127,39 +116,22 @@ func (s HostState) String() string {
 	}
 }
 
-func (s HostState) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.String())
-}
-
-func (s HostResult) TotalNumberOfPorts() int {
-	return s.OpenPorts + s.ClosedPorts + s.FilteredPorts
-}
-
 func (m MAC) String() string {
 	return net.HardwareAddr(m).String()
+}
+
+func (p PortState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
+}
+
+func (s HostState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
 }
 
 func (m MAC) MarshalJSON() ([]byte, error) {
 	return json.Marshal(net.HardwareAddr(m).String())
 }
 
-func (r HostResults) String() string {
-	stringBuilder := strings.Builder{}
-	for addr, result := range r {
-		fmt.Fprintf(&stringBuilder, "Results for %v", addr.String())
-		if result.HostName == "" {
-			fmt.Fprintf(&stringBuilder, "\n")
-		} else {
-			fmt.Fprintf(&stringBuilder, " (%v)\n", result.HostName)
-		}
-		for _, port := range result.Ports {
-			if port.State == PortStateOpen {
-				fmt.Fprintf(&stringBuilder, "%v/%v (%v) -> Open\n", port.Protocol, port.Number, port.Name)
-			}
-		}
-		fmt.Fprintf(&stringBuilder, "Total Ports Scanned: %v\n", result.ClosedPorts+result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Open Ports: %v\n", result.OpenPorts)
-		fmt.Fprintf(&stringBuilder, "Closed Ports: %v\n\n", result.ClosedPorts)
-	}
-	return stringBuilder.String()
+func (s HostResult) TotalNumberOfPorts() int {
+	return s.OpenPorts + s.ClosedPorts + s.FilteredPorts
 }
