@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
-	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
 
@@ -127,7 +127,7 @@ func (s *TCPFullScanner) addResultsInfo() {
 			if results.HostName != "" {
 				continue
 			}
-			name := util.ReverseLookup(ctx, host.String())
+			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.results.HostResults[host] = results
 		}
@@ -275,7 +275,7 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- P
 			result.Port.State = PortStateClosed
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = util.Service(layers.TCPPort(target.Port()).String())
+			result.Port.Name = netutil.Service(layers.TCPPort(target.Port()).String())
 		}
 
 		resultsChan <- result

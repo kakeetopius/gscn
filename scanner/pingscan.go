@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
-	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/pterm/pterm"
 )
@@ -94,7 +94,7 @@ func (s *PingScanner) Scan() error {
 				continue
 			}
 
-			name := util.ReverseLookup(ctx, host.String())
+			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.resultMap[host] = results
 		}

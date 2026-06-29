@@ -17,8 +17,8 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
-	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
 
@@ -31,7 +31,7 @@ type NDPScanner struct {
 type NDPScanOptions struct {
 	Targets             []netip.Prefix
 	Source              netip.Addr
-	Interface           util.Interface
+	Interface           netutil.Interface
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	WithVendorInfo      bool
@@ -119,7 +119,7 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 }
 
 func (s *NDPScanner) PrintResults() {
-	displayNDPResults(&s.results, s.AddUnknownHostNames, s.WithVendorInfo)
+	displayNDPResults(&s.results, s.WithVendorInfo, s.AddUnknownHostNames)
 }
 
 func (s *NDPScanner) Results() ScanResults {
@@ -150,10 +150,10 @@ func (s *NDPScanner) addResultInfo() error {
 	defer cancel()
 	for i := range resultSet.HostResults {
 		if s.WithVendorInfo {
-			resultSet.HostResults[i].Vendor = util.MACVendor(resultSet.HostResults[i].MacAddr)
+			resultSet.HostResults[i].Vendor = netutil.MACVendor(resultSet.HostResults[i].MacAddr)
 		}
 		if s.AddUnknownHostNames {
-			resultSet.HostResults[i].HostName = util.ReverseLookup(ctx, resultSet.HostResults[i].IPAddr.String())
+			resultSet.HostResults[i].HostName = netutil.ReverseLookup(ctx, resultSet.HostResults[i].IPAddr.String())
 			bar.Increment()
 		}
 	}
@@ -195,10 +195,16 @@ outer:
 	}
 	s.logger.Info("Probing host on interface: " + opts.Interface.Name)
 
+	packetSender, err := NewPacketSender()
+	if err != nil {
+		return nil, err
+	}
+	defer packetSender.Close()
+
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
 		for target.Contains(IPaddr) {
-			err := sendNSPacket(s, &IPaddr)
+			err := sendNSPacket(s, packetSender, &IPaddr)
 			if err != nil {
 				return nil, err
 			}
@@ -212,7 +218,7 @@ outer:
 	return results, nil
 }
 
-func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
+func sendNSPacket(scanner *NDPScanner, packetSender PacketSender, dstIP *netip.Addr) error {
 	iface := scanner.Interface
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
@@ -251,13 +257,12 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	icmp.SetNetworkLayerForChecksum(ip)
 	err := gopacket.SerializeLayers(buf, options, eth, ip, icmp, nd)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
 	packetBytes := buf.Bytes()
 
-	err = sendPacket(packetBytes, &iface)
+	err = packetSender.SendPacket(packetBytes, &iface)
 	if err != nil {
 		return err
 	}
@@ -305,7 +310,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 				continue
 			}
 			srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-			if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
+			if !netutil.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
 				continue
 			}
 			scanner.results.PacketsReceived++
@@ -329,7 +334,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	}
 }
 
-func ndpResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) ([]NDPHostResult, error) {
+func ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) ([]NDPHostResult, error) {
 	if runtime.GOOS != "linux" {
 		return nil, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
 	}
@@ -350,11 +355,11 @@ func ndpResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) ([]ND
 		if !ok {
 			continue
 		}
-		if util.AddrIsPartOfNetworks(targets, &addr) {
+		if netutil.AddrIsPartOfNetworks(targets, &addr) {
 			results = append(results, NDPHostResult{
 				IPAddr:  addr,
 				MacAddr: neigh.HwAddr.String(),
-				Vendor:  util.MACVendor(neigh.HwAddr.String()),
+				Vendor:  netutil.MACVendor(neigh.HwAddr.String()),
 			})
 		}
 	}

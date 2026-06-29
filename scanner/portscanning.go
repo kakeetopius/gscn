@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/util"
+	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 // PortScanWorkerResult is the tesult returned by Port Scanning workers
@@ -32,7 +32,7 @@ func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan cha
 				return
 			default:
 			}
-			if util.OnlyIPInRange(target) {
+			if netutil.OnlyIPInRange(target) {
 				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
 				jobChan <- PortScanJob{
 					target:      addrPort,

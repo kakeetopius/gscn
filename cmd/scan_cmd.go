@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/kakeetopius/gscn/pkg/scanner"
+	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
 

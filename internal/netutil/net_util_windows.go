@@ -1,4 +1,6 @@
-package util
+//go:build windows
+
+package netutil
 
 import (
 	"fmt"
@@ -8,8 +10,6 @@ import (
 
 	"github.com/google/gopacket/pcap"
 )
-
-// go: build windows
 
 // When sending packets on windows, pcap is used instead of the raw sockets that are available on linux only.
 // The pcap library on windows requires some special names for the interface which can only be gotten via the pcap.FindAllDevs() function which returns pcap.Interface structs

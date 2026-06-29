@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
 )
 
@@ -35,7 +36,7 @@ const (
 const (
 	PortStateOpen PortState = iota + 1
 	PortStateClosed
-	PortStatePossibleFilter // used a host's port state cant be known definitevly
+	PortStatePossibleFilter // used when  a host's port state cant be known definitevly
 )
 
 type MAC net.HardwareAddr
@@ -90,6 +91,12 @@ type Port struct {
 // ScanResults defines the interface that all scan result types must implement.
 type ScanResults interface {
 	fmt.Stringer
+}
+
+type PacketSender interface {
+	SendPacket(packet []byte, iface *netutil.Interface) error
+
+	Close()
 }
 
 func (p PortState) String() string {

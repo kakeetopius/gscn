@@ -9,7 +9,7 @@ import (
 
 	goversion "github.com/caarlos0/go-version"
 	"github.com/kakeetopius/gscn/internal/notify"
-	"github.com/kakeetopius/gscn/pkg/scanner"
+	"github.com/kakeetopius/gscn/scanner"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

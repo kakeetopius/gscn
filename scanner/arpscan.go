@@ -14,8 +14,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/log"
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
-	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
 
@@ -28,7 +28,7 @@ type ARPScanner struct {
 type ARPScanOptions struct {
 	Targets             []netip.Prefix
 	Source              netip.Addr
-	Interface           util.Interface
+	Interface           netutil.Interface
 	ResponseTimeout     time.Duration
 	WithVendorInfo      bool
 	HostNames           map[netip.Addr]string
@@ -137,10 +137,10 @@ func (s *ARPScanner) addResultInfo() error {
 	defer cancel()
 	for i := range results.HostResults {
 		if s.WithVendorInfo {
-			results.HostResults[i].Vendor = util.MACVendor(results.HostResults[i].MacAddr.String())
+			results.HostResults[i].Vendor = netutil.MACVendor(results.HostResults[i].MacAddr.String())
 		}
 		if s.AddUnknownHostNames {
-			results.HostResults[i].HostName = util.ReverseLookup(ctx, results.HostResults[i].IPAddr.String())
+			results.HostResults[i].HostName = netutil.ReverseLookup(ctx, results.HostResults[i].IPAddr.String())
 			bar.Increment()
 		}
 	}
@@ -183,12 +183,18 @@ outer:
 	}
 
 	s.logger.Info("Probing host(s) on interface: " + opts.Interface.Name)
-	numHosts := util.HostsInIP4Network(opts.Targets)
+	numHosts := netutil.HostsInIP4Network(opts.Targets)
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		return nil, err
 	}
 	defer bar.Stop()
+
+	packetSender, err := NewPacketSender()
+	if err != nil {
+		return nil, err
+	}
+	defer packetSender.Close()
 
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
@@ -200,7 +206,7 @@ outer:
 				continue
 			}
 
-			err = sendArpPacket(&opts.Interface, &opts.Source, &IPaddr)
+			err = sendArpPacket(&opts.Interface, packetSender, &opts.Source, &IPaddr)
 			if err != nil {
 				return nil, err
 			}
@@ -217,7 +223,7 @@ outer:
 	return results, nil
 }
 
-func sendArpPacket(iface *util.Interface, srcIP *netip.Addr, dstIP *netip.Addr) error {
+func sendArpPacket(iface *netutil.Interface, packetSender PacketSender, srcIP *netip.Addr, dstIP *netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -251,7 +257,7 @@ func sendArpPacket(iface *util.Interface, srcIP *netip.Addr, dstIP *netip.Addr) 
 
 	packetBytes := buf.Bytes()
 
-	err = sendPacket(packetBytes, iface)
+	err = packetSender.SendPacket(packetBytes, iface)
 	if err != nil {
 		return err
 	}
@@ -304,7 +310,7 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 			if !ok {
 				continue
 			}
-			if !util.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
+			if !netutil.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
 				// skip responses outside the specified network
 				continue
 			}

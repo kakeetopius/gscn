@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/log"
-	"github.com/kakeetopius/gscn/internal/util"
-	"github.com/kakeetopius/gscn/pkg/scanner"
+	"github.com/kakeetopius/gscn/internal/netutil"
+	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
 
@@ -126,10 +126,10 @@ func discoverNDPCmd() *cobra.Command {
 // prefixes to scan and the network interface to use. It validates IP addressing (IPv4 vs IPv6)
 // based on the isIP6 flag. If targets are omitted, it attempts to infer them from the provided
 // interface's network. If the interface is omitted, it infers it based on the provided targets.
-func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix, *util.Interface, error) {
-	var iface *util.Interface
+func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix, *netutil.Interface, error) {
+	var iface *netutil.Interface
 	var err error
-	netInterfaceProvider := util.RealNetInterfaceProvider{}
+	netInterfaceProvider := netutil.RealNetInterfaceProvider{}
 	logger := log.NewLogger(true)
 
 	targets := make([]netip.Prefix, 0)
@@ -149,9 +149,9 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 	if iface == nil && len(targets) != 0 {
 		// if no interface given we find an interface on the same network as one of the targets.
 		for _, target := range targets {
-			iface, err = util.GetIfaceByIP(&netInterfaceProvider, target.Addr())
+			iface, err = netutil.GetIfaceByIP(&netInterfaceProvider, target.Addr())
 			if err != nil {
-				if errors.Is(err, util.ErrNoInterfaceConnectedToTarget) {
+				if errors.Is(err, netutil.ErrNoInterfaceConnectedToTarget) {
 					continue
 				}
 				return nil, nil, err
@@ -162,7 +162,7 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 	if len(targets) == 0 && iface != nil {
 		// if no targets given but we have an interface, use the interface's first network of the given address family
 		var target *netip.Prefix
-		target, err = util.GetFirstIfaceIPNet(&netInterfaceProvider, iface, isIP6)
+		target, err = netutil.GetFirstIfaceIPNet(&netInterfaceProvider, iface, isIP6)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -187,7 +187,7 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 		}
 	}
 
-	err = util.VerifyInterface(&netInterfaceProvider, iface)
+	err = netutil.VerifyInterface(&netInterfaceProvider, iface)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -199,9 +199,9 @@ func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix,
 // If a specific addr string is provided, it parses and returns that address.
 // Otherwise, it automatically selects the best source IP from the provided network
 // interface based on the targets provided and the address family.
-func getSourceAddr(addr string, iface *util.Interface, targets []netip.Prefix, ip6 bool) (netip.Addr, error) {
+func getSourceAddr(addr string, iface *netutil.Interface, targets []netip.Prefix, ip6 bool) (netip.Addr, error) {
 	var sourceAddr netip.Addr
-	netInterfaceProvider := util.RealNetInterfaceProvider{}
+	netInterfaceProvider := netutil.RealNetInterfaceProvider{}
 
 	if addr != "" {
 		source, err := netip.ParseAddr(addr)
@@ -210,7 +210,7 @@ func getSourceAddr(addr string, iface *util.Interface, targets []netip.Prefix, i
 		}
 		sourceAddr = source
 	} else {
-		source, err := util.GetSourceIPFromInterface(&netInterfaceProvider, iface, targets, ip6)
+		source, err := netutil.GetSourceIPFromInterface(&netInterfaceProvider, iface, targets, ip6)
 		if err != nil {
 			return netip.Addr{}, err
 		}

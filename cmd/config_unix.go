@@ -1,3 +1,5 @@
+//go:build unix
+
 package cmd
 
 import (
@@ -6,8 +8,6 @@ import (
 	"os/user"
 	"path"
 )
-
-// go: build linux
 
 // ConfigDir returns the user's configuration directory.
 //

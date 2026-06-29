@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kakeetopius/gscn/internal/util"
+	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 type ipParseError struct {
@@ -54,7 +54,7 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 		seenStrings[targetString] = struct{}{}
 	}
 
-	return util.Unique(targets), nil
+	return netutil.Unique(targets), nil
 }
 
 // TargetsFromStringWithDNSLookup parses a comma-separated string of network targets
@@ -122,7 +122,7 @@ func TargetsFromStringWithDNSLookup(s string) ([]netip.Prefix, map[netip.Addr]st
 		seenStrings[targetString] = struct{}{}
 	}
 
-	return util.Unique(targets), hostNames, nil
+	return netutil.Unique(targets), hostNames, nil
 }
 
 // parseTargetString parses a single target string and returns a slice of netip.Prefix values.
@@ -338,5 +338,5 @@ func PortsFromString(s string) ([]uint, error) {
 	}
 
 	slices.Sort(targetPorts)
-	return util.Unique(targetPorts), nil
+	return netutil.Unique(targetPorts), nil
 }
