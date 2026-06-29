@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"net"
 	"net/netip"
 	"runtime"
@@ -24,7 +25,6 @@ import (
 type NDPScanner struct {
 	NDPScanOptions
 	results NDPScanResults
-	stats   NDPScanStats
 	logger  log.Logger
 }
 
@@ -42,9 +42,12 @@ type NDPScanOptions struct {
 	MessageNotifier     notify.Notifier
 }
 
-type NDPScanResults []NDPScanResult
+type NDPScanResults struct {
+	HostResults  []NDPHostResult `json:"results"`
+	NDPScanStats `json:"stats"`
+}
 
-type NDPScanResult struct {
+type NDPHostResult struct {
 	IPAddr   netip.Addr `json:"ip"`
 	MacAddr  string     `json:"mac"`
 	HostName string     `json:"hostname"`
@@ -52,9 +55,9 @@ type NDPScanResult struct {
 }
 
 type NDPScanStats struct {
-	PacketsSent     int
-	PacketsReceived int
-	ScanTime        time.Duration
+	PacketsSent     int           `json:"packets_sent"`
+	PacketsReceived int           `json:"packets_received"`
+	ScanDuration    time.Duration `json:"scan_duration"`
 }
 
 func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
@@ -64,7 +67,6 @@ func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
 	return &NDPScanner{
 		NDPScanOptions: opts,
 		results:        NDPScanResults{},
-		stats:          NDPScanStats{},
 		logger:         log.NewLogger(true),
 	}
 }
@@ -72,20 +74,22 @@ func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
 func (s *NDPScanner) Scan() error {
 	start := time.Now()
 
-	var results NDPScanResults
+	var hostResults []NDPHostResult
 	var err error
+
 	if s.FromCache {
-		results, err = ndpResultsUsingNetlink(&s.Interface, s.Targets)
+		hostResults, err = ndpResultsUsingNetlink(&s.Interface, s.Targets)
 	} else {
-		results, err = s.runNDP()
+		hostResults, err = s.runNDP()
 	}
+
 	if err != nil {
 		return err
 	}
-
 	stop := time.Now()
-	s.results = results
-	s.stats.ScanTime = stop.Sub(start)
+
+	s.results.HostResults = hostResults
+	s.results.ScanDuration = stop.Sub(start)
 
 	return s.addResultInfo()
 }
@@ -115,15 +119,11 @@ func (s *NDPScanner) SendResultsViaNotifier() error {
 }
 
 func (s *NDPScanner) PrintResults() {
-	displayNDPResults(s.results, &s.stats, s.AddUnknownHostNames, s.WithVendorInfo)
+	displayNDPResults(&s.results, s.AddUnknownHostNames, s.WithVendorInfo)
 }
 
 func (s *NDPScanner) Results() ScanResults {
 	return s.results
-}
-
-func (s *NDPScanner) Stats() ScanStats {
-	return s.stats
 }
 
 func (s *NDPScanner) SetNotifier(n notify.Notifier) {
@@ -132,7 +132,7 @@ func (s *NDPScanner) SetNotifier(n notify.Notifier) {
 
 func (s *NDPScanner) addResultInfo() error {
 	resultSet := s.results
-	numHosts := len(resultSet)
+	numHosts := len(resultSet.HostResults)
 
 	var bar *pterm.ProgressbarPrinter
 	var err error
@@ -148,17 +148,17 @@ func (s *NDPScanner) addResultInfo() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
 	defer cancel()
-	for i := range resultSet {
+	for i := range resultSet.HostResults {
 		if s.WithVendorInfo {
-			resultSet[i].Vendor = util.MACVendor(resultSet[i].MacAddr)
+			resultSet.HostResults[i].Vendor = util.MACVendor(resultSet.HostResults[i].MacAddr)
 		}
 		if s.AddUnknownHostNames {
-			resultSet[i].HostName = util.ReverseLookup(ctx, resultSet[i].IPAddr.String())
+			resultSet.HostResults[i].HostName = util.ReverseLookup(ctx, resultSet.HostResults[i].IPAddr.String())
 			bar.Increment()
 		}
 	}
 
-	slices.SortFunc(resultSet, func(a, b NDPScanResult) int {
+	slices.SortFunc(resultSet.HostResults, func(a, b NDPHostResult) int {
 		return a.IPAddr.Compare(b.IPAddr)
 	})
 	return nil
@@ -166,25 +166,16 @@ func (s *NDPScanner) addResultInfo() error {
 
 func (r NDPScanResults) String() string {
 	stringBuilder := strings.Builder{}
-	fmt.Fprintf(&stringBuilder, "NDP Scan Results\n\n")
 
-	for _, result := range r {
-		fmt.Fprintf(&stringBuilder, "IP: %v\nMac: %v", result.IPAddr, result.MacAddr)
-		if result.Vendor != "" {
-			fmt.Fprintf(&stringBuilder, "\nVendor: %s", result.Vendor)
-		}
-		if result.HostName != "" {
-			fmt.Fprintf(&stringBuilder, "\nHostName: %s", result.HostName)
-		}
-		fmt.Fprintf(&stringBuilder, "\n\n")
-	}
+	tmpl := template.Must(template.New("ndp_scan_results").Parse(NDPScanResultsTemplate))
+	tmpl.Execute(&stringBuilder, r)
 
 	return stringBuilder.String()
 }
 
-func (s *NDPScanner) runNDP() (NDPScanResults, error) {
+func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 	opts := s.NDPScanOptions
-	resultChan := make(chan NDPScanResults)
+	resultChan := make(chan []NDPHostResult)
 	startSending := make(chan struct{})
 	errorChan := make(chan error)
 
@@ -197,7 +188,7 @@ outer:
 	for {
 		select {
 		case err := <-errorChan:
-			return NDPScanResults{}, err
+			return nil, err
 		case <-startSending:
 			break outer
 		}
@@ -209,7 +200,7 @@ outer:
 		for target.Contains(IPaddr) {
 			err := sendNSPacket(s, &IPaddr)
 			if err != nil {
-				return NDPScanResults{}, err
+				return nil, err
 			}
 			IPaddr = IPaddr.Next()
 		}
@@ -270,11 +261,11 @@ func sendNSPacket(scanner *NDPScanner, dstIP *netip.Addr) error {
 	if err != nil {
 		return err
 	}
-	scanner.stats.PacketsSent++
+	scanner.results.PacketsSent++
 	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- NDPScanResults, startSendChan chan<- struct{}, errorChan chan<- error) {
+func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- []NDPHostResult, startSendChan chan<- struct{}, errorChan chan<- error) {
 	iface := scanner.Interface
 	handle, err := pcap.OpenLive(iface.PcapName, 1600, false, time.Millisecond)
 	if err != nil {
@@ -291,13 +282,14 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetChan := packetSource.Packets()
 
-	results := NDPScanResults{}
+	hostResults := make([]NDPHostResult, 0, 15)
+
 	startSendChan <- struct{}{}
 
 	for {
 		select {
 		case <-ctx.Done():
-			resultsChan <- results
+			resultsChan <- hostResults
 			return
 		case packet, ok := <-packetChan:
 			if !ok {
@@ -316,7 +308,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 			if !util.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
 				continue
 			}
-			scanner.stats.PacketsReceived++
+			scanner.results.PacketsReceived++
 			icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
 			var hwAddr net.HardwareAddr
 			for _, icmpOption := range icmpPacket.Options {
@@ -326,32 +318,32 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 				}
 			}
 
-			var result NDPScanResult
+			var result NDPHostResult
 			result.IPAddr = srcIP
 			result.MacAddr = hwAddr.String()
 			if icmpPacket.Router() {
 				result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
 			}
-			results = append(results, result)
+			hostResults = append(hostResults, result)
 		}
 	}
 }
 
-func ndpResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) (NDPScanResults, error) {
+func ndpResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) ([]NDPHostResult, error) {
 	if runtime.GOOS != "linux" {
-		return NDPScanResults{}, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
+		return nil, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
 	}
-	results := make([]NDPScanResult, 0, 5)
+	results := make([]NDPHostResult, 0, 5)
 
 	conn, err := rtnl.Dial(nil)
 	if err != nil {
-		return NDPScanResults{}, fmt.Errorf("failed to establish connection to netlink subsystem: %v", err)
+		return nil, fmt.Errorf("failed to establish connection to netlink subsystem: %v", err)
 	}
 	defer conn.Close()
 
 	neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET6)
 	if err != nil {
-		return NDPScanResults{}, err
+		return nil, err
 	}
 	for _, neigh := range neighbours {
 		addr, ok := netip.AddrFromSlice(neigh.IP)
@@ -359,7 +351,7 @@ func ndpResultsUsingNetlink(iface *util.Interface, targets []netip.Prefix) (NDPS
 			continue
 		}
 		if util.AddrIsPartOfNetworks(targets, &addr) {
-			results = append(results, NDPScanResult{
+			results = append(results, NDPHostResult{
 				IPAddr:  addr,
 				MacAddr: neigh.HwAddr.String(),
 				Vendor:  util.MACVendor(neigh.HwAddr.String()),
@@ -397,8 +389,8 @@ func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
 	return solIP
 }
 
-func displayNDPResults(ndpResults NDPScanResults, ndpStats *NDPScanStats, withVendorInfo bool, withHostNames bool) {
-	if len(ndpResults) == 0 {
+func displayNDPResults(ndpResults *NDPScanResults, withVendorInfo bool, withHostNames bool) {
+	if len(ndpResults.HostResults) == 0 {
 		fmt.Println()
 		pterm.Info.Println("Host(s) not found on that network.")
 	} else {
@@ -412,7 +404,7 @@ func displayNDPResults(ndpResults NDPScanResults, ndpStats *NDPScanStats, withVe
 			tableData[0] = append(tableData[0], "HostNames")
 		}
 
-		for _, result := range ndpResults {
+		for _, result := range ndpResults.HostResults {
 			row := []string{result.IPAddr.String(), result.MacAddr}
 			if withVendorInfo {
 				vendor := result.Vendor
@@ -433,10 +425,10 @@ func displayNDPResults(ndpResults NDPScanResults, ndpStats *NDPScanStats, withVe
 		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
 	}
 
-	if ndpStats != nil {
-		fmt.Println("\nScan Duration:     ", ndpStats.ScanTime.Truncate(time.Millisecond))
-		fmt.Println("Packets Sent:      ", ndpStats.PacketsSent)
-		fmt.Println("Packets Received:  ", ndpStats.PacketsReceived)
-		fmt.Println("Hosts Found:       ", len(ndpResults))
-	}
+	ndpStats := ndpResults.NDPScanStats
+
+	fmt.Println("\nScan Duration:     ", ndpStats.ScanDuration.Truncate(time.Millisecond))
+	fmt.Println("Packets Sent:      ", ndpStats.PacketsSent)
+	fmt.Println("Packets Received:  ", ndpStats.PacketsReceived)
+	fmt.Println("Hosts Found:       ", len(ndpResults.HostResults))
 }
