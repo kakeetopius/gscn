@@ -1,5 +1,5 @@
-// Package util netutils provides some helper network functions.
-package util
+// Package netutil netutils provides some helper network functions.
+package netutil
 
 import (
 	"context"

@@ -8,7 +8,7 @@ require (
 	github.com/endobit/oui v0.7.0
 	github.com/google/gopacket v1.1.19
 	github.com/jsimonetti/rtnetlink v1.4.2
-	github.com/mdlayher/wifi v0.7.2
+	github.com/mdlayher/wifi v0.8.0
 	github.com/prometheus-community/pro-bing v0.9.0
 	github.com/pterm/pterm v0.12.83
 	github.com/spf13/cobra v1.10.2
@@ -36,7 +36,7 @@ require (
 	github.com/mdlayher/genetlink v1.4.0 // indirect
 	github.com/mdlayher/netlink v1.11.2 // indirect
 	github.com/mdlayher/socket v0.6.1 // indirect
-	github.com/pelletier/go-toml/v2 v2.4.0 // indirect
+	github.com/pelletier/go-toml/v2 v2.4.2 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect

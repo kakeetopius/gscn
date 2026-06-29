@@ -1,11 +1,11 @@
-package util
+//go:build unix
+
+package netutil
 
 import (
 	"net"
 	"net/netip"
 )
-
-// go: build linux
 
 type RealNetInterfaceProvider struct {
 	interfaces    []Interface

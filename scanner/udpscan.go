@@ -15,8 +15,8 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
-	"github.com/kakeetopius/gscn/internal/util"
 	"github.com/pterm/pterm"
 )
 
@@ -129,7 +129,7 @@ func (s *UDPScanner) addResultsInfo() {
 			if results.HostName != "" {
 				continue
 			}
-			name := util.ReverseLookup(ctx, host.String())
+			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.results.HostResults[host] = results
 		}
@@ -256,14 +256,14 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 			// Here we assume that if the read attempt on the socket timed out then the port is open
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				result.Port.State = PortStatePossibleFilter
-				result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
+				result.Port.Name = netutil.Service(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed
 				result.Port.State = PortStateClosed
 			}
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = util.Service(layers.UDPPort(target.Port()).String())
+			result.Port.Name = netutil.Service(layers.UDPPort(target.Port()).String())
 		}
 
 		resultsChan <- result
