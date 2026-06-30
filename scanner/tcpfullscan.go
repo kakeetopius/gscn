@@ -152,20 +152,18 @@ func (r TCPFullScanResults) String() string {
 
 func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 	opts := s.TCPFullScanOptions
-	targets := opts.Targets
-	ports := opts.TargetPorts
 
 	numWorkers := opts.Workers
 
-	if len(targets) == 0 {
+	if len(opts.Targets) == 0 {
 		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
-	if len(ports) == 0 {
-		return HostResults{}, fmt.Errorf("no ports provided for scanning")
+	if len(opts.TargetPorts) == 0 {
+		opts.TargetPorts = CommonPorts
 	}
 
 	if !opts.SkipPingScan {
-		pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
+		pingResults, err := pingHosts(opts.Targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
 		if err != nil {
 			return HostResults{}, err
 		}

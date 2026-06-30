@@ -1,5 +1,3 @@
-//go:build !linux
-
 package route
 
 import (
@@ -20,7 +18,7 @@ type generalRouter struct {
 	ifaceProvider netutil.NetInterfaceProvider
 }
 
-func (r generalRouter) Lookup(dst netip.Addr) (*netutil.Interface, netip.Addr, error) {
+func (r generalRouter) Lookup(dst netip.Addr) (netutil.Interface, netip.Addr, error) {
 	proto := "udp4"
 	if dst.Is6() {
 		proto = "udp6"
@@ -30,23 +28,23 @@ func (r generalRouter) Lookup(dst netip.Addr) (*netutil.Interface, netip.Addr, e
 
 	conn, err := net.Dial(proto, addrPort.String())
 	if err != nil {
-		return nil, netip.Addr{}, err
+		return netutil.Interface{}, netip.Addr{}, err
 	}
 
 	srcIP, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return nil, netip.Addr{}, fmt.Errorf("could not get route for %s", dst.String())
+		return netutil.Interface{}, netip.Addr{}, fmt.Errorf("could not get route for %s", dst.String())
 	}
 
 	srcAddr, ok := netip.AddrFromSlice(srcIP.IP)
 	if !ok {
-		return nil, netip.Addr{}, fmt.Errorf("could not get route for: %s", dst.String())
+		return netutil.Interface{}, netip.Addr{}, fmt.Errorf("could not get route for: %s", dst.String())
 	}
 
 	iface, err := netutil.GetIfaceByIP(r.ifaceProvider, srcAddr)
 	if err != nil {
-		return nil, netip.Addr{}, err
+		return netutil.Interface{}, netip.Addr{}, err
 	}
 
-	return iface, srcAddr, nil
+	return *iface, srcAddr, nil
 }

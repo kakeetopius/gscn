@@ -12,10 +12,10 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
+	"github.com/kakeetopius/gscn/internal/route"
 	"github.com/pterm/pterm"
 )
 
@@ -27,8 +27,7 @@ type ARPScanner struct {
 
 type ARPScanOptions struct {
 	Targets             []netip.Prefix
-	Source              netip.Addr
-	Interface           netutil.Interface
+	Interfaces          []netutil.Interface
 	ResponseTimeout     time.Duration
 	WithVendorInfo      bool
 	HostNames           map[netip.Addr]string
@@ -162,33 +161,23 @@ func (r ARPScanResults) String() string {
 }
 
 func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
+	if len(s.Targets) == 0 && len(s.Interfaces) == 0 {
+		return nil, fmt.Errorf("please provide either an interface or targets to carry out an arp scan for")
+	}
+
+	if len(s.Targets) == 0 {
+		for _, iface := range s.Interfaces {
+			s.Targets = append(s.Targets, iface.IP4Addrs()...)
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	opts := s.ARPScanOptions
 
 	resultsChan := make(chan []ARPHostResult)
 	startSending := make(chan struct{})
-	errorChan := make(chan error)
-
-	go getARPReplies(ctx, s, resultsChan, startSending, errorChan)
-
-outer:
-	for {
-		select {
-		case err := <-errorChan:
-			return nil, err
-		case <-startSending:
-			break outer
-		}
-	}
-
-	s.logger.Info("Probing host(s) on interface: " + opts.Interface.Name)
 	numHosts := netutil.HostsInIP4Network(opts.Targets)
-	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
-	if err != nil {
-		return nil, err
-	}
-	defer bar.Stop()
 
 	packetSender, err := NewPacketSender()
 	if err != nil {
@@ -196,23 +185,54 @@ outer:
 	}
 	defer packetSender.Close()
 
-	for _, target := range opts.Targets {
-		IPaddr := target.Masked().Addr() // first IP in range
-		networkAddr := IPaddr
-		broadCast := broadCastAddr(target)
-		for target.Contains(IPaddr) {
-			if (IPaddr == networkAddr || IPaddr == broadCast) && !target.IsSingleIP() {
-				IPaddr = IPaddr.Next()
+	packetReceiver, err := NewPacketReceiver(ctx, "arp", numHosts, s.Interfaces...)
+	if err != nil {
+		return nil, err
+	}
+	defer packetReceiver.Close()
+
+	go getARPReplies(ctx, packetReceiver, s, resultsChan, startSending)
+
+	<-startSending // wait for receiving routine to finish setup
+
+	s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(opts.Interfaces))
+	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
+	if err != nil {
+		return nil, err
+	}
+	defer bar.Stop()
+
+	router, err := route.NewRouter()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, targetNet := range opts.Targets {
+		ipToScan := targetNet.Masked().Addr() // first IP in range
+
+		networkAddr := ipToScan
+		broadCast := broadCastAddr(targetNet)
+
+		iface, srcIP, err := router.Lookup(ipToScan)
+		if err != nil {
+			return nil, err
+		}
+
+		packetReceiver.AddReceivingInterface(iface)
+
+		for targetNet.Contains(ipToScan) {
+			if (ipToScan == networkAddr || ipToScan == broadCast) && !targetNet.IsSingleIP() {
+				ipToScan = ipToScan.Next()
 				continue
 			}
 
-			err = sendArpPacket(&opts.Interface, packetSender, &opts.Source, &IPaddr)
+			err = sendArpPacket(packetSender, &iface, srcIP, ipToScan)
 			if err != nil {
 				return nil, err
 			}
 			s.results.PacketsSent++
 			bar.Increment()
-			IPaddr = IPaddr.Next()
+			ipToScan = ipToScan.Next()
 		}
 	}
 
@@ -223,7 +243,7 @@ outer:
 	return results, nil
 }
 
-func sendArpPacket(iface *netutil.Interface, packetSender PacketSender, srcIP *netip.Addr, dstIP *netip.Addr) error {
+func sendArpPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -264,36 +284,26 @@ func sendArpPacket(iface *netutil.Interface, packetSender PacketSender, srcIP *n
 	return nil
 }
 
-func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- []ARPHostResult, startSendChan chan<- struct{}, errorChan chan<- error) {
+func getARPReplies(ctx context.Context, packetReceiver PacketReceiver, scanner *ARPScanner, resultsChan chan<- []ARPHostResult, startSendChan chan<- struct{}) {
 	opts := scanner.ARPScanOptions
-	handle, err := pcap.OpenLive(opts.Interface.PcapName, 1600, false, time.Millisecond)
-	if err != nil {
-		errorChan <- err
-		return
-	}
 
-	defer handle.Close()
-	err = handle.SetBPFFilter("arp")
-	if err != nil {
-		errorChan <- err
-		return
-	}
-
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	packetChan := packetSource.Packets()
+	packetChan := packetReceiver.Packets()
 
 	results := make([]ARPHostResult, 0, 15)
 	receivedFrom := make(map[netip.Addr]struct{}) // to keep track of which IPs we have got replies from
+
+	defer func() {
+		resultsChan <- results
+	}()
 
 	startSendChan <- struct{}{}
 	for {
 		select {
 		case <-ctx.Done():
-			resultsChan <- results
 			return
 		case packet, ok := <-packetChan:
 			if !ok {
-				continue
+				return
 			}
 			arpLayer := packet.Layer(layers.LayerTypeARP)
 			if arpLayer == nil {
@@ -312,10 +322,6 @@ func getARPReplies(ctx context.Context, scanner *ARPScanner, resultsChan chan<- 
 			}
 			if !netutil.AddrIsPartOfNetworks(opts.Targets, &ipAddr) {
 				// skip responses outside the specified network
-				continue
-			}
-			if ipAddr == opts.Source {
-				// skip responses from the capturing interface to other devices.
 				continue
 			}
 			scanner.results.PacketsReceived++
@@ -386,4 +392,17 @@ func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendo
 	fmt.Println("Packets Sent:       ", arpStats.PacketsSent)
 	fmt.Println("Packets Received:   ", arpStats.PacketsReceived)
 	fmt.Println("Hosts Found:        ", len(arpResults.HostResults))
+}
+
+func getAllIfaceNames(ifaces []netutil.Interface) string {
+	sb := strings.Builder{}
+	for i, iface := range ifaces {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+
+		sb.WriteString(iface.Name)
+	}
+
+	return sb.String()
 }

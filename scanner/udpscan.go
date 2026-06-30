@@ -154,20 +154,18 @@ func (r UDPScanResults) String() string {
 
 func (s *UDPScanner) runUDPScan() (HostResults, error) {
 	opts := s.UDPScanOptions
-	targets := opts.Targets
-	ports := opts.TargetPorts
 
 	numWorkers := opts.Workers
 
 	pterm.Warning.Println("UDP Scans are not reliable and may show inconsistent or wrong results.")
-	if len(targets) == 0 {
+	if len(opts.Targets) == 0 {
 		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
-	if len(ports) == 0 {
-		return HostResults{}, fmt.Errorf("no ports provided for scanning")
+	if len(opts.TargetPorts) == 0 {
+		opts.TargetPorts = CommonPorts
 	}
 
-	pingResults, err := pingHosts(targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
+	pingResults, err := pingHosts(opts.Targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
 	if err != nil {
 		return HostResults{}, err
 	}

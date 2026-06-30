@@ -8,5 +8,5 @@ import (
 )
 
 type Router interface {
-	Lookup(dst netip.Addr) (*netutil.Interface, netip.Addr, error)
+	Lookup(dst netip.Addr) (netutil.Interface, netip.Addr, error)
 }

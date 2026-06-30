@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/notify"
+	"github.com/kakeetopius/gscn/internal/route"
 	"github.com/pterm/pterm"
 )
 
@@ -30,8 +30,7 @@ type NDPScanner struct {
 
 type NDPScanOptions struct {
 	Targets             []netip.Prefix
-	Source              netip.Addr
-	Interface           netutil.Interface
+	Interfaces          []netutil.Interface
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	WithVendorInfo      bool
@@ -78,7 +77,7 @@ func (s *NDPScanner) Scan() error {
 	var err error
 
 	if s.FromCache {
-		hostResults, err = ndpResultsUsingNetlink(&s.Interface, s.Targets)
+		hostResults, err = ndpResultsUsingNetlink(s.Interfaces, s.Targets)
 	} else {
 		hostResults, err = s.runNDP()
 	}
@@ -174,26 +173,22 @@ func (r NDPScanResults) String() string {
 }
 
 func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
+	if len(s.Targets) == 0 && len(s.Interfaces) == 0 {
+		return nil, fmt.Errorf("please provide either an interface or targets to carry out an ndp scan for")
+	}
+	if len(s.Targets) == 0 {
+		for _, iface := range s.Interfaces {
+			s.logger.Warn("No targets provided. Scanning of hosts on all the ipv6 subnets of the given interfaces which might take alot of time and resources.")
+			s.Targets = append(s.Targets, iface.IP6Addrs()...)
+		}
+	}
+
 	opts := s.NDPScanOptions
 	resultChan := make(chan []NDPHostResult)
 	startSending := make(chan struct{})
-	errorChan := make(chan error)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	go getNeighbourAdvertisements(ctx, s, resultChan, startSending, errorChan)
-
-outer:
-	for {
-		select {
-		case err := <-errorChan:
-			return nil, err
-		case <-startSending:
-			break outer
-		}
-	}
-	s.logger.Info("Probing host on interface: " + opts.Interface.Name)
 
 	packetSender, err := NewPacketSender()
 	if err != nil {
@@ -201,13 +196,38 @@ outer:
 	}
 	defer packetSender.Close()
 
+	packetReceiver, err := NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 136", 1024, s.Interfaces...)
+	if err != nil {
+		return nil, err
+	}
+	defer packetReceiver.Close()
+
+	go getNeighbourAdvertisements(ctx, packetReceiver, s, resultChan, startSending)
+
+	<-startSending // wait for receiving routine to finish setup
+
+	s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(opts.Interfaces))
+
+	router, err := route.NewRouter()
+	if err != nil {
+		return nil, err
+	}
+
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
+
+		iface, srcIP, err := router.Lookup(IPaddr)
+		if err != nil {
+			return nil, err
+		}
+		packetReceiver.AddReceivingInterface(iface)
+
 		for target.Contains(IPaddr) {
-			err := sendNSPacket(s, packetSender, &IPaddr)
+			err := sendNSPacket(packetSender, &iface, srcIP, IPaddr)
 			if err != nil {
 				return nil, err
 			}
+			s.results.PacketsSent++
 			IPaddr = IPaddr.Next()
 		}
 	}
@@ -218,17 +238,16 @@ outer:
 	return results, nil
 }
 
-func sendNSPacket(scanner *NDPScanner, packetSender PacketSender, dstIP *netip.Addr) error {
-	iface := scanner.Interface
+func sendNSPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
-		DstMAC:       solicitedNodeMacAddress(*dstIP),
+		DstMAC:       solicitedNodeMacAddress(dstIP),
 		EthernetType: layers.EthernetTypeIPv6,
 	}
 
 	ip := &layers.IPv6{
-		SrcIP:      scanner.Source.AsSlice(),
-		DstIP:      solicitedNodeIPAddress(*dstIP),
+		SrcIP:      srcIP.AsSlice(),
+		DstIP:      solicitedNodeIPAddress(dstIP),
 		Version:    6,
 		NextHeader: layers.IPProtocolICMPv6,
 		HopLimit:   255,
@@ -262,43 +281,31 @@ func sendNSPacket(scanner *NDPScanner, packetSender PacketSender, dstIP *netip.A
 
 	packetBytes := buf.Bytes()
 
-	err = packetSender.SendPacket(packetBytes, &iface)
+	err = packetSender.SendPacket(packetBytes, iface)
 	if err != nil {
 		return err
 	}
-	scanner.results.PacketsSent++
 	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, resultsChan chan<- []NDPHostResult, startSendChan chan<- struct{}, errorChan chan<- error) {
-	iface := scanner.Interface
-	handle, err := pcap.OpenLive(iface.PcapName, 1600, false, time.Millisecond)
-	if err != nil {
-		errorChan <- err
-		return
-	}
-	defer handle.Close()
-	err = handle.SetBPFFilter("icmp6 and icmp6[0] == 136") // 136 is the number for ICMPv6TypeNeighborSolicitation
-	if err != nil {
-		errorChan <- err
-		return
-	}
-
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-	packetChan := packetSource.Packets()
+func getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiver, scanner *NDPScanner, resultsChan chan<- []NDPHostResult, startSendChan chan<- struct{}) {
+	packetChan := packetReceiver.Packets()
 
 	hostResults := make([]NDPHostResult, 0, 15)
 
 	startSendChan <- struct{}{}
 
+	defer func() {
+		resultsChan <- hostResults
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
-			resultsChan <- hostResults
 			return
 		case packet, ok := <-packetChan:
 			if !ok {
-				continue
+				return
 			}
 			icmpLayer := packet.Layer(layers.LayerTypeICMPv6NeighborAdvertisement)
 			if icmpLayer == nil {
@@ -334,7 +341,7 @@ func getNeighbourAdvertisements(ctx context.Context, scanner *NDPScanner, result
 	}
 }
 
-func ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) ([]NDPHostResult, error) {
+func ndpResultsUsingNetlink(ifaces []netutil.Interface, targets []netip.Prefix) ([]NDPHostResult, error) {
 	if runtime.GOOS != "linux" {
 		return nil, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
 	}
@@ -346,21 +353,23 @@ func ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) ([
 	}
 	defer conn.Close()
 
-	neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET6)
-	if err != nil {
-		return nil, err
-	}
-	for _, neigh := range neighbours {
-		addr, ok := netip.AddrFromSlice(neigh.IP)
-		if !ok {
-			continue
+	for _, iface := range ifaces {
+		neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET6)
+		if err != nil {
+			return nil, err
 		}
-		if netutil.AddrIsPartOfNetworks(targets, &addr) {
-			results = append(results, NDPHostResult{
-				IPAddr:  addr,
-				MacAddr: neigh.HwAddr.String(),
-				Vendor:  netutil.MACVendor(neigh.HwAddr.String()),
-			})
+		for _, neigh := range neighbours {
+			addr, ok := netip.AddrFromSlice(neigh.IP)
+			if !ok {
+				continue
+			}
+			if netutil.AddrIsPartOfNetworks(targets, &addr) {
+				results = append(results, NDPHostResult{
+					IPAddr:  addr,
+					MacAddr: neigh.HwAddr.String(),
+					Vendor:  netutil.MACVendor(neigh.HwAddr.String()),
+				})
+			}
 		}
 	}
 	return results, nil

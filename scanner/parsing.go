@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -17,6 +18,8 @@ type ipParseError struct {
 	error
 }
 
+var ErrNoTargets = errors.New("no targets provided")
+
 // TargetsFromString parses a comma-separated string of network targets and returns
 // a deduplicated slice of netip.Prefix values.
 //
@@ -30,7 +33,7 @@ type ipParseError struct {
 // Returns an error if any target string cannot be parsed or the string is empty
 func TargetsFromString(s string) ([]netip.Prefix, error) {
 	if s == "" {
-		return nil, fmt.Errorf("no targets provided")
+		return nil, ErrNoTargets
 	}
 
 	targetStrings := strings.Split(s, ",")
@@ -74,7 +77,7 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 //   - An error if DNS lookup fails for any unresolvable target or if the string provided is empty.
 func TargetsFromStringWithDNSLookup(s string) ([]netip.Prefix, map[netip.Addr]string, error) {
 	if s == "" {
-		return nil, nil, fmt.Errorf("no targets provided")
+		return nil, nil, ErrNoTargets
 	}
 	resolver := net.Resolver{}
 	commaSeparatedTargets := strings.Split(s, ",")
