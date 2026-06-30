@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/endobit/oui"
@@ -23,7 +24,35 @@ type Interface struct {
 	net.Interface
 
 	// Addresses of the interface all converted to netip.Prefix.
-	address []netip.Prefix
+	addresses []netip.Prefix
+}
+
+func (i Interface) AllAddrs() []netip.Prefix {
+	return i.addresses
+}
+
+func (i Interface) IP4Addrs() []netip.Prefix {
+	ip4Addrs := make([]netip.Prefix, 0, len(i.addresses))
+
+	for _, a := range i.addresses {
+		if a.Addr().Is4() {
+			ip4Addrs = append(ip4Addrs, a)
+		}
+	}
+
+	return ip4Addrs
+}
+
+func (i Interface) IP6Addrs() []netip.Prefix {
+	ip6Addrs := make([]netip.Prefix, 0, len(i.addresses))
+
+	for _, a := range i.addresses {
+		if a.Addr().Is6() {
+			ip6Addrs = append(ip6Addrs, a)
+		}
+	}
+
+	return ip6Addrs
 }
 
 type NetInterfaceProvider interface {
@@ -38,7 +67,7 @@ type NetInterfaceProvider interface {
 }
 
 // GetIfaceByIP finds the first network interface whose assigned IP network
-// contains IPAddr
+// is equal to IPAddr
 //
 // It returns ErrNoInterfaceConnectedToTarget
 // when no matching interface is found.
@@ -51,7 +80,7 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*I
 	for _, iface := range allIfaces {
 		addrs := interfaceProvider.AddrsOf(&iface)
 		for _, addr := range addrs {
-			if addr.Contains(IPAddr) {
+			if addr.Addr() == IPAddr {
 				return &iface, nil
 			}
 		}
@@ -156,68 +185,6 @@ func HostsInIP4Network(targets []netip.Prefix) int {
 	return numHosts
 }
 
-// OnlyIPInRange reports whether addr represents exactly one host address.
-//
-// It returns true for IPv4 /32 and IPv6 /128 prefixes, and false for all
-// broader network prefixes.
-func OnlyIPInRange(addr netip.Prefix) bool {
-	return addr.IsSingleIP()
-}
-
-// GetSourceIPFromInterface returns the source IP address from the given network interface that matches the provided targets.
-// It attempts to find an IP address (IPv4 or IPv6 as specified by ip6) on the interface that is in the same network as any of the targets.
-// If no matching address is found, it falls back to the first available address of the requested IP version.
-//
-// Parameters:
-//   - interfaceProvider: Provides methods to retrieve addresses from interfaces.
-//   - iface: The network interface to search for addresses.
-//   - targets: A slice of netip.Prefix representing target networks to match.
-//   - ip6: If true, searches for IPv6 addresses; otherwise, searches for IPv4.
-//
-// Returns:
-//   - *netip.Addr: The selected source IP address.
-//   - error: Any error encountered during address selection.
-func GetSourceIPFromInterface(interfaceProvider NetInterfaceProvider, iface *Interface, targets []netip.Prefix, isIP6 bool) (*netip.Addr, error) {
-	ifaceAddrs := interfaceProvider.AddrsOf(iface)
-	if len(ifaceAddrs) < 1 {
-		return nil, fmt.Errorf("interface %v has no IP addresses", iface.Name)
-	}
-	var ifaceAddr *netip.Prefix
-outer:
-	for _, addr := range ifaceAddrs {
-		if isIP6 != addr.Addr().Is6() {
-			// if an IPv4 address is needed but the current address is not IPv6 and vice versa
-			continue
-		}
-		networkAddr := addr.Masked()
-		// checking to see if any of the targets is on the same network as any of the interfaces' addresses.
-		for _, target := range targets {
-			if networkAddr.Contains(target.Addr()) {
-				ifaceAddr = &addr
-				break outer
-			}
-		}
-	}
-
-	// If an address on the same network as one of the targets was not found, default to the fisrt IP address found on the interface of the same address family.
-	if ifaceAddr == nil {
-		defaultIPAddr, err := GetFirstIfaceIPNet(interfaceProvider, iface, isIP6)
-		if err != nil {
-			return nil, err
-		}
-		if defaultIPAddr == nil {
-			if isIP6 {
-				return nil, fmt.Errorf("no IPv6 addresses found on interface %v", iface.Name)
-			} else {
-				return nil, fmt.Errorf("no IPv4 addresses found on interface %v", iface.Name)
-			}
-		}
-		ifaceAddr = defaultIPAddr
-	}
-	srcAddr := ifaceAddr.Addr()
-	return &srcAddr, nil
-}
-
 // Unique returns a new slice containing the first occurrence of each distinct
 // value from slice, preserving the original input order.
 //
@@ -265,12 +232,18 @@ func MACVendor(mac string) string {
 // running, and must have at least one assigned address as reported by
 // interfaceProvider. It returns an error describing the first failed check.
 func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) error {
+	zeroMac := net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 	if iface.Flags&net.FlagLoopback != 0 {
 		return fmt.Errorf("cannot scan on a loopback interface")
 	} else if iface.Flags&net.FlagUp == 0 {
 		return fmt.Errorf("interface %v is administratively down", iface.Name)
 	} else if iface.Flags&net.FlagRunning == 0 {
 		return fmt.Errorf("interface %v is not running", iface.Name)
+	} else if iface.HardwareAddr == nil {
+		return fmt.Errorf("interface %v has no mac address", iface.Name)
+	} else if slices.Equal(zeroMac, iface.HardwareAddr) {
+		return fmt.Errorf("interface %v has an invalid mac address", iface.Name)
 	}
 
 	ifaceAddrs := interfaceProvider.AddrsOf(iface)

@@ -19,7 +19,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("192.168.1.10/24"),
 			netip.MustParsePrefix("fe80::1a:2b3c:4d5e/64"),
 		},
@@ -34,7 +34,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},
 			Flags:        0,
 		},
-		address: []netip.Prefix{},
+		addresses: []netip.Prefix{},
 	},
 	// Linux loopback
 	{
@@ -46,7 +46,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: nil,
 			Flags:        net.FlagUp | net.FlagLoopback,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("127.0.0.1/8"),
 			netip.MustParsePrefix("::1/128"),
 		},
@@ -61,7 +61,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("172.16.0.100/12"),
 		},
 	},
@@ -75,7 +75,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x02, 0x42, 0xAB, 0xCD, 0xEF, 0x01},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("172.90.0.1/16"),
 		},
 	},
@@ -89,7 +89,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x06, 0x11, 0x22, 0x33, 0x44, 0x55},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("fe80::411:22ff:fe33:4455/64"),
 			netip.MustParsePrefix("2001:db8:1::2/48"),
 		},
@@ -104,7 +104,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x0C, 0x29, 0xAB, 0xCD, 0xEF},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("192.168.0.105/24"),
 			netip.MustParsePrefix("fe80::c:29ff:feab:cdef/64"),
 			netip.MustParsePrefix("2001:db8:cafe::105/64"),
@@ -120,7 +120,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x74, 0xD4, 0x35, 0x11, 0x22, 0x33},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("10.10.1.45/22"),
 		},
 	},
@@ -134,7 +134,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: nil,
 			Flags:        net.FlagUp | net.FlagLoopback,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("127.0.0.1/8"),
 			netip.MustParsePrefix("::1/128"),
 		},
@@ -148,7 +148,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x50, 0x56, 0xC0, 0x00, 0x08},
 			Flags:        0,
 		},
-		address: []netip.Prefix{},
+		addresses: []netip.Prefix{},
 	},
 	// Linux dummy
 	{
@@ -160,7 +160,7 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 			Flags:        net.FlagUp | net.FlagBroadcast,
 		},
-		address: []netip.Prefix{
+		addresses: []netip.Prefix{
 			netip.MustParsePrefix("198.51.100.1/24"),
 			netip.MustParsePrefix("198.51.100.2/24"),
 			netip.MustParsePrefix("198.51.100.3/24"),
@@ -175,7 +175,7 @@ func (m *MockNetInterfaceProvider) Interfaces() ([]Interface, error) {
 }
 
 func (m *MockNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
-	return iface.address
+	return iface.addresses
 }
 
 func (m *MockNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
@@ -491,186 +491,6 @@ func TestGetFirstIfaceIPNet(t *testing.T) {
 			}
 			if tt.wantPrefix.IsValid() && *got != tt.wantPrefix {
 				t.Errorf("got %v, want %v", *got, tt.wantPrefix)
-			}
-		})
-	}
-}
-
-func TestGetSourceIPFromInterface(t *testing.T) {
-	provider := &MockNetInterfaceProvider{}
-
-	tests := []struct {
-		name      string
-		ifaceName string
-		targets   []netip.Prefix
-		ip6       bool
-		wantAddr  netip.Addr
-		wantErr   bool
-	}{
-		{
-			name:      "target in eth0 ipv4 subnet returns eth0 ip",
-			ifaceName: "eth0",
-			targets:   []netip.Prefix{mustPrefix("192.168.1.0/24")},
-			ip6:       false,
-			wantAddr:  mustAddr("192.168.1.10"),
-		},
-		{
-			name:      "target in docker0 subnet returns docker0 ip",
-			ifaceName: "docker0",
-			targets:   []netip.Prefix{mustPrefix("172.90.0.0/16")},
-			ip6:       false,
-			wantAddr:  mustAddr("172.90.0.1"),
-		},
-		{
-			name:      "target in lo ipv4 subnet returns loopback",
-			ifaceName: "lo",
-			targets:   []netip.Prefix{mustPrefix("127.0.0.0/8")},
-			ip6:       false,
-			wantAddr:  mustAddr("127.0.0.1"),
-		},
-		{
-			name:      "target in eth0 ipv6 subnet returns link-local",
-			ifaceName: "eth0",
-			targets:   []netip.Prefix{mustPrefix("fe80::/10")},
-			ip6:       true,
-			wantAddr:  mustAddr("fe80::1a:2b3c:4d5e"),
-		},
-		{
-			name:      "target in lo ipv6 subnet returns ::1",
-			ifaceName: "lo",
-			targets:   []netip.Prefix{mustPrefix("::1/128")},
-			ip6:       true,
-			wantAddr:  mustAddr("::1"),
-		},
-		{
-			name:      "target in veth ipv6 global subnet",
-			ifaceName: "veth3a2f1b",
-			targets:   []netip.Prefix{mustPrefix("2001:db8:1::/48")},
-			ip6:       true,
-			wantAddr:  mustAddr("2001:db8:1::2"),
-		},
-		{
-			name:      "target matches one of multiple dummy0 addresses",
-			ifaceName: "dummy0",
-			targets:   []netip.Prefix{mustPrefix("198.51.100.0/24")},
-			ip6:       false,
-			wantAddr:  mustAddr("198.51.100.1"),
-		},
-
-		// --- Multiple targets: first match wins ---
-		{
-			name:      "first target matches eth0",
-			ifaceName: "eth0",
-			targets: []netip.Prefix{
-				mustPrefix("192.168.1.0/24"),
-				mustPrefix("10.0.0.0/8"),
-			},
-			ip6:      false,
-			wantAddr: mustAddr("192.168.1.10"),
-		},
-		{
-			name:      "second target matches after first misses",
-			ifaceName: "eth0",
-			targets: []netip.Prefix{
-				mustPrefix("10.0.0.0/8"),     // not on eth0
-				mustPrefix("192.168.1.0/24"), // is on eth0
-			},
-			ip6:      false,
-			wantAddr: mustAddr("192.168.1.10"),
-		},
-
-		// --- Fallback: no target matches, returns first addr of family ---
-		{
-			name:      "no target match falls back to first ipv4 on eth0",
-			ifaceName: "eth0",
-			targets:   []netip.Prefix{mustPrefix("10.99.0.0/24")},
-			ip6:       false,
-			wantAddr:  mustAddr("192.168.1.10"),
-		},
-		{
-			name:      "no target match falls back to first ipv6 on lo",
-			ifaceName: "lo",
-			targets:   []netip.Prefix{mustPrefix("2001:db8:ffff::/48")},
-			ip6:       true,
-			wantAddr:  mustAddr("::1"),
-		},
-		{
-			name:      "empty targets falls back to first ipv4",
-			ifaceName: "wlan0",
-			targets:   []netip.Prefix{},
-			ip6:       false,
-			wantAddr:  mustAddr("172.16.0.100"),
-		},
-		{
-			name:      "nil targets falls back to first ipv4",
-			ifaceName: "docker0",
-			targets:   nil,
-			ip6:       false,
-			wantAddr:  mustAddr("172.90.0.1"),
-		},
-
-		// --- Errors: no address of requested family ---
-		{
-			name:      "wlan0 has no ipv6 address",
-			ifaceName: "wlan0",
-			targets:   []netip.Prefix{mustPrefix("fe80::/10")},
-			ip6:       true,
-			wantErr:   true,
-		},
-		{
-			name:      "docker0 has no ipv6 address",
-			ifaceName: "docker0",
-			targets:   []netip.Prefix{},
-			ip6:       true,
-			wantErr:   true,
-		},
-		{
-			name:      "eth1 has no addresses at all ipv4",
-			ifaceName: "eth1",
-			targets:   []netip.Prefix{mustPrefix("10.0.0.0/8")},
-			ip6:       false,
-			wantErr:   true,
-		},
-		{
-			name:      "eth1 has no addresses at all ipv6",
-			ifaceName: "eth1",
-			targets:   []netip.Prefix{},
-			ip6:       true,
-			wantErr:   true,
-		},
-		{
-			name:      "windows ethernet 2 down no addresses ipv4",
-			ifaceName: "Ethernet 2",
-			targets:   []netip.Prefix{mustPrefix("192.168.0.0/24")},
-			ip6:       false,
-			wantErr:   true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			iface := ifaceByName(t, tt.ifaceName)
-			got, err := GetSourceIPFromInterface(provider, iface, tt.targets, tt.ip6)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got nil (addr: %v)", got)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got == nil {
-				t.Fatal("got nil addr, want non-nil")
-			}
-
-			if !got.IsValid() {
-				t.Errorf("got invalid address :%v", got)
-			}
-			if *got != tt.wantAddr {
-				t.Errorf("got %v, want %v", *got, tt.wantAddr)
 			}
 		})
 	}

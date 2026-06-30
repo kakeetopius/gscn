@@ -47,7 +47,7 @@ func tcpFullScanCmd() *cobra.Command {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
 			var err error
-			opts.Targets, opts.HostNames, err = getTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
 			if err != nil {
 				return err
 			}
@@ -102,7 +102,7 @@ func udpScanCmd() *cobra.Command {
 			}
 
 			var err error
-			opts.Targets, opts.HostNames, err = getTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
 			if err != nil {
 				return err
 			}
@@ -152,7 +152,7 @@ func pingScanCmd() *cobra.Command {
 			}
 
 			var err error
-			opts.Targets, opts.HostNames, err = getTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
 			if err != nil {
 				return err
 			}
@@ -175,7 +175,7 @@ func pingScanCmd() *cobra.Command {
 	return &pingCmd
 }
 
-func getTargets(targetStr string) ([]netip.Prefix, map[netip.Addr]string, error) {
+func getScanTargets(targetStr string) ([]netip.Prefix, map[netip.Addr]string, error) {
 	var targets []netip.Prefix
 	var err error
 
@@ -201,10 +201,6 @@ func getPorts(portString string) (ports []uint, err error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if len(ports) == 0 {
-		return nil, fmt.Errorf("no ports to scan provided")
 	}
 
 	return

@@ -18,6 +18,12 @@ func NewPacketSender() (PacketSender, error) {
 	return NewPcapPacketSender(), nil
 }
 
+func NewPcapPacketSender() PacketSender {
+	return &PcapPacketSender{
+		handles: make(map[int]*pcap.Handle),
+	}
+}
+
 func (ps *PcapPacketSender) SendPacket(packet []byte, iface *netutil.Interface) error {
 	if ps == nil || ps.handles == nil {
 		return fmt.Errorf("packet sender not initalised")
@@ -47,10 +53,4 @@ func (ps *PcapPacketSender) Close() {
 
 func getIfaceHandle(iface *netutil.Interface) (*pcap.Handle, error) {
 	return pcap.OpenLive(iface.PcapName, 1600, false, time.Millisecond)
-}
-
-func NewPcapPacketSender() PacketSender {
-	return &PcapPacketSender{
-		handles: make(map[int]*pcap.Handle),
-	}
 }

@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"net/netip"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
@@ -29,8 +27,7 @@ func DiscoverCmd() *cobra.Command {
 
 func discoverArpCmd() *cobra.Command {
 	var opts scanner.ARPScanOptions
-	var ifaceStr string
-	var sourceAddr string
+	var ifaceStrings []string
 
 	arpCmd := cobra.Command{
 		Use:   "arp <targets>",
@@ -45,18 +42,18 @@ func discoverArpCmd() *cobra.Command {
 			if len(args) > 0 {
 				targetStr = args[0]
 			}
-			targets, iface, err := getTargetsAndIface(targetStr, ifaceStr, false)
-			if err != nil {
-				return err
-			}
 
-			sourceIP, err := getSourceAddr(sourceAddr, iface, targets, false)
+			targets, err := getDiscoverTargets(targetStr)
 			if err != nil {
 				return err
 			}
 			opts.Targets = targets
-			opts.Interface = *iface
-			opts.Source = sourceIP
+
+			ifaces, err := getDiscoverInterfaces(ifaceStrings)
+			if err != nil {
+				return err
+			}
+			opts.Interfaces = ifaces
 
 			arpScanner := scanner.NewARPScanner(opts)
 			return doScan(arpScanner)
@@ -65,8 +62,7 @@ func discoverArpCmd() *cobra.Command {
 
 	arpCmd.Flags().SortFlags = false
 
-	arpCmd.Flags().StringVarP(&ifaceStr, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnet the interface is in is scanned.")
-	arpCmd.Flags().StringVarP(&sourceAddr, "source", "s", "", "Source IP Address to put in the ARP packets.")
+	arpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the all the subnets the interface is in are scanned.")
 	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
 	arpCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	arpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
@@ -76,8 +72,7 @@ func discoverArpCmd() *cobra.Command {
 
 func discoverNDPCmd() *cobra.Command {
 	var opts scanner.NDPScanOptions
-	var ifaceStr string
-	var sourceAddr string
+	var ifaceStrings []string
 
 	ndpScan := cobra.Command{
 		Use:   "ndp <targets>",
@@ -92,18 +87,18 @@ func discoverNDPCmd() *cobra.Command {
 			if len(args) > 0 {
 				targetStr = args[0]
 			}
-			targets, iface, err := getTargetsAndIface(targetStr, ifaceStr, true)
-			if err != nil {
-				return err
-			}
 
-			sourceIP, err := getSourceAddr(sourceAddr, iface, targets, true)
+			targets, err := getDiscoverTargets(targetStr)
 			if err != nil {
 				return err
 			}
 			opts.Targets = targets
-			opts.Interface = *iface
-			opts.Source = sourceIP
+
+			ifaces, err := getDiscoverInterfaces(ifaceStrings)
+			if err != nil {
+				return err
+			}
+			opts.Interfaces = ifaces
 
 			ndpScanner := scanner.NewNDPScanner(opts)
 			return doScan(ndpScanner)
@@ -112,8 +107,7 @@ func discoverNDPCmd() *cobra.Command {
 
 	ndpScan.Flags().SortFlags = false
 
-	ndpScan.Flags().StringVarP(&ifaceStr, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnet the interface is in is scanned.")
-	ndpScan.Flags().StringVarP(&sourceAddr, "source", "s", "", "Source IP Address to put in NDP packets.")
+	ndpScan.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
 	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
 	ndpScan.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	ndpScan.Flags().BoolVar(&opts.FromCache, "from-cache", false, "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.")
@@ -122,100 +116,32 @@ func discoverNDPCmd() *cobra.Command {
 	return &ndpScan
 }
 
-// getTargetsAndIface processes target and interface arguments to determine the network
-// prefixes to scan and the network interface to use. It validates IP addressing (IPv4 vs IPv6)
-// based on the isIP6 flag. If targets are omitted, it attempts to infer them from the provided
-// interface's network. If the interface is omitted, it infers it based on the provided targets.
-func getTargetsAndIface(targetStr, ifaceStr string, isIP6 bool) ([]netip.Prefix, *netutil.Interface, error) {
-	var iface *netutil.Interface
-	var err error
-	netInterfaceProvider := netutil.RealNetInterfaceProvider{}
-	logger := log.NewLogger(true)
-
-	targets := make([]netip.Prefix, 0)
-	if targetStr != "" {
-		targets, err = scanner.TargetsFromString(targetStr)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	if ifaceStr != "" {
-		iface, err = netInterfaceProvider.InterfaceByName(ifaceStr)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if iface == nil && len(targets) != 0 {
-		// if no interface given we find an interface on the same network as one of the targets.
-		for _, target := range targets {
-			iface, err = netutil.GetIfaceByIP(&netInterfaceProvider, target.Addr())
-			if err != nil {
-				if errors.Is(err, netutil.ErrNoInterfaceConnectedToTarget) {
-					continue
-				}
-				return nil, nil, err
-			}
-			break
-		}
-	}
-	if len(targets) == 0 && iface != nil {
-		// if no targets given but we have an interface, use the interface's first network of the given address family
-		var target *netip.Prefix
-		target, err = netutil.GetFirstIfaceIPNet(&netInterfaceProvider, iface, isIP6)
-		if err != nil {
-			return nil, nil, err
-		}
-		logger.Infof("No targets Provided. Scanning for hosts on the network %s using interface %s\n", target.Masked(), iface.Name)
-		fmt.Println()
-		targets = append(targets, *target)
-	}
-
-	if iface == nil {
-		return nil, nil, fmt.Errorf("could not determine which interface to use. Use -i option to provide an interface or provide one target with an IP connected to one of the interface's networks")
-	} else if len(targets) == 0 {
-		return nil, nil, fmt.Errorf("could not determine which targets to scan. Try gscn discover --help for more information")
-	}
-
-	for _, target := range targets {
-		if target.Addr().Is6() != isIP6 {
-			if isIP6 {
-				return nil, nil, fmt.Errorf("%v is not an IPv6 address", target)
-			} else {
-				return nil, nil, fmt.Errorf("%v is not an IPv4 address", target)
-			}
-		}
-	}
-
-	err = netutil.VerifyInterface(&netInterfaceProvider, iface)
+func getDiscoverTargets(targetStr string) ([]netip.Prefix, error) {
+	targets, err := scanner.TargetsFromString(targetStr)
 	if err != nil {
-		return nil, nil, err
+		if !errors.Is(err, scanner.ErrNoTargets) {
+			return []netip.Prefix{}, err
+		}
 	}
 
-	return targets, iface, nil
+	return targets, nil
 }
 
-// getSourceAddr determines the appropriate source IP address to use for scanning.
-// If a specific addr string is provided, it parses and returns that address.
-// Otherwise, it automatically selects the best source IP from the provided network
-// interface based on the targets provided and the address family.
-func getSourceAddr(addr string, iface *netutil.Interface, targets []netip.Prefix, ip6 bool) (netip.Addr, error) {
-	var sourceAddr netip.Addr
-	netInterfaceProvider := netutil.RealNetInterfaceProvider{}
+func getDiscoverInterfaces(ifStrs []string) ([]netutil.Interface, error) {
+	ifaces := make([]netutil.Interface, 0, len(ifStrs))
+	ifaceProvider := netutil.RealNetInterfaceProvider{}
 
-	if addr != "" {
-		source, err := netip.ParseAddr(addr)
+	for _, ifStr := range ifStrs {
+		iface, err := ifaceProvider.InterfaceByName(ifStr)
 		if err != nil {
-			return netip.Addr{}, fmt.Errorf("error parsing source address :%v", err)
+			return nil, err
 		}
-		sourceAddr = source
-	} else {
-		source, err := netutil.GetSourceIPFromInterface(&netInterfaceProvider, iface, targets, ip6)
+		err = netutil.VerifyInterface(&ifaceProvider, iface)
 		if err != nil {
-			return netip.Addr{}, err
+			return nil, err
 		}
-		sourceAddr = *source
+		ifaces = append(ifaces, *iface)
 	}
 
-	return sourceAddr, nil
+	return ifaces, nil
 }

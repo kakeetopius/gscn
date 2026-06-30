@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/netip"
 	"time"
-
-	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 // PortScanWorkerResult is the tesult returned by Port Scanning workers
@@ -20,6 +18,8 @@ type PortScanJob struct {
 	scanTimeout time.Duration
 }
 
+var CommonPorts = []uint{21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3309, 5432, 5900, 6379, 8080, 8443, 8888}
+
 func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan chan PortScanJob, targets []netip.Prefix, ports []uint, scanTimeout time.Duration) {
 	defer func() {
 		done <- struct{}{}
@@ -32,7 +32,7 @@ func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan cha
 				return
 			default:
 			}
-			if netutil.OnlyIPInRange(target) {
+			if target.IsSingleIP() {
 				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
 				jobChan <- PortScanJob{
 					target:      addrPort,

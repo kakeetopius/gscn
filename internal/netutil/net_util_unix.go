@@ -34,7 +34,7 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		interfaces = append(interfaces, Interface{
 			PcapName:  iface.Name,
 			Interface: iface,
-			address:   prefixes,
+			addresses: prefixes,
 		})
 	}
 
@@ -44,7 +44,7 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 }
 
 func (RealNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
-	return iface.address
+	return iface.addresses
 }
 
 func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
@@ -63,6 +63,6 @@ func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error)
 	return &Interface{
 		PcapName:  netIface.Name,
 		Interface: *netIface,
-		address:   prefixes,
+		addresses: prefixes,
 	}, nil
 }
