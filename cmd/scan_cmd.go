@@ -175,6 +175,8 @@ func pingScanCmd() *cobra.Command {
 	return &pingCmd
 }
 
+// getScanTargets takes a string of comma separated targets and returns a slice of netip.Prefixes and a map of netip.Addr to hostnames.
+// It also returns an error if there are no targets provided or if there is an error parsing the targets.
 func getScanTargets(targetStr string) ([]netip.Prefix, map[netip.Addr]string, error) {
 	var targets []netip.Prefix
 	var err error
@@ -195,12 +197,15 @@ func getScanTargets(targetStr string) ([]netip.Prefix, map[netip.Addr]string, er
 	return targets, hostNames, nil
 }
 
+// getPorts takes a string of comma separated ports and returns a slice of the port numbers as uints. It also returns an error if there is an error parsing the ports.
 func getPorts(portString string) (ports []uint, err error) {
-	if portString != "" {
-		ports, err = scanner.PortsFromString(portString)
-		if err != nil {
-			return nil, err
-		}
+	if portString == "" {
+		return
+	}
+
+	ports, err = scanner.PortsFromString(portString)
+	if err != nil {
+		return nil, err
 	}
 
 	return

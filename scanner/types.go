@@ -56,7 +56,7 @@ type Scanner interface {
 
 // HostResult is the result of a single host after port scanning
 type HostResult struct {
-	Addr netip.Addr
+	Addr netip.Addr `json:"ip"`
 	// HostState indicates the overall state of the host (e.g., up or down).
 	HostState HostState `json:"state"`
 	// HostName is the resolved DNS name of the host.
@@ -73,6 +73,7 @@ type HostResult struct {
 	Ports []Port `json:"ports"`
 }
 
+// HostResults is a map that associates each host's IP address with its corresponding scan result.
 type HostResults map[netip.Addr]HostResult
 
 // Port represents a network port with its metadata.
