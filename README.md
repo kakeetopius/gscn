@@ -329,7 +329,7 @@ Perform an ICMP ping sweep.
 gscn scan ping <targets> [flags]
 ```
 
-Determines which hosts are reachable without scanning any ports.
+Uses raw ICMP packets when running with root privileges on Linux, otherwise, falls back to UDP-based probes.
 
 <details>
 <summary><strong>Examples</strong></summary>
