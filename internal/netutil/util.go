@@ -27,10 +27,12 @@ type Interface struct {
 	addresses []netip.Prefix
 }
 
+// AllAddrs returns all addresses of the interface as netip.Prefix.
 func (i Interface) AllAddrs() []netip.Prefix {
 	return i.addresses
 }
 
+// IP4Addrs returns all IPv4 addresses of the interface as netip.Prefix.
 func (i Interface) IP4Addrs() []netip.Prefix {
 	ip4Addrs := make([]netip.Prefix, 0, len(i.addresses))
 
@@ -43,6 +45,7 @@ func (i Interface) IP4Addrs() []netip.Prefix {
 	return ip4Addrs
 }
 
+// IP6Addrs returns all IPv6 addresses of the interface as netip.Prefix.
 func (i Interface) IP6Addrs() []netip.Prefix {
 	ip6Addrs := make([]netip.Prefix, 0, len(i.addresses))
 
@@ -55,6 +58,7 @@ func (i Interface) IP6Addrs() []netip.Prefix {
 	return ip6Addrs
 }
 
+// NetInterfaceProvider is an interface that abstracts the retrieval of network interfaces and their addresses.
 type NetInterfaceProvider interface {
 	// Returns all network interfaces
 	Interfaces() ([]Interface, error)
@@ -254,6 +258,7 @@ func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) e
 	return nil
 }
 
+// ReverseLookup performs a reverse DNS lookup for the given IP address and returns the first resolved hostname.
 func ReverseLookup(ctx context.Context, addr string) string {
 	resolver := net.Resolver{}
 	resolver.PreferGo = true

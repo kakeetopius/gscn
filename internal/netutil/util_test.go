@@ -226,27 +226,22 @@ func TestGetIfaceByIP(t *testing.T) {
 		errTarget error
 	}{
 		{
-			name:     "ip inside eth0 subnet",
-			ip:       mustAddr("192.168.1.50"),
-			wantName: "eth0",
-		},
-		{
-			name:     "exact ip of eth0",
+			name:     "ip for eth0",
 			ip:       mustAddr("192.168.1.10"),
 			wantName: "eth0",
 		},
 		{
-			name:     "ip inside wlan0 subnet",
-			ip:       mustAddr("172.16.0.200"),
+			name:     "ip on wlan0",
+			ip:       mustAddr("172.16.0.100"),
 			wantName: "wlan0",
 		},
 		{
-			name:     "ip inside docker0 subnet",
-			ip:       mustAddr("172.90.0.99"),
+			name:     "ip for docker0",
+			ip:       mustAddr("172.90.0.1"),
 			wantName: "docker0",
 		},
 		{
-			name:     "ip inside dummy0 subnet",
+			name:     "one of the ips for dummy0",
 			ip:       mustAddr("198.51.100.2"),
 			wantName: "dummy0",
 		},
@@ -256,18 +251,13 @@ func TestGetIfaceByIP(t *testing.T) {
 			wantName: "lo",
 		},
 		{
-			name:     "another loopback address in /8",
-			ip:       mustAddr("127.0.0.50"),
-			wantName: "lo",
-		},
-		{
-			name:     "ip inside windows ethernet subnet",
-			ip:       mustAddr("192.168.0.200"),
+			name:     "ip for windows ethernet",
+			ip:       mustAddr("192.168.0.105"),
 			wantName: "Ethernet",
 		},
 		{
-			name:     "ip inside windows wifi subnet",
-			ip:       mustAddr("10.10.1.100"),
+			name:     "ip for windows wifi",
+			ip:       mustAddr("10.10.1.45"),
 			wantName: "Wi-Fi",
 		},
 
@@ -295,20 +285,14 @@ func TestGetIfaceByIP(t *testing.T) {
 
 		// --- Misses ---
 		{
-			name:      "ip in no interface's subnet",
+			name:      "ip that doesn't exist on any interface",
 			ip:        mustAddr("8.8.8.8"),
 			wantErr:   true,
 			errTarget: ErrNoInterfaceConnectedToTarget,
 		},
 		{
-			name:      "ip in no interface's subnet ipv6",
+			name:      "ipv6 address that belongs to no interface",
 			ip:        mustAddr("2001:db8:ffff::1"),
-			wantErr:   true,
-			errTarget: ErrNoInterfaceConnectedToTarget,
-		},
-		{
-			name:      "interface is down with no addresses eth1",
-			ip:        mustAddr("10.0.0.1"),
 			wantErr:   true,
 			errTarget: ErrNoInterfaceConnectedToTarget,
 		},

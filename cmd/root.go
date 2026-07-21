@@ -69,6 +69,7 @@ func init() {
 	}
 }
 
+// versionCmd returns a cobra command that displays the application's version information.
 func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "version",
@@ -124,9 +125,8 @@ func initialiseConfig() error {
 	return nil
 }
 
-// doScan starts the scanning process using the provided scanner.
-// If notifications are enabled, it initializes a notifier, attaches it to the scanner,
-// and sends the scan results upon completion. It also prints the findings to standard output or to an output file.
+// doScan starts the scanning process using the provided scanner. If notifications are enabled, it initializes a notifier, attaches it to the scanner,
+// and sends the scan results upon completion. It also prints the findings to standard output or to an output file depending on the command line options given.
 func doScan(scanner scanner.Scanner) error {
 	if sendNotification {
 		notifier, err := getNotifier()
@@ -182,6 +182,7 @@ func doScan(scanner scanner.Scanner) error {
 	return nil
 }
 
+// getJSONResults marshals the scan results into JSON format. If jsonPretty is true, it returns a pretty-printed JSON otherwise, it returns compact JSON.
 func getJSONResults(r scanner.ScanResults) ([]byte, error) {
 	if jsonPretty {
 		return json.MarshalIndent(r, "", "  ")
@@ -190,6 +191,8 @@ func getJSONResults(r scanner.ScanResults) ([]byte, error) {
 	}
 }
 
+// getNotifier retrieves the notifier based on the configuration.
+// It returns an error if no notifier type is set in the config file or if the notifier cannot be initialized.
 func getNotifier() (notify.Notifier, error) {
 	notifierName := appConfig.GetString("notifier.type")
 	if notifierName == "" {
@@ -198,6 +201,7 @@ func getNotifier() (notify.Notifier, error) {
 	return notify.NotifierByName(notifierName, appConfig)
 }
 
+// isTTY checks if the provided file is a terminal. It returns true if the file is a terminal, otherwise false.
 func isTTY(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
