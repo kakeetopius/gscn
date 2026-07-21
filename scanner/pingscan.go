@@ -174,10 +174,6 @@ func (r PingScanResults) String() string {
 }
 
 func (s *PingScanner) runPing() error {
-	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
-		return fmt.Errorf("ping scan requires root permissions")
-	}
-
 	spinner, err := pterm.DefaultSpinner.Start("Pinging Hosts")
 	if err != nil {
 		return err
@@ -223,10 +219,11 @@ func (s *PingScanner) runPing() error {
 func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingHostResult) {
 	// To be run by workers
 	defer wg.Done()
+	setprivileged := runtime.GOOS == "linux" && os.Geteuid() == 0
 
 	for job := range jobs {
 		pinger := probing.New(job.Target.String())
-		pinger.SetPrivileged(true)
+		pinger.SetPrivileged(setprivileged)
 
 		pinger.Count = job.PingCount
 		pingTimeout := scanner.PingTimeout

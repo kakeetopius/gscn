@@ -18,7 +18,7 @@ type PortScanJob struct {
 	scanTimeout time.Duration
 }
 
-var CommonPorts = []uint{21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3309, 5432, 5900, 6379, 8080, 8443, 8888}
+var CommonPorts = []uint{21, 22, 23, 25, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3309, 5432, 5900, 6379, 8080, 8443, 8888}
 
 func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan chan PortScanJob, targets []netip.Prefix, ports []uint, scanTimeout time.Duration) {
 	defer func() {
