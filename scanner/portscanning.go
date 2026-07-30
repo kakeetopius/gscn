@@ -28,8 +28,7 @@ func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan cha
 	}()
 
 	for _, target := range targets {
-		ports := portSet.Ports()
-		for port := range ports {
+		for port := range portSet.Ports() {
 			select {
 			case <-ctx.Done():
 				return
