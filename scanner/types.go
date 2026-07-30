@@ -63,16 +63,75 @@ type HostResult struct {
 // HostResults is a map that associates each host's IP address with its corresponding scan result.
 type HostResults map[netip.Addr]HostResult
 
+type PortNumber uint16
+
 // Port represents a network port with its metadata.
 type Port struct {
 	// Number is the port number (0-65535).
-	Number uint `json:"number"`
+	Number PortNumber `json:"number"`
 	// Name is the service name associated with the port.
 	Name string `json:"name"`
 	// Protocol is the transport protocol (tcp, udp, etc.).
 	Protocol string `json:"protocol"`
 	// State describes the current state of the port.
 	State PortState `json:"state"`
+}
+
+type PortSet interface {
+	Len() int
+	Append(...PortNumber)
+	Ports() <-chan PortNumber
+}
+
+type PortSlice struct {
+	set []PortNumber
+}
+
+func (s *PortSlice) Len() int {
+	return len(s.set)
+}
+
+func (s *PortSlice) Append(n ...PortNumber) {
+	s.set = append(s.set, n...)
+}
+
+func (s *PortSlice) Ports() <-chan PortNumber {
+	portChan := make(chan PortNumber, 50)
+	go func() {
+		for _, port := range s.set {
+			portChan <- port
+		}
+		close(portChan)
+	}()
+	return portChan
+}
+
+type PortMap struct {
+	set map[PortNumber]struct{}
+}
+
+func (s *PortMap) Len() int {
+	return len(s.set)
+}
+
+func (s *PortMap) Append(n ...PortNumber) {
+	if s.set == nil {
+		s.set = make(map[PortNumber]struct{})
+	}
+	for _, port := range n {
+		s.set[port] = struct{}{}
+	}
+}
+
+func (s *PortMap) Ports() <-chan PortNumber {
+	portChan := make(chan PortNumber, 50)
+	go func() {
+		for port := range s.set {
+			portChan <- port
+		}
+		close(portChan)
+	}()
+	return portChan
 }
 
 func (p PortState) String() string {
