@@ -28,7 +28,7 @@ type TCPFullScanner struct {
 
 type TCPFullScanOptions struct {
 	Targets             []netip.Prefix
-	TargetPorts         []uint
+	TargetPorts         PortSlice
 	Workers             int
 	PingCount           int
 	ResponseTimeout     time.Duration
@@ -134,7 +134,7 @@ func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 	if len(opts.Targets) == 0 {
 		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
-	if len(opts.TargetPorts) == 0 {
+	if opts.TargetPorts.Len() == 0 {
 		opts.TargetPorts = CommonPorts
 	}
 
@@ -164,7 +164,7 @@ func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, &opts.TargetPorts, opts.ResponseTimeout)
 
 	scanResultsChan := make(chan HostResults)
 	go getTCPFullScanResults(ctx, s, workerResultsChan, scanResultsChan)
@@ -183,7 +183,7 @@ func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan HostResults) {
 	// To Be Run By Main Worker (aggregator)
 	scanResults := make(HostResults)
-	numberOfPortsToScan := len(scanner.TargetPorts)
+	numberOfPortsToScan := scanner.TargetPorts.Len()
 
 	defer func() {
 		scanResultsChan <- scanResults
@@ -241,7 +241,7 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- P
 		result := PortScanWorkerResult{
 			HostIP: target.Addr(),
 			Port: Port{
-				Number:   uint(target.Port()),
+				Number:   PortNumber(target.Port()),
 				Protocol: proto,
 			},
 		}

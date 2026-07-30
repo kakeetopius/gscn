@@ -232,14 +232,14 @@ func getScanTargets(targetStr string) ([]netip.Prefix, map[netip.Addr]string, er
 }
 
 // getPorts takes a string of comma separated ports and returns a slice of the port numbers as uints. It also returns an error if there is an error parsing the ports.
-func getPorts(portString string) (ports []uint, err error) {
+func getPorts(portString string) (ports scanner.PortSlice, err error) {
 	if portString == "" {
 		return
 	}
 
 	ports, err = scanner.PortsFromString(portString)
 	if err != nil {
-		return nil, err
+		return scanner.PortSlice{}, err
 	}
 
 	return
