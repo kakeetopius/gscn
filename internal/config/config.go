@@ -24,7 +24,7 @@ func Load(cfgFile string) (*viper.Viper, error) {
 			return nil, err
 		}
 		// No need to return error if config file not found
-		return nil, nil
+		return appConfig, nil
 	}
 
 	return appConfig, nil

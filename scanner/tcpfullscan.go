@@ -43,6 +43,9 @@ type TCPFullScanOptions struct {
 type TCPFullScanResults struct {
 	HostResults      `json:"results"`
 	TCPFullScanStats `json:"stats"`
+
+	printUpOnly   bool `json:"-"`
+	printOpenOnly bool `json:"-"`
 }
 
 type TCPFullScanStats struct {
@@ -63,27 +66,21 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 	}
 }
 
-func (s *TCPFullScanner) Scan() error {
+func (s *TCPFullScanner) Scan() (ScanResults, error) {
 	startTime := time.Now()
 	hostResults, err := s.runTCPFullScan()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stopTime := time.Now()
 
 	s.results.HostResults = hostResults
 	s.results.ScanTime = stopTime.Sub(startTime)
+	s.results.printOpenOnly = s.PrintOpenOnly
+	s.results.printUpOnly = s.PrintUpOnly
 
 	s.addResultsInfo()
-	return nil
-}
-
-func (s *TCPFullScanner) Results() ScanResults {
-	return s.results
-}
-
-func (s *TCPFullScanner) PrintResults() {
-	printScanResultsMap(s.results.HostResults, s.results.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
+	return &s.results, nil
 }
 
 func (s *TCPFullScanner) addResultsInfo() {
@@ -110,7 +107,11 @@ func (s *TCPFullScanner) addResultsInfo() {
 	}
 }
 
-func (r TCPFullScanResults) String() string {
+func (r *TCPFullScanResults) Print() {
+	printScanResultsMap(r.HostResults, r.ScanTime, r.printUpOnly, r.printOpenOnly)
+}
+
+func (r *TCPFullScanResults) String() string {
 	stringBuilder := strings.Builder{}
 
 	hostTmpl := template.Must(template.New("host_result").Parse(HostResultTemplate))

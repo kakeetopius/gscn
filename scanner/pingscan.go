@@ -38,6 +38,8 @@ type PingScanOptions struct {
 type PingScanResults struct {
 	HostResults []PingHostResult `json:"results"`
 	PingStats   `json:"stats"`
+
+	printUpOnly bool `json:"-"`
 }
 
 type PingHostResult struct {
@@ -72,15 +74,16 @@ func NewPingScanner(opts PingScanOptions) *PingScanner {
 	}
 }
 
-func (s *PingScanner) Scan() error {
+func (s *PingScanner) Scan() (ScanResults, error) {
 	startTime := time.Now()
 	err := s.runPing()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	endtime := time.Now()
 
 	s.scanResults.ScanTime = endtime.Sub(startTime)
+	s.scanResults.printUpOnly = s.PrintOnlyUp
 
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
@@ -99,19 +102,11 @@ func (s *PingScanner) Scan() error {
 	}
 
 	s.sortResults()
-	return err
-}
-
-func (s *PingScanner) Results() ScanResults {
-	return s.scanResults
+	return &s.scanResults, err
 }
 
 func (s *PingScanner) ResultMap() PingScanResultsMap {
 	return s.resultMap
-}
-
-func (s *PingScanner) PrintResults() {
-	printPingScanResults(s.scanResults, s.PrintOnlyUp)
 }
 
 func (s *PingScanner) sortResults() {
@@ -132,6 +127,10 @@ func (s *PingScanner) sortResults() {
 	}
 
 	s.scanResults.HostResults = sortedResults
+}
+
+func (r *PingScanResults) Print() {
+	printPingScanResults(r, r.printUpOnly)
 }
 
 func (r PingScanResults) String() string {
@@ -245,7 +244,7 @@ func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResults
 	}
 }
 
-func printPingScanResults(results PingScanResults, printUpOnly bool) {
+func printPingScanResults(results *PingScanResults, printUpOnly bool) {
 	stats := results.PingStats
 
 	var tableData [][]string

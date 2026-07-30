@@ -18,10 +18,15 @@ type Notifier interface {
 // It takes a notifier type string and a Viper configuration, and returns
 // the corresponding notifier properly configured using settings from viper or an error if the type is not supported.
 func NotifierFromConfig(config *viper.Viper) (Notifier, error) {
+	if config == nil {
+		return nil, fmt.Errorf("viper config not initialised")
+	}
+
 	notifierName := config.GetString("notifier.type")
 	if notifierName == "" {
 		return nil, fmt.Errorf("no notifier type set in the config file")
 	}
+
 	switch notifierName {
 	case "email":
 		return EmailNotifier{
