@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -148,6 +149,10 @@ func (r *NDPScanResults) String() string {
 	return stringBuilder.String()
 }
 
+func (r *NDPScanResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r)
+}
+
 func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 	if s.Interface == nil {
 		return nil, fmt.Errorf("please provide an interface to carry out an ndp scan on")
@@ -164,7 +169,7 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	packetSender, err := NewPacketSender()
+	packetSender, err := NewPacketSender(ctx)
 	if err != nil {
 		return nil, err
 	}

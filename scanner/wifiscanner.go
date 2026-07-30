@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"strings"
@@ -59,6 +60,10 @@ func (r *WiFiScanResults) String() string {
 	tmpl.Execute(&stringBuilder, r)
 
 	return stringBuilder.String()
+}
+
+func (r *WiFiScanResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r)
 }
 
 func runWifiScan(scanner *WiFiScanner) error {

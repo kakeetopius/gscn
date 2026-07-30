@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -137,6 +138,10 @@ func (r *ARPScanResults) String() string {
 	return stringBuilder.String()
 }
 
+func (r *ARPScanResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r)
+}
+
 func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 	if len(s.Targets) == 0 && len(s.Interfaces) == 0 {
 		return nil, fmt.Errorf("please provide either an interface or targets to carry out an arp scan for")
@@ -156,7 +161,7 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 	startSending := make(chan struct{})
 	numHosts := netutil.HostsInIP4Network(opts.Targets)
 
-	packetSender, err := NewPacketSender()
+	packetSender, err := NewPacketSender(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -376,11 +381,16 @@ func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendo
 
 func getAllIfaceNames(ifaces []netutil.Interface) string {
 	sb := strings.Builder{}
-	for i, iface := range ifaces {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
+	switch len(ifaces) {
+	case 0:
+		return ""
+	case 1:
+		return ifaces[0].Name
+	}
 
+	sb.WriteString(ifaces[0].Name)
+	for _, iface := range ifaces[1:] {
+		sb.WriteString(", ")
 		sb.WriteString(iface.Name)
 	}
 
