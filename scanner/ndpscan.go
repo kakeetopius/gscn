@@ -17,7 +17,6 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/route"
 	"github.com/pterm/pterm"
 )
@@ -38,7 +37,6 @@ type NDPScanOptions struct {
 	AddUnknownHostNames bool
 	FromCache           bool
 	Workers             int
-	MessageNotifier     notify.Notifier
 }
 
 type NDPScanResults struct {
@@ -93,40 +91,12 @@ func (s *NDPScanner) Scan() error {
 	return s.addResultInfo()
 }
 
-func (s *NDPScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("ndpscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *NDPScanner) PrintResults() {
 	displayNDPResults(&s.results, s.WithVendorInfo, s.AddUnknownHostNames)
 }
 
 func (s *NDPScanner) Results() ScanResults {
 	return s.results
-}
-
-func (s *NDPScanner) SetNotifier(n notify.Notifier) {
-	s.MessageNotifier = n
 }
 
 func (s *NDPScanner) addResultInfo() error {

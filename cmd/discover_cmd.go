@@ -5,7 +5,9 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/kakeetopius/gscn/internal/config"
 	"github.com/kakeetopius/gscn/internal/netutil"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
@@ -43,6 +45,11 @@ func discoverArpCmd() *cobra.Command {
 				targetStr = args[0]
 			}
 
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
 			targets, err := getDiscoverTargets(targetStr)
 			if err != nil {
 				return err
@@ -56,7 +63,18 @@ func discoverArpCmd() *cobra.Command {
 			opts.Interfaces = ifaces
 
 			arpScanner := scanner.NewARPScanner(opts)
-			return doScan(arpScanner)
+
+			notifier, err := notify.NotifierFromConfig(appConfig)
+			if err != nil {
+				return err
+			}
+			return scanner.DoScan(arpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Notifier:          notifier,
+			})
 		},
 	}
 
@@ -88,6 +106,11 @@ func discoverNDPCmd() *cobra.Command {
 				targetStr = args[0]
 			}
 
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
 			targets, err := getDiscoverTargets(targetStr)
 			if err != nil {
 				return err
@@ -101,7 +124,17 @@ func discoverNDPCmd() *cobra.Command {
 			opts.Interfaces = ifaces
 
 			ndpScanner := scanner.NewNDPScanner(opts)
-			return doScan(ndpScanner)
+			notifier, err := notify.NotifierFromConfig(appConfig)
+			if err != nil {
+				return err
+			}
+			return scanner.DoScan(ndpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Notifier:          notifier,
+			})
 		},
 	}
 

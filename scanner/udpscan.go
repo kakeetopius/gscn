@@ -16,7 +16,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/pterm/pterm"
 )
 
@@ -37,7 +36,6 @@ type UDPScanOptions struct {
 	ResponseTimeout     time.Duration
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
-	MessageNotifier     notify.Notifier
 
 	PrintUpOnly   bool
 	PrintOpenOnly bool
@@ -81,42 +79,12 @@ func (s *UDPScanner) Scan() error {
 	return nil
 }
 
-func (s *UDPScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("udpscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		spinner.Fail()
-		return err
-	}
-
-	return nil
-}
-
 func (s *UDPScanner) PrintResults() {
 	printScanResultsMap(s.results.HostResults, s.results.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
 }
 
 func (s *UDPScanner) Results() ScanResults {
 	return s.results
-}
-
-func (s *UDPScanner) SetNotifier(n notify.Notifier) {
-	s.MessageNotifier = n
 }
 
 func (s *UDPScanner) addResultsInfo() {

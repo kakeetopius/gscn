@@ -5,6 +5,8 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/kakeetopius/gscn/internal/config"
+	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
@@ -14,7 +16,6 @@ func ScanCmd() *cobra.Command {
 		Use:     "scan",
 		Short:   "Determine information about any host on any network for example open ports.",
 		Aliases: []string{"s"},
-		Args:    cobra.ExactArgs(1),
 	}
 
 	scanCmd.AddCommand(
@@ -32,7 +33,7 @@ func tcpFullScanCmd() *cobra.Command {
 	opts := scanner.TCPFullScanOptions{}
 	tcpCmd := cobra.Command{
 		Use:   "tcp <targets>",
-		Short: "Carry out a TCP full scan (default scan carried out)",
+		Short: "Carry out a TCP full scan.",
 		Args:  cobra.ExactArgs(1),
 		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
 			"  gscn scan tcp 10.1.1.1 -p 80\n" +
@@ -56,8 +57,23 @@ func tcpFullScanCmd() *cobra.Command {
 				return err
 			}
 
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
 			tcpScanner := scanner.NewTCPFullScanner(opts)
-			return doScan(tcpScanner)
+			notifier, err := notify.NotifierFromConfig(appConfig)
+			if err != nil {
+				return err
+			}
+			return scanner.DoScan(tcpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Notifier:          notifier,
+			})
 		},
 	}
 
@@ -111,8 +127,23 @@ func udpScanCmd() *cobra.Command {
 				return err
 			}
 
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
 			udpScanner := scanner.NewUDPScanner(opts)
-			return doScan(udpScanner)
+			notifier, err := notify.NotifierFromConfig(appConfig)
+			if err != nil {
+				return err
+			}
+			return scanner.DoScan(udpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Notifier:          notifier,
+			})
 		},
 	}
 	udpCmd.Flags().SortFlags = false
@@ -141,9 +172,9 @@ func pingScanCmd() *cobra.Command {
 		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
 			"  gscn scan ping 10.1.1.1\n" +
 			"  gscn scan ping 2001:acad::1\n" +
-			"  gscn scan ping 10.1.1.1/24 -p 80,90,100\n" +
-			"  gscn scan ping 10.1.1.1-5 -p 1-100\n" +
-			"  gscn scan ping bing.com -p 1-100\n" +
+			"  gscn scan ping 10.1.1.1/24\n" +
+			"  gscn scan ping 10.1.1.1-5\n" +
+			"  gscn scan ping bing.com\n" +
 			"  gscn scan ping 2001:acad::1,10.1.1.1\n" +
 			"  gscn scan ping 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24\n",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -158,8 +189,23 @@ func pingScanCmd() *cobra.Command {
 			}
 			opts.SortResults = true
 
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
 			pingScanner := scanner.NewPingScanner(opts)
-			return doScan(pingScanner)
+			notifier, err := notify.NotifierFromConfig(appConfig)
+			if err != nil {
+				return err
+			}
+			return scanner.DoScan(pingScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Notifier:          notifier,
+			})
 		},
 	}
 
