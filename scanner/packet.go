@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/google/gopacket"
@@ -12,15 +13,15 @@ import (
 type PacketSender interface {
 	SendPacket(packet []byte, iface *netutil.Interface) error
 
-	Close()
+	io.Closer
 }
 
 type PacketReceiver interface {
-	Packets() chan gopacket.Packet
+	Packets() <-chan gopacket.Packet
 
-	AddReceivingInterface(netutil.Interface) error
+	AddReceivingInterface(iface netutil.Interface) error
 
-	Close()
+	io.Closer
 }
 
 type PcapPacketReceiver struct {
@@ -80,13 +81,14 @@ func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) err
 	return nil
 }
 
-func (pr *PcapPacketReceiver) Close() {
+func (pr *PcapPacketReceiver) Close() error {
 	for _, iface := range pr.ifaces {
 		iface.handle.Close()
 	}
+	return nil
 }
 
-func (pr *PcapPacketReceiver) Packets() chan gopacket.Packet {
+func (pr *PcapPacketReceiver) Packets() <-chan gopacket.Packet {
 	for _, iface := range pr.ifaces {
 		go capturePacketsOnInterface(pr.ctx, iface, pr.packetChan)
 	}

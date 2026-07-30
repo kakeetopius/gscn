@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -119,6 +120,10 @@ func (r *UDPScanResults) String() string {
 
 	tmpl.Execute(&stringBuilder, r)
 	return stringBuilder.String()
+}
+
+func (r *UDPScanResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r)
 }
 
 func (s *UDPScanner) runUDPScan() (HostResults, error) {

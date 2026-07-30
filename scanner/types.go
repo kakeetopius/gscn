@@ -38,6 +38,7 @@ type Scanner interface {
 type ScanResults interface {
 	Print()
 	fmt.Stringer
+	json.Marshaler
 }
 
 // HostResult is the result of a single host after port scanning

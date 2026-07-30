@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -119,6 +120,10 @@ func (r *TCPFullScanResults) String() string {
 
 	tmpl.Execute(&stringBuilder, r)
 	return stringBuilder.String()
+}
+
+func (r *TCPFullScanResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r)
 }
 
 func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
