@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/pterm/pterm"
 )
@@ -31,7 +30,6 @@ type PingScanOptions struct {
 	Workers             int
 	AddUnknownHostNames bool
 	HostNames           map[netip.Addr]string
-	MessageNotifier     notify.Notifier
 	PingCount           int
 	SortResults         bool
 	PrintOnlyUp         bool
@@ -104,40 +102,12 @@ func (s *PingScanner) Scan() error {
 	return err
 }
 
-func (s *PingScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("pingscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
-
-	err = s.MessageNotifier.SendMessage(s.scanResults.String())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *PingScanner) Results() ScanResults {
 	return s.scanResults
 }
 
 func (s *PingScanner) ResultMap() PingScanResultsMap {
 	return s.resultMap
-}
-
-func (s *PingScanner) SetNotifier(n notify.Notifier) {
-	s.MessageNotifier = n
 }
 
 func (s *PingScanner) PrintResults() {

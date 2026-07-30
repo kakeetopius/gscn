@@ -8,7 +8,7 @@ build: | $(BINDIR)
 
 install: build
 	@go build -ldflags="-s -w" -o gscn
-	@mv ./gscn /usr/local/bin
+	@sudo mv ./gscn /usr/local/bin
 
 clean:
 	@rm -rf $(BINDIR)

@@ -4,6 +4,7 @@ package notify
 import (
 	"fmt"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/viper"
 )
 
@@ -13,11 +14,15 @@ type Notifier interface {
 	SendMessage(message string) error
 }
 
-// NotifierByName returns a Notifier instance based on the provided name.
+// NotifierFromConfig returns a Notifier instance based on the name given in the config
 // It takes a notifier type string and a Viper configuration, and returns
 // the corresponding notifier properly configured using settings from viper or an error if the type is not supported.
-func NotifierByName(s string, config *viper.Viper) (Notifier, error) {
-	switch s {
+func NotifierFromConfig(config *viper.Viper) (Notifier, error) {
+	notifierName := config.GetString("notifier.type")
+	if notifierName == "" {
+		return nil, fmt.Errorf("no notifier type set in the config file")
+	}
+	switch notifierName {
 	case "email":
 		return EmailNotifier{
 			FromAddress: config.GetString("notifier.email.sender_address"),
@@ -32,5 +37,27 @@ func NotifierByName(s string, config *viper.Viper) (Notifier, error) {
 			ChannelName: config.GetString("notifier.discord.channel_name"),
 		}, nil
 	}
-	return nil, fmt.Errorf("notifier %v not supported", s)
+	return nil, fmt.Errorf("notifier %v not supported", notifierName)
+}
+
+func SendMessageWithNotifier(msg fmt.Stringer, notifier Notifier) error {
+	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success("Results Sent")
+		}
+	}()
+
+	err = notifier.SendMessage(msg.String())
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

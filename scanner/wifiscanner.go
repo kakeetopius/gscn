@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/mdlayher/wifi"
 	"github.com/pterm/pterm"
 )
@@ -18,9 +17,8 @@ type WiFiScanner struct {
 }
 
 type WiFiScannerOptions struct {
-	InterfaceName   string
-	AutoInterface   bool
-	MessageNotifier notify.Notifier
+	InterfaceName string
+	AutoInterface bool
 }
 
 type WiFiScanResults struct {
@@ -50,42 +48,12 @@ func (s *WiFiScanner) Scan() error {
 	return nil
 }
 
-func (s *WiFiScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("wifiscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		spinner.Fail()
-		return err
-	}
-
-	return nil
-}
-
 func (s *WiFiScanner) Results() ScanResults {
 	return s.results
 }
 
 func (s *WiFiScanner) PrintResults() {
 	displayWifiScanResults(s)
-}
-
-func (s *WiFiScanner) SetNotifier(n notify.Notifier) {
-	s.MessageNotifier = n
 }
 
 func (r WiFiScanResults) String() string {

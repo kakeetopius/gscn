@@ -14,7 +14,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/internal/route"
 	"github.com/pterm/pterm"
 )
@@ -33,7 +32,6 @@ type ARPScanOptions struct {
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
 	Workers             int
-	MessageNotifier     notify.Notifier
 }
 
 type ARPScanResults struct {
@@ -79,41 +77,12 @@ func (s *ARPScanner) Scan() error {
 	return s.addResultInfo()
 }
 
-func (s *ARPScanner) SendResultsViaNotifier() (err error) {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("arpscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *ARPScanner) Results() ScanResults {
 	return s.results
 }
 
 func (s *ARPScanner) PrintResults() {
 	displayARPResults(&s.results, s.AddUnknownHostNames, s.WithVendorInfo)
-}
-
-func (s *ARPScanner) SetNotifier(n notify.Notifier) {
-	s.MessageNotifier = n
 }
 
 func (s *ARPScanner) addResultInfo() error {

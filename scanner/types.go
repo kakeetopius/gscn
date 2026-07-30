@@ -8,8 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"time"
-
-	"github.com/kakeetopius/gscn/internal/notify"
 )
 
 type (
@@ -46,12 +44,8 @@ type Scanner interface {
 	Scan() error
 	// Results returns the results of the completed scan.
 	Results() ScanResults
-	// SendResultsViaNotifier sends scan results using the configured notifier
-	SendResultsViaNotifier() error
 	// PrintResults outputs the scan findings to standard output.
 	PrintResults()
-	// SetNotifier configures the notifier instance used to send the results.
-	SetNotifier(n notify.Notifier)
 }
 
 // HostResult is the result of a single host after port scanning

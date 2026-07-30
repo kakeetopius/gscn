@@ -14,7 +14,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/pterm/pterm"
 )
 
@@ -36,7 +35,6 @@ type TCPFullScanOptions struct {
 	AddUnknownHostNames bool
 	PingTimeout         time.Duration
 	SkipPingScan        bool
-	MessageNotifier     notify.Notifier
 
 	PrintUpOnly   bool
 	PrintOpenOnly bool
@@ -65,30 +63,6 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 	}
 }
 
-func (s *TCPFullScanner) SendResultsViaNotifier() error {
-	if s.MessageNotifier == nil {
-		return fmt.Errorf("tcpfullscanner: no notifier is set")
-	}
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
-
-	err = s.MessageNotifier.SendMessage(s.results.String())
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *TCPFullScanner) Scan() error {
 	startTime := time.Now()
 	hostResults, err := s.runTCPFullScan()
@@ -110,10 +84,6 @@ func (s *TCPFullScanner) Results() ScanResults {
 
 func (s *TCPFullScanner) PrintResults() {
 	printScanResultsMap(s.results.HostResults, s.results.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
-}
-
-func (s *TCPFullScanner) SetNotifier(n notify.Notifier) {
-	s.MessageNotifier = n
 }
 
 func (s *TCPFullScanner) addResultsInfo() {
