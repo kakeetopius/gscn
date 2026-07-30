@@ -5,8 +5,10 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"net"
 	"net/netip"
+	"slices"
 	"time"
 )
 
@@ -79,8 +81,9 @@ type Port struct {
 
 type PortSet interface {
 	Len() int
+	Contains(PortNumber) bool
 	Append(...PortNumber)
-	Ports() <-chan PortNumber
+	Ports() iter.Seq[PortNumber]
 }
 
 type PortSlice struct {
@@ -91,19 +94,22 @@ func (s *PortSlice) Len() int {
 	return len(s.set)
 }
 
+func (s *PortSlice) Contains(p PortNumber) bool {
+	return slices.Contains(s.set, p)
+}
+
 func (s *PortSlice) Append(n ...PortNumber) {
 	s.set = append(s.set, n...)
 }
 
-func (s *PortSlice) Ports() <-chan PortNumber {
-	portChan := make(chan PortNumber, 50)
-	go func() {
-		for _, port := range s.set {
-			portChan <- port
+func (s *PortSlice) Ports() iter.Seq[PortNumber] {
+	return func(yield func(PortNumber) bool) {
+		for _, p := range s.set {
+			if !yield(p) {
+				return
+			}
 		}
-		close(portChan)
-	}()
-	return portChan
+	}
 }
 
 type PortMap struct {
@@ -112,6 +118,11 @@ type PortMap struct {
 
 func (s *PortMap) Len() int {
 	return len(s.set)
+}
+
+func (s *PortMap) Contains(p PortNumber) bool {
+	_, found := s.set[p]
+	return found
 }
 
 func (s *PortMap) Append(n ...PortNumber) {
@@ -123,15 +134,14 @@ func (s *PortMap) Append(n ...PortNumber) {
 	}
 }
 
-func (s *PortMap) Ports() <-chan PortNumber {
-	portChan := make(chan PortNumber, 50)
-	go func() {
-		for port := range s.set {
-			portChan <- port
+func (s *PortMap) Ports() iter.Seq[PortNumber] {
+	return func(yield func(PortNumber) bool) {
+		for p := range s.set {
+			if !yield(p) {
+				return
+			}
 		}
-		close(portChan)
-	}()
-	return portChan
+	}
 }
 
 func (p PortState) String() string {
