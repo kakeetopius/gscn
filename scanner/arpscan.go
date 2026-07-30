@@ -37,6 +37,9 @@ type ARPScanOptions struct {
 type ARPScanResults struct {
 	HostResults  []ARPHostResult `json:"results"`
 	ARPScanStats `json:"stats"`
+
+	printHostNames bool `json:"-"`
+	printVendors   bool `json:"-"`
 }
 
 type ARPHostResult struct {
@@ -63,31 +66,30 @@ func NewARPScanner(opts ARPScanOptions) *ARPScanner {
 	}
 }
 
-func (s *ARPScanner) Scan() error {
+func (s *ARPScanner) Scan() (ScanResults, error) {
 	start := time.Now()
 	hostResults, err := s.runArp()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stop := time.Now()
 
 	s.results.HostResults = hostResults
 	s.results.ScanDuration = stop.Sub(start)
 
-	return s.addResultInfo()
-}
+	err = s.addResultInfo()
+	if err != nil {
+		return nil, err
+	}
 
-func (s *ARPScanner) Results() ScanResults {
-	return s.results
-}
-
-func (s *ARPScanner) PrintResults() {
-	displayARPResults(&s.results, s.AddUnknownHostNames, s.WithVendorInfo)
+	return &s.results, nil
 }
 
 func (s *ARPScanner) addResultInfo() error {
 	results := s.results
 	numHosts := len(results.HostResults)
+	results.printHostNames = s.AddUnknownHostNames
+	results.printVendors = s.WithVendorInfo
 
 	var bar *pterm.ProgressbarPrinter
 	var err error
@@ -117,10 +119,16 @@ func (s *ARPScanner) addResultInfo() error {
 		return a.IPAddr.Compare(b.IPAddr)
 	})
 
+	s.results = results
+
 	return nil
 }
 
-func (r ARPScanResults) String() string {
+func (r *ARPScanResults) Print() {
+	displayARPResults(r, r.printHostNames, r.printVendors)
+}
+
+func (r *ARPScanResults) String() string {
 	stringBuilder := strings.Builder{}
 
 	tmpl := template.Must(template.New("arp_scan_results").Parse(ARPScanResultsTemplate))
@@ -164,7 +172,10 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 
 	<-startSending // wait for receiving routine to finish setup
 
-	s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(opts.Interfaces))
+	if len(opts.Interfaces) != 0 {
+		s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(opts.Interfaces))
+	}
+
 	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
 	if err != nil {
 		return nil, err

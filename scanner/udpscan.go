@@ -44,6 +44,9 @@ type UDPScanOptions struct {
 type UDPScanResults struct {
 	HostResults  `json:"results"`
 	UDPScanStats `json:"stats"`
+
+	printUpOnly   bool `json:"-"`
+	printOpenOnly bool `json:"-"`
 }
 
 type UDPScanStats struct {
@@ -64,27 +67,21 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 	}
 }
 
-func (s *UDPScanner) Scan() error {
+func (s *UDPScanner) Scan() (ScanResults, error) {
 	startTime := time.Now()
 	hostResults, err := s.runUDPScan()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stopTime := time.Now()
 
 	s.results.HostResults = hostResults
 	s.results.ScanTime = stopTime.Sub(startTime)
+	s.results.printOpenOnly = s.PrintOpenOnly
+	s.results.printUpOnly = s.PrintUpOnly
 
 	s.addResultsInfo()
-	return nil
-}
-
-func (s *UDPScanner) PrintResults() {
-	printScanResultsMap(s.results.HostResults, s.results.ScanTime, s.PrintUpOnly, s.PrintOpenOnly)
-}
-
-func (s *UDPScanner) Results() ScanResults {
-	return s.results
+	return &s.results, nil
 }
 
 func (s *UDPScanner) addResultsInfo() {
@@ -110,7 +107,11 @@ func (s *UDPScanner) addResultsInfo() {
 	}
 }
 
-func (r UDPScanResults) String() string {
+func (r *UDPScanResults) Print() {
+	printScanResultsMap(r.HostResults, r.ScanTime, r.printUpOnly, r.printOpenOnly)
+}
+
+func (r *UDPScanResults) String() string {
 	stringBuilder := strings.Builder{}
 
 	hostTmpl := template.Must(template.New("host_result").Parse(HostResultTemplate))
@@ -286,7 +287,7 @@ func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, p
 		PingCount:   pingCount,
 	})
 
-	err := pinger.Scan()
+	_, err := pinger.Scan()
 	if err != nil {
 		return PingScanResultsMap{}, err
 	}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/kakeetopius/gscn/internal/config"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
@@ -64,16 +63,12 @@ func discoverArpCmd() *cobra.Command {
 
 			arpScanner := scanner.NewARPScanner(opts)
 
-			notifier, err := notify.NotifierFromConfig(appConfig)
-			if err != nil {
-				return err
-			}
 			return scanner.DoScan(arpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
 				Notify:            sendNotification,
-				Notifier:          notifier,
+				Config:            appConfig,
 			})
 		},
 	}
@@ -90,7 +85,7 @@ func discoverArpCmd() *cobra.Command {
 
 func discoverNDPCmd() *cobra.Command {
 	var opts scanner.NDPScanOptions
-	var ifaceStrings []string
+	var iface string
 
 	ndpScan := cobra.Command{
 		Use:   "ndp <targets>",
@@ -117,34 +112,34 @@ func discoverNDPCmd() *cobra.Command {
 			}
 			opts.Targets = targets
 
-			ifaces, err := getDiscoverInterfaces(ifaceStrings)
+			ifaces, err := getDiscoverInterfaces([]string{iface})
 			if err != nil {
 				return err
 			}
-			opts.Interfaces = ifaces
+			if len(ifaces) != 0 {
+				opts.Interface = &ifaces[0]
+			}
 
 			ndpScanner := scanner.NewNDPScanner(opts)
-			notifier, err := notify.NotifierFromConfig(appConfig)
-			if err != nil {
-				return err
-			}
 			return scanner.DoScan(ndpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
 				Notify:            sendNotification,
-				Notifier:          notifier,
+				Config:            appConfig,
 			})
 		},
 	}
 
 	ndpScan.Flags().SortFlags = false
 
-	ndpScan.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
+	ndpScan.Flags().StringVarP(&iface, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
 	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
 	ndpScan.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	ndpScan.Flags().BoolVar(&opts.FromCache, "from-cache", false, "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.")
 	ndpScan.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
+
+	ndpScan.MarkFlagRequired("iface")
 
 	return &ndpScan
 }

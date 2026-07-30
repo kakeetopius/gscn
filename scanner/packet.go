@@ -94,7 +94,7 @@ func (pr *PcapPacketReceiver) Packets() chan gopacket.Packet {
 	return pr.packetChan
 }
 
-func capturePacketsOnInterface(ctx context.Context, iface receivingInterface, packetChan chan gopacket.Packet) {
+func capturePacketsOnInterface(ctx context.Context, iface receivingInterface, packetChan chan<- gopacket.Packet) {
 	packetSource := gopacket.NewPacketSource(iface.handle, iface.handle.LinkType())
 	ifacePacketChan := packetSource.Packets()
 

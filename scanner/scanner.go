@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/kakeetopius/gscn/internal/notify"
+	"github.com/spf13/viper"
 	"golang.org/x/term"
 )
 
@@ -13,11 +14,11 @@ type ScanOptions struct {
 	PrintJSON         bool
 	PrintJSONPretty   bool
 	Notify            bool
-	Notifier          notify.Notifier
+	Config            *viper.Viper
 }
 
 func DoScan(scanner Scanner, opts ScanOptions) error {
-	err := scanner.Scan()
+	results, err := scanner.Scan()
 	if err != nil {
 		return err
 	}
@@ -37,18 +38,18 @@ func DoScan(scanner Scanner, opts ScanOptions) error {
 	var printDefault bool // means no json output or any future output formats
 
 	if opts.PrintJSON {
-		jsonBytes, jsonErr := getJSONResults(scanner.Results(), opts.PrintJSONPretty)
+		jsonBytes, jsonErr := getJSONResults(results, opts.PrintJSONPretty)
 		if jsonErr != nil {
 			return jsonErr
 		}
 		output = jsonBytes
 	} else {
-		output = []byte(scanner.Results().String())
+		output = []byte(results.String())
 		printDefault = true
 	}
 
 	if isTTY(out) && printDefault {
-		scanner.PrintResults()
+		results.Print()
 	} else {
 		_, err = out.Write(output)
 		if err != nil {
@@ -57,7 +58,11 @@ func DoScan(scanner Scanner, opts ScanOptions) error {
 	}
 
 	if opts.Notify {
-		notify.SendMessageWithNotifier(scanner.Results(), opts.Notifier)
+		notifer, err := notify.NotifierFromConfig(opts.Config)
+		if err != nil {
+			return err
+		}
+		notify.SendMessageWithNotifier(results, notifer)
 	}
 
 	return nil

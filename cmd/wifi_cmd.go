@@ -4,7 +4,6 @@ package cmd
 
 import (
 	"github.com/kakeetopius/gscn/internal/config"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
@@ -34,16 +33,12 @@ func WifiCmd() *cobra.Command {
 				return err
 			}
 
-			notifier, err := notify.NotifierFromConfig(appConfig)
-			if err != nil {
-				return err
-			}
 			return scanner.DoScan(wifiScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
 				Notify:            sendNotification,
-				Notifier:          notifier,
+				Config:            appConfig,
 			})
 		},
 	}

@@ -3,8 +3,6 @@
 package scanner
 
 import (
-	"fmt"
-
 	"github.com/kakeetopius/gscn/internal/bits"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"golang.org/x/sys/unix"
@@ -16,9 +14,6 @@ type LinuxPacketSender struct {
 }
 
 func (ps *LinuxPacketSender) SendPacket(packet []byte, iface *netutil.Interface) error {
-	if ps == nil {
-		return fmt.Errorf("packet sender not initialised")
-	}
 	ps.socketAddr.Ifindex = iface.Index
 
 	return unix.Sendto(ps.socketFD, packet, 0, ps.socketAddr)

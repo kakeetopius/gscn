@@ -3,7 +3,6 @@
 package scanner
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/google/gopacket/pcap"
@@ -25,8 +24,8 @@ func NewPcapPacketSender() PacketSender {
 }
 
 func (ps *PcapPacketSender) SendPacket(packet []byte, iface *netutil.Interface) error {
-	if ps == nil || ps.handles == nil {
-		return fmt.Errorf("packet sender not initalised")
+	if ps.handles == nil {
+		ps.handles = make(map[int]*pcap.Handle)
 	}
 
 	handle, ok := ps.handles[iface.Index]
@@ -42,10 +41,6 @@ func (ps *PcapPacketSender) SendPacket(packet []byte, iface *netutil.Interface) 
 }
 
 func (ps *PcapPacketSender) Close() {
-	if ps == nil || ps.handles == nil {
-		return
-	}
-
 	for _, handle := range ps.handles {
 		handle.Close()
 	}

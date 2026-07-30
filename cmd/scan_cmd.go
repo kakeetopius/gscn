@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/config"
-	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
 )
@@ -63,16 +62,13 @@ func tcpFullScanCmd() *cobra.Command {
 			}
 
 			tcpScanner := scanner.NewTCPFullScanner(opts)
-			notifier, err := notify.NotifierFromConfig(appConfig)
-			if err != nil {
-				return err
-			}
+
 			return scanner.DoScan(tcpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
 				Notify:            sendNotification,
-				Notifier:          notifier,
+				Config:            appConfig,
 			})
 		},
 	}
@@ -133,16 +129,12 @@ func udpScanCmd() *cobra.Command {
 			}
 
 			udpScanner := scanner.NewUDPScanner(opts)
-			notifier, err := notify.NotifierFromConfig(appConfig)
-			if err != nil {
-				return err
-			}
 			return scanner.DoScan(udpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
 				Notify:            sendNotification,
-				Notifier:          notifier,
+				Config:            appConfig,
 			})
 		},
 	}
@@ -195,16 +187,12 @@ func pingScanCmd() *cobra.Command {
 			}
 
 			pingScanner := scanner.NewPingScanner(opts)
-			notifier, err := notify.NotifierFromConfig(appConfig)
-			if err != nil {
-				return err
-			}
 			return scanner.DoScan(pingScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
 				Notify:            sendNotification,
-				Notifier:          notifier,
+				Config:            appConfig,
 			})
 		},
 	}

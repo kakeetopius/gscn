@@ -11,18 +11,8 @@ import (
 )
 
 type (
-	ScanType  int
 	PortState int
 	HostState int
-)
-
-const (
-	ARPScan ScanType = iota + 1
-	NDPScan
-	TCPFullScan
-	UDPScan
-	PingScan
-	WifiScan
 )
 
 const (
@@ -40,12 +30,14 @@ type MAC net.HardwareAddr
 
 // Scanner defines the interface for network scanning operations.
 type Scanner interface {
-	// Scan executes the network scan and returns an error if any.
-	Scan() error
-	// Results returns the results of the completed scan.
-	Results() ScanResults
-	// PrintResults outputs the scan findings to standard output.
-	PrintResults()
+	// Scan executes the network scan and returns the scan results
+	Scan() (ScanResults, error)
+}
+
+// ScanResults defines the interface that all scan result types must implement.
+type ScanResults interface {
+	Print()
+	fmt.Stringer
 }
 
 // HostResult is the result of a single host after port scanning
@@ -80,11 +72,6 @@ type Port struct {
 	Protocol string `json:"protocol"`
 	// State describes the current state of the port.
 	State PortState `json:"state"`
-}
-
-// ScanResults defines the interface that all scan result types must implement.
-type ScanResults interface {
-	fmt.Stringer
 }
 
 func (p PortState) String() string {

@@ -37,26 +37,22 @@ func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 	}
 }
 
-func (s *WiFiScanner) Scan() error {
+func (s *WiFiScanner) Scan() (ScanResults, error) {
 	start := time.Now()
 	err := runWifiScan(s)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	stop := time.Now()
 	s.results.ScanDuration = stop.Sub(start)
-	return nil
+	return &s.results, nil
 }
 
-func (s *WiFiScanner) Results() ScanResults {
-	return s.results
+func (r *WiFiScanResults) Print() {
+	displayWifiScanResults(r)
 }
 
-func (s *WiFiScanner) PrintResults() {
-	displayWifiScanResults(s)
-}
-
-func (r WiFiScanResults) String() string {
+func (r *WiFiScanResults) String() string {
 	stringBuilder := strings.Builder{}
 
 	tmpl := template.Must(template.New("wifi_scan_results").Parse(WiFiScanResultsTemplate))
@@ -158,10 +154,7 @@ func FreqToChannel(freq int) int {
 	return 0
 }
 
-func displayWifiScanResults(wifiScanner *WiFiScanner) {
-	res := wifiScanner.Results()
-	results := res.(WiFiScanResults)
-
+func displayWifiScanResults(results *WiFiScanResults) {
 	tableData := pterm.TableData{{"SSID", "BSSID", "Status", "Freq (Mhz)", "Channel", "Strength (dBm)", "Stations"}}
 	for _, ap := range results.AccessPoints {
 		style := pterm.NewStyle(pterm.FgDefault)
