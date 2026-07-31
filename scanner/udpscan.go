@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -30,7 +29,7 @@ type UDPScanner struct {
 
 type UDPScanOptions struct {
 	Targets             []netip.Prefix
-	TargetPorts         PortSlice
+	TargetPorts         []PortNumber
 	Workers             int
 	PingTimeout         time.Duration
 	PingCount           int
@@ -122,10 +121,6 @@ func (r *UDPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (r *UDPScanResults) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r)
-}
-
 func (s *UDPScanner) runUDPScan() (HostResults, error) {
 	opts := s.UDPScanOptions
 
@@ -135,7 +130,7 @@ func (s *UDPScanner) runUDPScan() (HostResults, error) {
 	if len(opts.Targets) == 0 {
 		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
-	if opts.TargetPorts.Len() == 0 {
+	if len(opts.TargetPorts) == 0 {
 		opts.TargetPorts = CommonPorts
 	}
 
@@ -163,7 +158,7 @@ func (s *UDPScanner) runUDPScan() (HostResults, error) {
 	defer cancel()
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, &opts.TargetPorts, opts.ResponseTimeout)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
 
 	scanResultsChan := make(chan HostResults)
 	go getUDPScanResults(ctx, s, workerResultsChan, scanResultsChan)
@@ -245,7 +240,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan HostResults) {
 	// To Be Run By Main Worker
 	scanResults := make(HostResults)
-	numberOfPortsToScan := scanner.TargetPorts.Len()
+	numberOfPortsToScan := len(scanner.TargetPorts)
 	defer func() {
 		scanResultsChan <- scanResults
 	}()

@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/netip"
@@ -141,10 +140,6 @@ func (r PingScanResults) String() string {
 	tmpl.Execute(&stringBuilder, r)
 
 	return stringBuilder.String()
-}
-
-func (r *PingScanResults) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r)
 }
 
 func (s *PingScanner) runPing() error {

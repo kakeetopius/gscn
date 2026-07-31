@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -28,7 +27,7 @@ type TCPFullScanner struct {
 
 type TCPFullScanOptions struct {
 	Targets             []netip.Prefix
-	TargetPorts         PortSlice
+	TargetPorts         []PortNumber
 	Workers             int
 	PingCount           int
 	ResponseTimeout     time.Duration
@@ -122,10 +121,6 @@ func (r *TCPFullScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (r *TCPFullScanResults) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r)
-}
-
 func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 	opts := s.TCPFullScanOptions
 
@@ -134,7 +129,7 @@ func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 	if len(opts.Targets) == 0 {
 		return HostResults{}, fmt.Errorf("no hosts to scan provided")
 	}
-	if opts.TargetPorts.Len() == 0 {
+	if len(opts.TargetPorts) == 0 {
 		opts.TargetPorts = CommonPorts
 	}
 
@@ -164,7 +159,7 @@ func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, &opts.TargetPorts, opts.ResponseTimeout)
+	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
 
 	scanResultsChan := make(chan HostResults)
 	go getTCPFullScanResults(ctx, s, workerResultsChan, scanResultsChan)
@@ -183,7 +178,7 @@ func (s *TCPFullScanner) runTCPFullScan() (HostResults, error) {
 func getTCPFullScanResults(ctx context.Context, scanner *TCPFullScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan HostResults) {
 	// To Be Run By Main Worker (aggregator)
 	scanResults := make(HostResults)
-	numberOfPortsToScan := scanner.TargetPorts.Len()
+	numberOfPortsToScan := len(scanner.TargetPorts)
 
 	defer func() {
 		scanResultsChan <- scanResults

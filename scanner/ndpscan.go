@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -147,10 +146,6 @@ func (r *NDPScanResults) String() string {
 	tmpl.Execute(&stringBuilder, r)
 
 	return stringBuilder.String()
-}
-
-func (r *NDPScanResults) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r)
 }
 
 func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {

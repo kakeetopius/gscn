@@ -5,10 +5,8 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
-	"iter"
 	"net"
 	"net/netip"
-	"slices"
 	"time"
 )
 
@@ -40,7 +38,6 @@ type Scanner interface {
 type ScanResults interface {
 	Print()
 	fmt.Stringer
-	json.Marshaler
 }
 
 // HostResult is the result of a single host after port scanning
@@ -77,71 +74,6 @@ type Port struct {
 	Protocol string `json:"protocol"`
 	// State describes the current state of the port.
 	State PortState `json:"state"`
-}
-
-type PortSet interface {
-	Len() int
-	Contains(PortNumber) bool
-	Append(...PortNumber)
-	Ports() iter.Seq[PortNumber]
-}
-
-type PortSlice struct {
-	set []PortNumber
-}
-
-func (s *PortSlice) Len() int {
-	return len(s.set)
-}
-
-func (s *PortSlice) Contains(p PortNumber) bool {
-	return slices.Contains(s.set, p)
-}
-
-func (s *PortSlice) Append(n ...PortNumber) {
-	s.set = append(s.set, n...)
-}
-
-func (s *PortSlice) Ports() iter.Seq[PortNumber] {
-	return func(yield func(PortNumber) bool) {
-		for _, p := range s.set {
-			if !yield(p) {
-				return
-			}
-		}
-	}
-}
-
-type PortMap struct {
-	set map[PortNumber]struct{}
-}
-
-func (s *PortMap) Len() int {
-	return len(s.set)
-}
-
-func (s *PortMap) Contains(p PortNumber) bool {
-	_, found := s.set[p]
-	return found
-}
-
-func (s *PortMap) Append(n ...PortNumber) {
-	if s.set == nil {
-		s.set = make(map[PortNumber]struct{})
-	}
-	for _, port := range n {
-		s.set[port] = struct{}{}
-	}
-}
-
-func (s *PortMap) Ports() iter.Seq[PortNumber] {
-	return func(yield func(PortNumber) bool) {
-		for p := range s.set {
-			if !yield(p) {
-				return
-			}
-		}
-	}
 }
 
 func (p PortState) String() string {
