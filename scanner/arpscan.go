@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -136,10 +135,6 @@ func (r *ARPScanResults) String() string {
 	tmpl.Execute(&stringBuilder, r)
 
 	return stringBuilder.String()
-}
-
-func (r *ARPScanResults) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r)
 }
 
 func (s *ARPScanner) runArp() ([]ARPHostResult, error) {

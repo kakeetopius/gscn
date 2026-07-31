@@ -271,69 +271,44 @@ func validateIPLimits(s string, upper, lower int) error {
 // Range entries must be in ascending order (e.g. "10-20"), and each token must
 // be a valid integer. The function returns an error for malformed tokens,
 // invalid ranges, or non-numeric values.
-func PortsFromString(s string) (PortSlice, error) {
+func PortsFromString(s string) ([]PortNumber, error) {
 	if s == "" {
-		return PortSlice{}, fmt.Errorf("no ports provided")
+		return nil, fmt.Errorf("no ports provided")
 	}
 	// format: 10,1,3,9-15
 	portStrings := strings.Split(s, ",")
-	portSet := PortSlice{
-		set: make([]PortNumber, 0, len(portStrings)),
-	}
+	ports := make([]PortNumber, 0, len(portStrings))
 
 	seenStrings := make(map[string]struct{})
 	for _, portString := range portStrings {
 		if _, seen := seenStrings[portString]; seen {
 			continue
 		}
-		err := parsePortSpec(portString, &portSet)
+		portSlice, err := parsePortSpec(portString)
 		if err != nil {
-			return PortSlice{}, err
+			return nil, err
 		}
+		ports = append(ports, portSlice...)
 		seenStrings[portString] = struct{}{}
 	}
 
-	slices.Sort(portSet.set)
-	portSet.set = netutil.Unique(portSet.set)
-	return portSet, nil
+	slices.Sort(ports)
+	return netutil.Unique(ports), nil
 }
 
-func PortMapFromString(s string) (PortMap, error) {
+func parsePortSpec(s string) ([]PortNumber, error) {
 	if s == "" {
-		return PortMap{}, fmt.Errorf("no ports provided")
-	}
-	// format: 10,1,3,9-15
-	portStrings := strings.Split(s, ",")
-	ports := PortMap{
-		set: make(map[PortNumber]struct{}, 15),
-	}
-
-	seenStrings := make(map[string]struct{})
-	for _, portString := range portStrings {
-		if _, seen := seenStrings[portString]; seen {
-			continue
-		}
-		err := parsePortSpec(portString, &ports)
-		if err != nil {
-			return PortMap{}, err
-		}
-		seenStrings[portString] = struct{}{}
-	}
-
-	return ports, nil
-}
-
-func parsePortSpec(s string, portSet PortSet) error {
-	if s == "" {
-		return fmt.Errorf("invalid port specification string: %s", s)
+		return nil, fmt.Errorf("invalid port specification string: %s", s)
 	}
 	s = strings.Trim(s, " ")
+
+	ports := make([]PortNumber, 0, 5)
 
 	if strings.ContainsRune(s, '-') {
 		// Port Range Provided eg 10-20
 		dashIndex := strings.LastIndex(s, "-")
 		if dashIndex == len(s)-1 { // if '-' is at the end
-			return fmt.Errorf("error parsing port range %v -> invalid range", s)
+			return nil, fmt.Errorf("error parsing port range %v -> invalid range", s)
 		}
 
 		var lower int
@@ -342,42 +317,42 @@ func parsePortSpec(s string, portSet PortSet) error {
 			lowerPort := strings.Trim(s[:dashIndex], " ")
 			lower, err = strconv.Atoi(lowerPort)
 			if err != nil {
-				return fmt.Errorf("error parsing port range %v -> %v", s, err)
+				return nil, fmt.Errorf("error parsing port range %v -> %v", s, err)
 			}
 		}
 
 		upperPort := strings.Trim(s[dashIndex+1:], " ")
 		upper, err := strconv.Atoi(upperPort)
 		if err != nil {
-			return fmt.Errorf("error parsing port range %v -> %v", s, err)
+			return nil, fmt.Errorf("error parsing port range %v -> %v", s, err)
 		}
 		if lower > upper {
-			return fmt.Errorf("error parsing port range %v -> invalid range", s)
+			return nil, fmt.Errorf("error parsing port range %v -> invalid range", s)
 		}
 		if lower < 0 {
-			return fmt.Errorf("error parsing port range %v -> port numbers cannot be below 0", s)
+			return nil, fmt.Errorf("error parsing port range %v -> port numbers cannot be below 0", s)
 		}
 		if upper > 65535 {
-			return fmt.Errorf("error parsing port range %v -> port numbers cannot go above 65535", s)
+			return nil, fmt.Errorf("error parsing port range %v -> port numbers cannot go above 65535", s)
 		}
 
 		for i := lower; i <= upper; i++ {
-			portSet.Append(PortNumber(i))
+			ports = append(ports, PortNumber(i))
 		}
 	} else {
 		// Single port presumed
 		portNum, err := strconv.Atoi(s)
 		if err != nil {
-			return fmt.Errorf("error parsing port port %v -> %v", s, err)
+			return nil, fmt.Errorf("error parsing port port %v -> %v", s, err)
 		}
 		if portNum < 0 {
-			return fmt.Errorf("error parsing port %v -> port numbers cannot be below 0", s)
+			return nil, fmt.Errorf("error parsing port %v -> port numbers cannot be below 0", s)
 		}
 		if portNum > 65535 {
-			return fmt.Errorf("error parsing port %v -> port numbers cannot go above 65535", s)
+			return nil, fmt.Errorf("error parsing port %v -> port numbers cannot go above 65535", s)
 		}
-		portSet.Append(PortNumber(portNum))
+		ports = append(ports, PortNumber(portNum))
 	}
 
-	return nil
+	return ports, nil
 }
