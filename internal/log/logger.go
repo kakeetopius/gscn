@@ -70,7 +70,12 @@ func (l Logger) Errorf(msg string, params ...any) {
 }
 
 func (l Logger) WaitTimeout(duration time.Duration, timeoutReason string) {
-	spinner, _ := pterm.DefaultSpinner.Start("Waiting for "+timeoutReason, " timeout")
+	spinner := &pterm.DefaultSpinner
+	if l.Debug {
+		spinner, _ = spinner.Start("Waiting for "+timeoutReason, " timeout")
+	}
 	<-time.After(duration)
-	spinner.Success("Timeout Reached.")
+	if l.Debug {
+		spinner.Success("Timeout Reached.")
+	}
 }
