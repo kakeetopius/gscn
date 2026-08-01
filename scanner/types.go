@@ -16,13 +16,13 @@ type (
 )
 
 const (
-	HostStateUp HostState = iota + 1
-	HostStateDown
+	HostStateDown HostState = iota
+	HostStateUp
 )
 
 const (
-	PortStateOpen PortState = iota + 1
-	PortStateClosed
+	PortStateClosed PortState = iota
+	PortStateOpen
 	PortStatePossibleFilter // used when  a host's port state cant be known definitevly
 )
 
@@ -57,6 +57,8 @@ type HostResult struct {
 	AverageRTT time.Duration `json:"rtt"`
 	// Ports contains the specific details for each port scanned on the host.
 	Ports []Port `json:"ports"`
+	// keeps track of where each port is in the Ports slice
+	portIndex map[PortNumber]int `json:"-"`
 }
 
 // HostResults is a map that associates each host's IP address with its corresponding scan result.
@@ -110,6 +112,14 @@ func (p PortState) MarshalJSON() ([]byte, error) {
 
 func (s HostState) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
+}
+
+func (s HostResults) MarshalJSON() ([]byte, error) {
+	vals := make([]HostResult, 0, len(s))
+	for _, v := range s {
+		vals = append(vals, v)
+	}
+	return json.Marshal(vals)
 }
 
 func (m MAC) MarshalJSON() ([]byte, error) {

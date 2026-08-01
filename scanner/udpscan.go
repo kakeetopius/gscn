@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,13 +68,12 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 
 func (s *UDPScanner) Scan() (ScanResults, error) {
 	startTime := time.Now()
-	hostResults, err := s.runUDPScan()
+	err := s.runUDPScan()
 	if err != nil {
 		return nil, err
 	}
 	stopTime := time.Now()
 
-	s.results.HostResults = hostResults
 	s.results.ScanTime = stopTime.Sub(startTime)
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
@@ -99,12 +97,6 @@ func (s *UDPScanner) addResultsInfo() {
 			s.results.HostResults[host] = results
 		}
 	}
-
-	for _, hostResult := range s.results.HostResults {
-		slices.SortFunc(hostResult.Ports, func(a, b Port) int {
-			return int(a.Number - b.Number)
-		})
-	}
 }
 
 func (r *UDPScanResults) Print() {
@@ -121,24 +113,23 @@ func (r *UDPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *UDPScanner) runUDPScan() (HostResults, error) {
-	opts := s.UDPScanOptions
-
-	numWorkers := opts.Workers
+func (s *UDPScanner) runUDPScan() error {
+	numWorkers := s.Workers
 
 	pterm.Warning.Println("UDP Scans are not reliable and may show inconsistent or wrong results.")
-	if len(opts.Targets) == 0 {
-		return HostResults{}, fmt.Errorf("no hosts to scan provided")
+	if len(s.Targets) == 0 {
+		return fmt.Errorf("no hosts to scan provided")
 	}
-	if len(opts.TargetPorts) == 0 {
-		opts.TargetPorts = CommonPorts
+	if len(s.TargetPorts) == 0 {
+		s.TargetPorts = CommonPorts
 	}
 
-	pingResults, err := pingHosts(opts.Targets, opts.PingTimeout, int(opts.Workers), opts.PingCount) // first check if hosts are up.
+	pingResults, err := pingHosts(s.Targets, s.PingTimeout, int(s.Workers), s.PingCount) // first check if hosts are up.
 	if err != nil {
-		return HostResults{}, err
+		return err
 	}
 	s.hostStates = pingResults
+	s.results.HostResults = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "udp")
 
 	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
@@ -150,7 +141,7 @@ func (s *UDPScanner) runUDPScan() (HostResults, error) {
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
-		return HostResults{}, err
+		return err
 	}
 	defer spinner.Success("Scanning Done")
 
@@ -158,20 +149,18 @@ func (s *UDPScanner) runUDPScan() (HostResults, error) {
 	defer cancel()
 	senderDone := make(chan struct{})
 
-	go sendPortScanningJobs(ctx, senderDone, jobs, opts.Targets, opts.TargetPorts, opts.ResponseTimeout)
+	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 
-	scanResultsChan := make(chan HostResults)
-	go getUDPScanResults(ctx, s, workerResultsChan, scanResultsChan)
+	go s.getUDPScanResults(ctx, workerResultsChan)
 
 	<-senderDone // wait for sender to send all jobs
 
 	close(jobs) // wait for all the workers to finish
 	wg.Wait()
 
-	close(workerResultsChan) // tell the main Woker to stop and send results
+	close(workerResultsChan) // tell the main Woker to stop
 
-	scanResults := <-scanResultsChan
-	return scanResults, nil
+	return nil
 }
 
 func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
@@ -237,14 +226,8 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 	}
 }
 
-func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsChan chan PortScanWorkerResult, scanResultsChan chan HostResults) {
+func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult) {
 	// To Be Run By Main Worker
-	scanResults := make(HostResults)
-	numberOfPortsToScan := len(scanner.TargetPorts)
-	defer func() {
-		scanResultsChan <- scanResults
-	}()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -253,44 +236,27 @@ func getUDPScanResults(ctx context.Context, scanner *UDPScanner, workerResultsCh
 			if !ok {
 				return
 			}
-			hostIP := result.HostIP
-			hostResult, found := scanResults[hostIP]
-			if !found {
-				hostResult.Addr = hostIP
-				hostResult.Ports = make([]Port, 0, numberOfPortsToScan)
-				hostResult.HostName = scanner.HostNames[hostIP]             // get hostname from scanner options
-				hostResult.HostState = scanner.hostStates[hostIP].HostState // get hostState from scanner options
-				hostResult.AverageRTT = scanner.hostStates[hostIP].AverageRTT
-
-				scanner.results.TotalNumOfHosts++
+			if !ok {
+				return
 			}
-			hostResult.Ports = append(hostResult.Ports, result.Port)
+
+			hostIP := result.HostIP
+
+			hostResult := s.results.HostResults[hostIP]
+			portIndex := hostResult.portIndex[result.Port.Number]
+			hostResult.Ports[portIndex] = result.Port
 
 			switch result.Port.State {
 			case PortStateOpen:
+				hostResult.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
 				hostResult.OpenPorts++
 			case PortStateClosed:
 				hostResult.ClosedPorts++
 			case PortStatePossibleFilter:
 				hostResult.FilteredPorts++
 			}
-			scanResults[hostIP] = hostResult
+
+			s.results.HostResults[hostIP] = hostResult
 		}
 	}
-}
-
-func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResultsMap, error) {
-	pinger := NewPingScanner(PingScanOptions{
-		Targets:     targets,
-		PingTimeout: pingTimeout,
-		Workers:     workers,
-		PingCount:   pingCount,
-	})
-
-	_, err := pinger.Scan()
-	if err != nil {
-		return PingScanResultsMap{}, err
-	}
-
-	return pinger.ResultMap(), nil
 }

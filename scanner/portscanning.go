@@ -26,31 +26,30 @@ func sendPortScanningJobs(ctx context.Context, done chan<- struct{}, jobChan cha
 	}()
 
 	for _, target := range targets {
-		for port := range ports {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			if target.IsSingleIP() {
-				addrPort := netip.AddrPortFrom(target.Addr(), uint16(port))
-				jobChan <- PortScanJob{
-					target:      addrPort,
-					scanTimeout: scanTimeout,
+		netAddr := target.Masked()
+
+		var addr netip.Addr
+		if target.IsSingleIP() {
+			addr = netAddr.Addr() // if it is a /32 or /128 for IPv6, then dont skip the network address.
+		} else {
+			addr = netAddr.Addr().Next() // skip the network address.
+		}
+
+		// loop over range of IPs
+		for netAddr.Contains(addr) {
+			for _, port := range ports {
+				select {
+				case <-ctx.Done():
+					return
+				default:
 				}
-				continue
-			}
-			netAddr := target.Masked()
-			addr := netAddr.Addr().Next()
-			for netAddr.Contains(addr) {
-				// loop over range of IPs
 				addrPort := netip.AddrPortFrom(addr, uint16(port))
 				jobChan <- PortScanJob{
 					target:      addrPort,
 					scanTimeout: scanTimeout,
 				}
-				addr = addr.Next()
 			}
+			addr = addr.Next()
 		}
 	}
 }

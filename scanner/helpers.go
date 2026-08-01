@@ -10,6 +10,75 @@ import (
 	"github.com/pterm/pterm"
 )
 
+func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[netip.Addr]string, hoststates PingScanResultsMap, protocol string) HostResults {
+	results := make(HostResults, len(targets))
+	for _, target := range targets {
+		netAddr := target.Masked()
+
+		var addr netip.Addr
+		if target.IsSingleIP() {
+			addr = netAddr.Addr() // if it is a /32 or /128 for IPv6, then dont skip the network address.
+		} else {
+			addr = netAddr.Addr().Next() // skip the network address.
+		}
+
+		for netAddr.Contains(addr) {
+			hostResult := HostResult{
+				Addr:      addr,
+				Ports:     make([]Port, 0, len(ports)),
+				portIndex: make(map[PortNumber]int, len(ports)),
+				HostState: HostStateDown,
+			}
+			if hostnames != nil {
+				hostResult.HostName = hostnames[addr]
+			}
+			if hoststates != nil {
+				hostResult.HostState = hoststates[addr].HostState
+				hostResult.AverageRTT = hoststates[addr].AverageRTT
+			}
+
+			for i, p := range ports {
+				port := Port{
+					Number:   PortNumber(p),
+					Protocol: protocol,
+					State:    PortStateClosed,
+				}
+				switch protocol {
+				case "tcp":
+					port.Name = netutil.Service(layers.TCPPort(p).String())
+				case "udp":
+					port.Name = netutil.Service(layers.UDPPort(p).String())
+				}
+				hostResult.Ports = append(hostResult.Ports, port)
+
+				hostResult.portIndex[PortNumber(p)] = i
+			}
+
+			results[addr] = hostResult
+
+			addr = addr.Next()
+		}
+	}
+
+	return results
+}
+
+func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResultsMap, error) {
+	pinger := NewPingScanner(PingScanOptions{
+		Targets:     targets,
+		PingTimeout: pingTimeout,
+		Workers:     workers,
+		PingCount:   pingCount,
+	})
+
+	_, err := pinger.Scan()
+	if err != nil {
+		return PingScanResultsMap{}, err
+	}
+
+	return pinger.ResultMap(), nil
+}
+
 func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Duration, printUpOnly bool, printOpenOnly bool) {
 	var tableData [][]string
 	totalHosts := len(results)
