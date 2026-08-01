@@ -68,6 +68,9 @@ type NetInterfaceProvider interface {
 
 	// Returns an interface with the given name
 	InterfaceByName(name string) (*Interface, error)
+
+	// Returns an interface with the given index
+	InterfaceByIndex(index int) (*Interface, error)
 }
 
 // GetIfaceByIP finds the first network interface whose assigned IP network
@@ -117,6 +120,22 @@ func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *Interface
 	return nil, fmt.Errorf("the interface %v has no IPv4 addresses", iface.Name)
 }
 
+// GetIfaceAddrOnSameNetworkAs returns the first interface address that is on the same network as addr.
+func GetIfaceAddrOnSameNetworkAs(interfaceProvider NetInterfaceProvider, addr netip.Addr, iface *Interface) (netip.Addr, error) {
+	ifaceAddrs := interfaceProvider.AddrsOf(iface)
+	if len(ifaceAddrs) < 1 {
+		return netip.Addr{}, fmt.Errorf("the interface %v has no IP addresses", iface.Name)
+	}
+
+	for _, ifaceAddr := range ifaceAddrs {
+		if ifaceAddr.Masked().Contains(addr) {
+			return ifaceAddr.Addr(), nil
+		}
+	}
+
+	return netip.Addr{}, fmt.Errorf("could not get interface address on the same network as: %v", addr.String())
+}
+
 // IPNetToPrefix converts a net.IPNet value into its netip.Prefix equivalent.
 //
 // It returns an error when the IP in ipnet cannot be converted to a valid
@@ -141,9 +160,9 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 
 // AddrSliceToPrefixSlice converts a slice of net.Addr to a slice of netip.Prefix.
 // It returns an error if any address is not an *net.IPNet or if conversion fails.
-func AddrSliceToPrefixSlice(addrs []net.Addr) ([]netip.Prefix, error) {
-	prefixes := make([]netip.Prefix, 0, len(addrs))
-	for _, addr := range addrs {
+func AddrSliceToPrefixSlice(ifaceAddrs []net.Addr) ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(ifaceAddrs))
+	for _, addr := range ifaceAddrs {
 		ipnet, ok := addr.(*net.IPNet)
 		if !ok {
 			return nil, fmt.Errorf("invalid IPNet")
