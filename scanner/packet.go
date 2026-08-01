@@ -85,6 +85,7 @@ func (pr *PcapPacketReceiver) Close() error {
 	for _, iface := range pr.ifaces {
 		iface.handle.Close()
 	}
+	clear(pr.ifaces)
 	return nil
 }
 
