@@ -3,6 +3,7 @@ package scanner
 import (
 	"fmt"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/google/gopacket/layers"
@@ -65,10 +66,11 @@ func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[neti
 
 func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResultsMap, error) {
 	pinger := NewPingScanner(PingScanOptions{
-		Targets:     targets,
-		PingTimeout: pingTimeout,
-		Workers:     workers,
-		PingCount:   pingCount,
+		Targets:       targets,
+		PingTimeout:   pingTimeout,
+		Workers:       workers,
+		PingCount:     pingCount,
+		ResultMapOnly: true,
 	})
 
 	_, err := pinger.Scan()
@@ -77,6 +79,24 @@ func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, p
 	}
 
 	return pinger.ResultMap(), nil
+}
+
+func getAllIfaceNames(ifaces []netutil.Interface) string {
+	sb := strings.Builder{}
+	switch len(ifaces) {
+	case 0:
+		return ""
+	case 1:
+		return ifaces[0].Name
+	}
+
+	sb.WriteString(ifaces[0].Name)
+	for _, iface := range ifaces[1:] {
+		sb.WriteString(", ")
+		sb.WriteString(iface.Name)
+	}
+
+	return sb.String()
 }
 
 func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Duration, printUpOnly bool, printOpenOnly bool) {

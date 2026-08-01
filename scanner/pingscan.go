@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"iter"
+	"maps"
 	"net/netip"
 	"os"
 	"runtime"
@@ -32,6 +34,7 @@ type PingScanOptions struct {
 	HostNames           map[netip.Addr]string
 	PingCount           int
 	SortResults         bool
+	ResultMapOnly       bool
 	PrintOnlyUp         bool
 }
 
@@ -100,8 +103,10 @@ func (s *PingScanner) Scan() (ScanResults, error) {
 			s.resultMap[host] = results
 		}
 	}
+	if !s.ResultMapOnly {
+		s.scanResults.HostResults = resultMapToSlice(s.resultMap, s.SortResults)
+	}
 
-	s.sortResults()
 	return &s.scanResults, err
 }
 
@@ -109,24 +114,35 @@ func (s *PingScanner) ResultMap() PingScanResultsMap {
 	return s.resultMap
 }
 
-func (s *PingScanner) sortResults() {
-	resultMap := s.resultMap
-	ipAddrs := make([]netip.Addr, 0, len(resultMap))
+func resultMapToSlice(m PingScanResultsMap, sort bool) []PingHostResult {
+	var ipAddrs iter.Seq[netip.Addr]
 
-	for addr := range resultMap {
-		ipAddrs = append(ipAddrs, addr)
+	if sort {
+		ips := make([]netip.Addr, 0, len(m))
+		for addr := range m {
+			ips = append(ips, addr)
+		}
+
+		slices.SortFunc(ips, func(a, b netip.Addr) int {
+			return a.Compare(b)
+		})
+		ipAddrs = func(yield func(netip.Addr) bool) {
+			for _, addr := range ips {
+				if !yield(addr) {
+					return
+				}
+			}
+		}
+	} else {
+		ipAddrs = maps.Keys(m)
 	}
 
-	slices.SortFunc(ipAddrs, func(a, b netip.Addr) int {
-		return a.Compare(b)
-	})
-
-	sortedResults := make([]PingHostResult, 0, len(resultMap))
-	for _, addr := range ipAddrs {
-		sortedResults = append(sortedResults, resultMap[addr])
+	results := make([]PingHostResult, 0, len(m))
+	for addr := range ipAddrs {
+		results = append(results, m[addr])
 	}
 
-	s.scanResults.HostResults = sortedResults
+	return results
 }
 
 func (r *PingScanResults) Print() {
@@ -151,6 +167,7 @@ func (s *PingScanner) runPing() error {
 	jobs := make(chan PingScanJob, s.Workers)
 	workerResultsChan := make(chan PingHostResult, s.Workers)
 	wg := &sync.WaitGroup{}
+	// start workers
 	for range s.Workers {
 		wg.Add(1)
 		go pingHost(s, wg, jobs, workerResultsChan)
@@ -160,8 +177,7 @@ func (s *PingScanner) runPing() error {
 	defer cancel()
 
 	scanResultsChan := make(chan PingScanResultsMap)
-	// start workers
-	go getPingScanResults(ctx, s, workerResultsChan, scanResultsChan)
+	go s.getPingScanResults(ctx, workerResultsChan, scanResultsChan)
 
 	// send jobs
 	for _, target := range s.Targets {
@@ -218,7 +234,7 @@ func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, r
 	}
 }
 
-func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResultsChan chan PingHostResult, scanResultsChan chan PingScanResultsMap) {
+func (s *PingScanner) getPingScanResults(ctx context.Context, workerResultsChan chan PingHostResult, scanResultsChan chan PingScanResultsMap) {
 	// To Be Run By Main Worker (aggregator)
 	scanResults := make(map[netip.Addr]PingHostResult)
 	defer func() {
@@ -232,12 +248,12 @@ func getPingScanResults(ctx context.Context, scanner *PingScanner, workerResults
 			if !ok {
 				return // stop when channel is closed
 			}
-			scanner.scanResults.TotalHosts++
+			s.scanResults.TotalHosts++
 			switch result.HostState {
 			case HostStateDown:
-				scanner.scanResults.DownHosts++
+				s.scanResults.DownHosts++
 			case HostStateUp:
-				scanner.scanResults.UpHosts++
+				s.scanResults.UpHosts++
 			}
 			scanResults[result.IP] = result
 		}

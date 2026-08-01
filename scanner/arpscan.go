@@ -373,21 +373,3 @@ func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendo
 	fmt.Println("Packets Received:   ", arpStats.PacketsReceived)
 	fmt.Println("Hosts Found:        ", len(arpResults.HostResults))
 }
-
-func getAllIfaceNames(ifaces []netutil.Interface) string {
-	sb := strings.Builder{}
-	switch len(ifaces) {
-	case 0:
-		return ""
-	case 1:
-		return ifaces[0].Name
-	}
-
-	sb.WriteString(ifaces[0].Name)
-	for _, iface := range ifaces[1:] {
-		sb.WriteString(", ")
-		sb.WriteString(iface.Name)
-	}
-
-	return sb.String()
-}
