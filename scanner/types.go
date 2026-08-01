@@ -5,9 +5,14 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
+	"slices"
 	"time"
+
+	"github.com/google/gopacket"
+	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 type (
@@ -91,6 +96,10 @@ func (p PortState) String() string {
 	}
 }
 
+func (p PortState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
+}
+
 func (s HostState) String() string {
 	switch s {
 	case HostStateUp:
@@ -100,14 +109,6 @@ func (s HostState) String() string {
 	default:
 		return "unknown"
 	}
-}
-
-func (m MAC) String() string {
-	return net.HardwareAddr(m).String()
-}
-
-func (p PortState) MarshalJSON() ([]byte, error) {
-	return json.Marshal(p.String())
 }
 
 func (s HostState) MarshalJSON() ([]byte, error) {
@@ -122,10 +123,52 @@ func (s HostResults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(vals)
 }
 
+func (s HostResult) TotalNumberOfPorts() int {
+	return s.OpenPorts + s.ClosedPorts + s.FilteredPorts
+}
+
+func (m MAC) String() string {
+	return net.HardwareAddr(m).String()
+}
+
 func (m MAC) MarshalJSON() ([]byte, error) {
 	return json.Marshal(net.HardwareAddr(m).String())
 }
 
-func (s HostResult) TotalNumberOfPorts() int {
-	return s.OpenPorts + s.ClosedPorts + s.FilteredPorts
+func (m MAC) IsZero() bool {
+	zeroMac := MAC{0, 0, 0, 0, 0, 0}
+
+	return slices.Equal(m, zeroMac)
+}
+
+var ErrCouldNotGetMAC = fmt.Errorf("could not find the mac address for the given address")
+
+// PacketSenderType identifies the implementation used to transmit packets.
+type PacketSenderType int
+
+const (
+	// PacketSenderTypePcap sends packets using libpcap.
+	PacketSenderTypePcap PacketSenderType = iota
+
+	// PacketSenderTypeLinkLayer sends packets using Linux AF_PACKET raw sockets.
+	PacketSenderTypeLinkLayer
+
+	// PacketSenderTypeIPLayer sends packets using Linux AF_INET/AF_INET6 raw sockets.
+	PacketSenderTypeIPLayer
+)
+
+type PacketSender interface {
+	Type() PacketSenderType
+
+	SendPacket(packet []byte, iface *netutil.Interface) error
+
+	io.Closer
+}
+
+type PacketReceiver interface {
+	Packets() <-chan gopacket.Packet
+
+	AddReceivingInterface(iface netutil.Interface) error
+
+	io.Closer
 }

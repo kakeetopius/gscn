@@ -36,6 +36,7 @@ type NDPScanOptions struct {
 	AddUnknownHostNames bool
 	FromCache           bool
 	Workers             int
+	Verbose             bool
 }
 
 type NDPScanResults struct {
@@ -48,9 +49,10 @@ type NDPScanResults struct {
 
 type NDPHostResult struct {
 	IPAddr   netip.Addr `json:"ip"`
-	MacAddr  string     `json:"mac"`
+	MacAddr  MAC        `json:"mac"`
 	HostName string     `json:"hostname"`
 	Vendor   string     `json:"vendor"`
+	IsRouter bool
 }
 
 type NDPScanStats struct {
@@ -66,7 +68,7 @@ func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
 	return &NDPScanner{
 		NDPScanOptions: opts,
 		results:        NDPScanResults{},
-		logger:         log.NewLogger(true),
+		logger:         log.NewLogger(opts.Verbose),
 	}
 }
 
@@ -121,7 +123,7 @@ func (s *NDPScanner) addResultInfo() error {
 	defer cancel()
 	for i := range resultSet.HostResults {
 		if s.WithVendorInfo {
-			resultSet.HostResults[i].Vendor = netutil.MACVendor(resultSet.HostResults[i].MacAddr)
+			resultSet.HostResults[i].Vendor = netutil.MACVendor(resultSet.HostResults[i].MacAddr.String())
 		}
 		if s.AddUnknownHostNames {
 			resultSet.HostResults[i].HostName = netutil.ReverseLookup(ctx, resultSet.HostResults[i].IPAddr.String())
@@ -164,7 +166,13 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	packetSender, err := NewPacketSender(ctx)
+	var packetSender PacketSender
+	var err error
+	if runtime.GOOS == "linux" {
+		packetSender, err = GetPacketSender(ctx, PacketSenderTypeLinkLayer)
+	} else {
+		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -306,9 +314,9 @@ func getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiv
 
 			var result NDPHostResult
 			result.IPAddr = srcIP
-			result.MacAddr = hwAddr.String()
+			result.MacAddr = MAC(hwAddr)
 			if icmpPacket.Router() {
-				result.MacAddr = fmt.Sprintf("%v (router)", hwAddr)
+				result.IsRouter = true
 			}
 			hostResults = append(hostResults, result)
 		}
@@ -339,7 +347,7 @@ func ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) ([
 		if netutil.AddrIsPartOfNetworks(targets, &addr) {
 			results = append(results, NDPHostResult{
 				IPAddr:  addr,
-				MacAddr: neigh.HwAddr.String(),
+				MacAddr: MAC(neigh.HwAddr),
 				Vendor:  netutil.MACVendor(neigh.HwAddr.String()),
 			})
 		}
@@ -391,7 +399,13 @@ func displayNDPResults(ndpResults *NDPScanResults, withVendorInfo bool, withHost
 		}
 
 		for _, result := range ndpResults.HostResults {
-			row := []string{result.IPAddr.String(), result.MacAddr}
+			row := []string{result.IPAddr.String(), ""}
+			if result.IsRouter {
+				row[1] = fmt.Sprintf("%s (router)", result.MacAddr.String())
+			} else {
+				row[1] = result.MacAddr.String()
+			}
+
 			if withVendorInfo {
 				vendor := result.Vendor
 				if vendor == "" {

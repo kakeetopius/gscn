@@ -250,10 +250,10 @@ func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan ch
 			case PortStateOpen:
 				hostResult.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
 				hostResult.OpenPorts++
-			case PortStateClosed:
-				hostResult.ClosedPorts++
+				hostResult.ClosedPorts--
 			case PortStatePossibleFilter:
 				hostResult.FilteredPorts++
+				hostResult.ClosedPorts--
 			}
 
 			s.results.HostResults[hostIP] = hostResult

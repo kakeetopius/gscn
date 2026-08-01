@@ -10,8 +10,11 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/endobit/oui"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
@@ -20,6 +23,8 @@ type Interface struct {
 	// PcapName is the interface's name that can be used by pcap.OpenLive() function to set up a pcap handle. On linux it is the same as the Name field
 	// in net.Interface but on Windows it is different.
 	PcapName string
+
+	LinkType layers.LinkType
 
 	net.Interface
 
@@ -287,4 +292,28 @@ func ReverseLookup(ctx context.Context, addr string) string {
 		return names[0]
 	}
 	return ""
+}
+
+func GetLinktypeOf(pcapName string) (layers.LinkType, error) {
+	handle, err := pcap.OpenLive(pcapName, 1, false, time.Millisecond)
+	if err != nil {
+		return 0, err
+	}
+	defer handle.Close()
+	return handle.LinkType(), nil
+}
+
+func LoobackInterface(p NetInterfaceProvider) (*Interface, error) {
+	ifaces, err := p.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			return &iface, nil
+		}
+	}
+
+	return nil, fmt.Errorf("could not find the loopback interface")
 }

@@ -41,11 +41,18 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		if err != nil {
 			continue
 		}
-		ifaces = append(ifaces, Interface{
+		iface := Interface{
 			PcapName:  dev.Name,
 			Interface: netIface,
 			addresses: addrs,
-		})
+		}
+
+		linkType, err := GetLinktypeOf(iface.PcapName)
+		if err != nil {
+			return nil, err
+		}
+		iface.LinkType = linkType
+		ifaces = append(ifaces, iface)
 	}
 
 	r.interfaces = ifaces
@@ -76,11 +83,16 @@ func (*RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error
 	if err != nil {
 		return nil, err
 	}
+	linkType, err := GetLinktypeOf(pcapIface.Name)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Interface{
 		PcapName:  pcapIface.Name,
 		Interface: *iface,
 		addresses: prefixAddrs,
+		LinkType:  linkType,
 	}, nil
 }
 
@@ -104,10 +116,15 @@ func (*RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error)
 		return nil, err
 	}
 
+	linkType, err := GetLinktypeOf(pcapIface.Name)
+	if err != nil {
+		return nil, err
+	}
 	return &Interface{
 		PcapName:  pcapIface.Name,
 		Interface: *iface,
 		addresses: prefixAddrs,
+		LinkType:  linkType,
 	}, nil
 }
 

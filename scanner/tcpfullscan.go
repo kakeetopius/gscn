@@ -187,8 +187,7 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 			case PortStateOpen:
 				hostResult.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
 				hostResult.OpenPorts++
-			case PortStateClosed:
-				hostResult.ClosedPorts++
+				hostResult.ClosedPorts--
 			}
 
 			s.results.HostResults[hostIP] = hostResult

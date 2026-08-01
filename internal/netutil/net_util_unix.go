@@ -31,11 +31,18 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		if err != nil {
 			return nil, err
 		}
-		interfaces = append(interfaces, Interface{
+		netIface := Interface{
 			PcapName:  iface.Name,
 			Interface: iface,
 			addresses: prefixes,
-		})
+		}
+		linktype, err := GetLinktypeOf(netIface.PcapName)
+		if err != nil {
+			return nil, err
+		}
+		netIface.LinkType = linktype
+
+		interfaces = append(interfaces, netIface)
 	}
 
 	r.interfaces = interfaces
@@ -43,11 +50,11 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 	return interfaces, nil
 }
 
-func (RealNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
+func (*RealNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
 	return iface.addresses
 }
 
-func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
+func (*RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
 	netIface, neterr := net.InterfaceByName(name)
 	if neterr != nil {
 		return nil, neterr
@@ -60,14 +67,20 @@ func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error)
 	if err != nil {
 		return nil, err
 	}
+	linkType, err := GetLinktypeOf(netIface.Name)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Interface{
 		PcapName:  netIface.Name,
 		Interface: *netIface,
 		addresses: prefixes,
+		LinkType:  linkType,
 	}, nil
 }
 
-func (RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
+func (*RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
 	netIface, neterr := net.InterfaceByIndex(index)
 	if neterr != nil {
 		return nil, neterr
@@ -80,9 +93,14 @@ func (RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) 
 	if err != nil {
 		return nil, err
 	}
+	linkType, err := GetLinktypeOf(netIface.Name)
+	if err != nil {
+		return nil, err
+	}
 	return &Interface{
 		PcapName:  netIface.Name,
 		Interface: *netIface,
 		addresses: prefixes,
+		LinkType:  linkType,
 	}, nil
 }

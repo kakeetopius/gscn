@@ -203,8 +203,13 @@ func (s *PingScanner) runPing() error {
 
 func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingHostResult) {
 	// To be run by workers
+	setprivileged := true
+
 	defer wg.Done()
-	setprivileged := runtime.GOOS == "linux" && os.Geteuid() == 0
+
+	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
+		setprivileged = false
+	}
 
 	for job := range jobs {
 		pinger := probing.New(job.Target.String())
