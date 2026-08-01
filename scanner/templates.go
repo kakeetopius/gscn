@@ -60,6 +60,19 @@ Total Hosts Scanned: {{ .TotalNumOfHosts }}
 Scan Duration:       {{ .ScanTime }}
 `
 
+var TCPSynScanResultsTemplate = `
+TCP Full Scan Results
+=====================
+{{- range .HostResults }}
+{{ template "host_result" . }}
+{{- end }}
+
+Stats
+-----
+Total Hosts Scanned: {{ .TotalNumOfHosts }}
+Scan Duration:       {{ .ScanTime }}
+`
+
 var UDPScanResultsTemplate = `
 UDP Scan Results
 ================
