@@ -193,12 +193,12 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 		networkAddr := ipToScan
 		broadCast := broadCastAddr(targetNet)
 
-		iface, srcIP, err := router.Lookup(ipToScan)
+		route, err := router.Lookup(ipToScan)
 		if err != nil {
 			return nil, err
 		}
 
-		packetReceiver.AddReceivingInterface(iface)
+		packetReceiver.AddReceivingInterface(route.Interface)
 
 		for targetNet.Contains(ipToScan) {
 			if (ipToScan == networkAddr || ipToScan == broadCast) && !targetNet.IsSingleIP() {
@@ -206,7 +206,7 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 				continue
 			}
 
-			err = sendArpPacket(packetSender, &iface, srcIP, ipToScan)
+			err = sendArpPacket(packetSender, &route.Interface, route.SrcAddr, ipToScan)
 			if err != nil {
 				return nil, err
 			}

@@ -190,14 +190,14 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
 
-		iface, srcIP, err := router.Lookup(IPaddr.WithZone(s.Interface.Name))
+		route, err := router.Lookup(IPaddr.WithZone(s.Interface.Name))
 		if err != nil {
 			return nil, err
 		}
-		packetReceiver.AddReceivingInterface(iface)
+		packetReceiver.AddReceivingInterface(route.Interface)
 
 		for target.Contains(IPaddr) {
-			err := sendNSPacket(packetSender, &iface, srcIP, IPaddr)
+			err := sendNSPacket(packetSender, &route.Interface, route.SrcAddr, IPaddr)
 			if err != nil {
 				return nil, err
 			}
