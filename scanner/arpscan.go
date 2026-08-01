@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -32,6 +33,7 @@ type ARPScanOptions struct {
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
 	Workers             int
+	Verbose             bool
 }
 
 type ARPScanResults struct {
@@ -62,7 +64,7 @@ func NewARPScanner(opts ARPScanOptions) *ARPScanner {
 	return &ARPScanner{
 		ARPScanOptions: opts,
 		results:        ARPScanResults{},
-		logger:         log.NewLogger(true),
+		logger:         log.NewLogger(opts.Verbose),
 	}
 }
 
@@ -156,13 +158,19 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 	startSending := make(chan struct{})
 	numHosts := netutil.HostsInIP4Network(opts.Targets)
 
-	packetSender, err := NewPacketSender(ctx)
+	var packetSender PacketSender
+	var err error
+	if runtime.GOOS == "linux" {
+		packetSender, err = GetPacketSender(ctx, PacketSenderTypeLinkLayer)
+	} else {
+		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer packetSender.Close()
 
-	packetReceiver, err := NewPacketReceiver(ctx, "arp", numHosts, s.Interfaces...)
+	packetReceiver, err := NewPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
 	if err != nil {
 		return nil, err
 	}
@@ -176,11 +184,14 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 		s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(opts.Interfaces))
 	}
 
-	bar, err := pterm.DefaultProgressbar.WithTotal(int(numHosts)).Start()
-	if err != nil {
-		return nil, err
+	bar := pterm.DefaultProgressbar.WithTotal(int(numHosts))
+	if opts.Verbose {
+		bar, err = bar.Start()
+		if err != nil {
+			return nil, err
+		}
+		defer bar.Stop()
 	}
-	defer bar.Stop()
 
 	router, err := route.NewRouter()
 	if err != nil {
