@@ -1,50 +1,98 @@
 package route
 
 import (
-	"fmt"
-	"net"
 	"net/netip"
 
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 func NewRouter() (Router, error) {
+	rt, err := getRoutingTable()
+	if err != nil {
+		return nil, err
+	}
 	return generalRouter{
 		ifaceProvider: &netutil.RealNetInterfaceProvider{},
+		table:         rt,
 	}, nil
 }
 
 type generalRouter struct {
+	table         routingTable
 	ifaceProvider netutil.NetInterfaceProvider
 }
 
-func (r generalRouter) Lookup(dst netip.Addr) (netutil.Interface, netip.Addr, error) {
-	proto := "udp4"
-	if dst.Is6() {
-		proto = "udp6"
+func (r generalRouter) Lookup(dst netip.Addr) (Route, error) {
+	var best *Route
+
+	var expectedIfaceIndex *int
+	if dst.Zone() != "" {
+		iface, err := r.ifaceProvider.InterfaceByName(dst.Zone())
+		if err != nil {
+			return Route{}, err
+		}
+		expectedIfaceIndex = &iface.Index
+
+		dst = dst.WithZone("") // strip the zone
 	}
 
-	addrPort := netip.AddrPortFrom(dst, 69)
+	for _, route := range r.table {
+		if !route.Network.Contains(dst) {
+			// If the destination address is not within this route's network.
+			continue
+		}
 
-	conn, err := net.Dial(proto, addrPort.String())
-	if err != nil {
-		return netutil.Interface{}, netip.Addr{}, err
+		if best != nil {
+			if hasLongerPrefix(best.Network, route.Network) {
+				// if current best route is more specific than this route
+				continue
+			}
+			if haveEqualPrefix(route.Network, best.Network) && route.Metric >= best.Metric {
+				// Same prefix length, but this route has a higher or equal metric.
+				continue
+			}
+		}
+
+		if expectedIfaceIndex != nil && route.IfIndex != *expectedIfaceIndex {
+			// if the ipv6 zone (network interface) given differs from the current route's interface.
+			continue
+		}
+
+		iface, err := r.ifaceProvider.InterfaceByIndex(route.IfIndex)
+		if err != nil {
+			return Route{}, err
+		}
+		best = &Route{
+			Network:   route.Network,
+			NextHop:   route.Gateway,
+			Interface: *iface,
+			Metric:    route.Metric,
+		}
+
+		if route.Gateway == netip.IPv4Unspecified() || route.Gateway == netip.IPv6Unspecified() {
+			// the route is for a directly connected network.
+			best.NextHop = dst
+			best.DirectlyConnected = true
+		}
+
+		srcAddr, err := netutil.GetIfaceAddrOnSameNetworkAs(r.ifaceProvider, best.NextHop, &best.Interface)
+		if err != nil {
+			return Route{}, err
+		}
+		best.SrcAddr = srcAddr
 	}
 
-	srcIP, ok := conn.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		return netutil.Interface{}, netip.Addr{}, fmt.Errorf("could not get route for %s", dst.String())
+	if best == nil {
+		return Route{}, ErrRouteNotFound{DstIP: dst}
 	}
 
-	srcAddr, ok := netip.AddrFromSlice(srcIP.IP)
-	if !ok {
-		return netutil.Interface{}, netip.Addr{}, fmt.Errorf("could not get route for: %s", dst.String())
-	}
+	return *best, nil
+}
 
-	iface, err := netutil.GetIfaceByIP(r.ifaceProvider, srcAddr)
-	if err != nil {
-		return netutil.Interface{}, netip.Addr{}, err
-	}
+func hasLongerPrefix(a, b netip.Prefix) bool {
+	return a.Bits() > b.Bits()
+}
 
-	return *iface, srcAddr, nil
+func haveEqualPrefix(a, b netip.Prefix) bool {
+	return a.Bits() == b.Bits()
 }

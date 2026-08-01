@@ -3,6 +3,9 @@ package scanner
 import (
 	"net/netip"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTargetsFromString(t *testing.T) {
@@ -195,27 +198,15 @@ func TestTargetsFromString(t *testing.T) {
 			got, err := TargetsFromString(tt.input)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got nil (result: %v)", got)
-				}
+				require.Error(t, err)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
-			if !allValid(got) {
-				t.Errorf("result contains invalid prefixes: %v", got)
-			}
-
-			if len(got) != tt.wantLen {
-				t.Errorf("len = %d, want %d (result: %v)", len(got), tt.wantLen, got)
-			}
-
-			if hasDuplicates(got) {
-				t.Errorf("result contains duplicates: %v", got)
-			}
+			assert.True(t, allValid(got), "result contains invalid prefixes: %v", got)
+			assert.Len(t, got, tt.wantLen)
+			assert.False(t, hasDuplicates(got), "result contains duplicates: %v", got)
 		})
 	}
 }
@@ -359,27 +350,15 @@ func TestTargetsFromStringWithDNSLookup(t *testing.T) {
 			prefixes, hosts, err := TargetsFromStringWithDNSLookup(tt.input)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got nil (prefixes: %v, hosts: %v)", prefixes, hosts)
-				}
+				require.Error(t, err)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
-			if !allValid(prefixes) {
-				t.Errorf("result contains invalid prefixes: %v", prefixes)
-			}
-
-			if len(prefixes) != tt.wantLen {
-				t.Errorf("prefix count = %d, want = %d (prefixes: %v)", len(prefixes), tt.wantLen, prefixes)
-			}
-
-			if len(hosts) != tt.wantHosts {
-				t.Errorf("hostname map len = %d, want = %d (hosts: %v)", len(hosts), tt.wantHosts, hosts)
-			}
+			assert.True(t, allValid(prefixes), "result contains invalid prefixes: %v", prefixes)
+			assert.Len(t, prefixes, tt.wantLen)
+			assert.Len(t, hosts, tt.wantHosts)
 
 			// Hostname values in map
 			for _, wantedHost := range tt.checkHostnames {
@@ -395,9 +374,7 @@ func TestTargetsFromStringWithDNSLookup(t *testing.T) {
 				}
 			}
 
-			if hasDuplicates(prefixes) {
-				t.Errorf("result contains duplicate prefixes: %v", prefixes)
-			}
+			assert.False(t, hasDuplicates(prefixes), "result contains duplicate prefixes: %v", prefixes)
 		})
 	}
 }
@@ -619,18 +596,14 @@ func TestPortsFromString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := PortsFromString(tt.input)
+			_, err := PortsFromString(tt.input)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got nil (result: %v)", got)
-				}
+				require.Error(t, err)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			// if got.Len() != len(tt.wantPorts) {
 			// 	t.Fatalf("len = %d, want %d\n  got:  %v\n  full: %v", len(got), len(tt.wantPorts), got, tt.wantPorts)
