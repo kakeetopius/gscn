@@ -60,6 +60,7 @@ func discoverArpCmd() *cobra.Command {
 				return err
 			}
 			opts.Interfaces = ifaces
+			opts.Verbose = true
 
 			arpScanner := scanner.NewARPScanner(opts)
 
@@ -111,6 +112,7 @@ func discoverNDPCmd() *cobra.Command {
 				return err
 			}
 			opts.Targets = targets
+			opts.Verbose = true
 
 			ifaces, err := getDiscoverInterfaces([]string{iface})
 			if err != nil {
