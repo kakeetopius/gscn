@@ -66,3 +66,23 @@ func (RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error)
 		addresses: prefixes,
 	}, nil
 }
+
+func (RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
+	netIface, neterr := net.InterfaceByIndex(index)
+	if neterr != nil {
+		return nil, neterr
+	}
+	addrs, err := netIface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	prefixes, err := AddrSliceToPrefixSlice(addrs)
+	if err != nil {
+		return nil, err
+	}
+	return &Interface{
+		PcapName:  netIface.Name,
+		Interface: *netIface,
+		addresses: prefixes,
+	}, nil
+}

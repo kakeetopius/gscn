@@ -84,6 +84,33 @@ func (*RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error
 	}, nil
 }
 
+func (*RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
+	iface, err := net.InterfaceByIndex(index)
+	if err != nil {
+		return nil, err
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	// convert from a []net.Addr to a []netip.Prefix
+	prefixAddrs, err := AddrSliceToPrefixSlice(addrs)
+	if err != nil {
+		return nil, err
+	}
+
+	pcapIface, err := pcapInterfaceFromAddrs(prefixAddrs) // it is needed coz the pcap.Interface has the special Name required for opening a pcap handle for sending packets.
+	if err != nil {
+		return nil, err
+	}
+
+	return &Interface{
+		PcapName:  pcapIface.Name,
+		Interface: *iface,
+		addresses: prefixAddrs,
+	}, nil
+}
+
 // pcapInterfaceAddressSliceToPrefixSlice converts a slice of pcap.InterfaceAddress to netip.Prefix.
 // It skips any addresses that fail conversion and returns the successfully converted prefixes.
 func pcapInterfaceAddressSliceToPrefixSlice(addrs []pcap.InterfaceAddress) []netip.Prefix {
