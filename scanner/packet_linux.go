@@ -15,6 +15,7 @@ type LinuxPacketSender struct {
 	ctx               context.Context
 	sendChannel       chan linuxPacket
 	socketFD          int
+	senderFinished    chan struct{}
 	generalSocketAddr unix.SockaddrLinklayer
 }
 
@@ -49,6 +50,7 @@ func NewLinuxPacketSender(ctx context.Context) (*LinuxPacketSender, error) {
 		socketFD:          sockfd,
 		generalSocketAddr: addr,
 		sendChannel:       make(chan linuxPacket, 1500*4),
+		senderFinished:    make(chan struct{}),
 		ctx:               ctx,
 	}
 
@@ -59,6 +61,11 @@ func NewLinuxPacketSender(ctx context.Context) (*LinuxPacketSender, error) {
 
 func (ps *LinuxPacketSender) Type() PacketSenderType {
 	return PacketSenderTypeLinkLayer
+}
+
+func (ps *LinuxPacketSender) Wait() {
+	close(ps.sendChannel)
+	<-ps.senderFinished
 }
 
 func (ps *LinuxPacketSender) SendPacket(packetData []byte, iface *netutil.Interface) error {
@@ -74,11 +81,13 @@ func (ps *LinuxPacketSender) SendPacket(packetData []byte, iface *netutil.Interf
 }
 
 func (ps *LinuxPacketSender) Close() error {
-	close(ps.sendChannel)
 	return unix.Close(ps.socketFD)
 }
 
 func (ps *LinuxPacketSender) startSender() {
+	defer func() {
+		ps.senderFinished <- struct{}{}
+	}()
 	for {
 		select {
 		case <-ps.ctx.Done():
@@ -93,10 +102,11 @@ func (ps *LinuxPacketSender) startSender() {
 }
 
 type LinuxRawIPSender struct {
-	ctx         context.Context
-	sendChannel chan linuxIPPacket
-	ipv4Sock    int
-	ipv6Sock    int
+	ctx            context.Context
+	sendChannel    chan linuxIPPacket
+	ipv4Sock       int
+	ipv6Sock       int
+	senderFinished chan struct{}
 }
 
 type linuxIPPacket struct {
@@ -121,10 +131,11 @@ func NewLinuxRawIPSender(ctx context.Context) (*LinuxRawIPSender, error) {
 	}
 
 	ps := &LinuxRawIPSender{
-		ipv4Sock:    ipv4Sock,
-		ipv6Sock:    ipv6Sock,
-		sendChannel: make(chan linuxIPPacket, 1500*4),
-		ctx:         ctx,
+		ipv4Sock:       ipv4Sock,
+		ipv6Sock:       ipv6Sock,
+		sendChannel:    make(chan linuxIPPacket, 1500*4),
+		senderFinished: make(chan struct{}),
+		ctx:            ctx,
 	}
 
 	go ps.startSender()
@@ -144,13 +155,21 @@ func (ps *LinuxRawIPSender) SendPacket(packetData []byte, _ *netutil.Interface) 
 	return nil
 }
 
-func (ps *LinuxRawIPSender) Close() error {
+func (ps *LinuxRawIPSender) Wait() {
 	close(ps.sendChannel)
+	<-ps.senderFinished
+}
+
+func (ps *LinuxRawIPSender) Close() error {
 	unix.Close(ps.ipv4Sock)
 	return unix.Close(ps.ipv6Sock)
 }
 
 func (ps *LinuxRawIPSender) startSender() {
+	defer func() {
+		ps.senderFinished <- struct{}{}
+	}()
+
 	for {
 		select {
 		case <-ps.ctx.Done():
