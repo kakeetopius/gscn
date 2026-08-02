@@ -150,7 +150,7 @@ func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) err
 	pr.ifaces[iface.Index] = receivingIface
 
 	if pr.isAlreadyReceiving {
-		go capturePacketsOnInterface(pr.ctx, receivingIface, pr.packetChan)
+		go pr.capturePacketsOnInterface(receivingIface)
 	}
 
 	return nil
@@ -161,37 +161,38 @@ func (pr *PcapPacketReceiver) Close() error {
 		return nil
 	}
 
+	pr.closed = true
 	for _, iface := range pr.ifaces {
 		iface.handle.Close() // closing the handle will force interface packet channels to also be closed
 	}
 	clear(pr.ifaces)
 	close(pr.packetChan)
-
-	pr.closed = true
 	return nil
 }
 
 func (pr *PcapPacketReceiver) Packets() <-chan gopacket.Packet {
 	for _, iface := range pr.ifaces {
-		go capturePacketsOnInterface(pr.ctx, iface, pr.packetChan)
+		go pr.capturePacketsOnInterface(iface)
 	}
 	pr.isAlreadyReceiving = true
 	return pr.packetChan
 }
 
-func capturePacketsOnInterface(ctx context.Context, iface receivingInterface, packetChan chan<- gopacket.Packet) {
+func (pr *PcapPacketReceiver) capturePacketsOnInterface(iface receivingInterface) {
 	packetSource := gopacket.NewPacketSource(iface.handle, iface.handle.LinkType())
 	ifacePacketChan := packetSource.Packets()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-pr.ctx.Done():
 			return
 		case packet, ok := <-ifacePacketChan:
 			if !ok {
 				return
 			}
-			packetChan <- packet
+			if !pr.closed {
+				pr.packetChan <- packet
+			}
 		}
 	}
 }
