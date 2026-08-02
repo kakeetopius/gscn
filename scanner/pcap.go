@@ -25,7 +25,7 @@ type packet struct {
 func NewPcapPacketSender(ctx context.Context) *PcapPacketSender {
 	ps := &PcapPacketSender{
 		handles:     make(map[int]*pcap.Handle),
-		sendChannel: make(chan packet, 1500),
+		sendChannel: make(chan packet, 1500*4),
 		mu:          sync.RWMutex{},
 		ctx:         ctx,
 	}

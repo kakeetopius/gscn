@@ -2,6 +2,7 @@ package route
 
 import (
 	"net/netip"
+	"sync"
 
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
@@ -11,18 +12,27 @@ func NewRouter() (Router, error) {
 	if err != nil {
 		return nil, err
 	}
-	return generalRouter{
+	return &generalRouter{
 		ifaceProvider: &netutil.RealNetInterfaceProvider{},
 		table:         rt,
+		cache:         make(map[netip.Addr]Route),
 	}, nil
 }
 
 type generalRouter struct {
 	table         routingTable
 	ifaceProvider netutil.NetInterfaceProvider
+	cache         map[netip.Addr]Route
+	cacheMu       sync.Mutex
 }
 
-func (r generalRouter) Lookup(dst netip.Addr) (Route, error) {
+func (r *generalRouter) Lookup(dst netip.Addr) (Route, error) {
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+
+	if route, found := r.cache[dst]; found {
+		return route, nil
+	}
 	var best *Route
 
 	var expectedIfaceIndex *int
@@ -86,6 +96,7 @@ func (r generalRouter) Lookup(dst netip.Addr) (Route, error) {
 		return Route{}, ErrRouteNotFound{DstIP: dst}
 	}
 
+	r.cache[dst] = *best
 	return *best, nil
 }
 
