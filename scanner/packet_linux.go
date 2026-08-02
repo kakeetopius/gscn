@@ -48,7 +48,7 @@ func NewLinuxPacketSender(ctx context.Context) (*LinuxPacketSender, error) {
 	ps := &LinuxPacketSender{
 		socketFD:          sockfd,
 		generalSocketAddr: addr,
-		sendChannel:       make(chan linuxPacket, 1500),
+		sendChannel:       make(chan linuxPacket, 1500*4),
 		ctx:               ctx,
 	}
 
@@ -123,7 +123,7 @@ func NewLinuxRawIPSender(ctx context.Context) (*LinuxRawIPSender, error) {
 	ps := &LinuxRawIPSender{
 		ipv4Sock:    ipv4Sock,
 		ipv6Sock:    ipv6Sock,
-		sendChannel: make(chan linuxIPPacket, 1500),
+		sendChannel: make(chan linuxIPPacket, 1500*4),
 		ctx:         ctx,
 	}
 

@@ -28,6 +28,7 @@ type TCPSynScanner struct {
 	hostStates    PingScanResultsMap
 	ifaceProvider netutil.NetInterfaceProvider
 	logger        log.Logger
+	router        route.Router
 
 	resolveCache map[netip.Addr]MAC
 	cacheMu      sync.RWMutex
@@ -77,8 +78,14 @@ func NewTCPSynScanner(opts TCPSynScanOptions) *TCPSynScanner {
 }
 
 func (s *TCPSynScanner) Scan() (ScanResults, error) {
+	router, err := route.NewRouter()
+	if err != nil {
+		return nil, err
+	}
+	s.router = router
+
 	startTime := time.Now()
-	err := s.runTCPSynScan()
+	err = s.runTCPSynScan()
 	if err != nil {
 		return nil, err
 	}
@@ -283,20 +290,16 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 }
 
 func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, packetSender PacketSender) {
+	// to be run by workers
 	defer func() {
 		wg.Done()
 	}()
-	router, err := route.NewRouter()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
 
 	for job := range jobs {
 		portNum := job.target.Port()
 		addr := job.target.Addr()
 
-		route, err := router.Lookup(addr)
+		route, err := s.router.Lookup(addr)
 		if err != nil {
 			continue
 		}
