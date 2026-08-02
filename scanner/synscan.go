@@ -126,8 +126,6 @@ func (r *TCPSynScanResults) String() string {
 }
 
 func (s *TCPSynScanner) runTCPSynScan() error {
-	numWorkers := s.Workers
-
 	if len(s.Targets) == 0 {
 		return fmt.Errorf("no hosts to scan provided")
 	}
@@ -177,9 +175,9 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 
 	go s.getTCPSynScanResults(ctx, packetReceiver)
 
-	jobs := make(chan PortScanJob, numWorkers)
+	jobs := make(chan PortScanJob, s.Workers)
 	wg := &sync.WaitGroup{}
-	for range numWorkers {
+	for range s.Workers {
 		wg.Add(1)
 		go s.synScanTCPPort(wg, jobs, packetSender)
 	}
@@ -187,12 +185,13 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	senderDone := make(chan struct{})
 	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 	<-senderDone // wait for sender to send all jobs
+	close(senderDone)
 
-	close(jobs) // wait for all to workers to finish
-	wg.Wait()
+	close(jobs)
+	wg.Wait() // wait for all to workers to finish
 
 	<-time.After(s.ResponseTimeout) // wait for the response timeout
-	cancel()
+	cancel()                        // tell main worker to stop
 
 	return nil
 }

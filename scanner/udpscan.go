@@ -155,11 +155,14 @@ func (s *UDPScanner) runUDPScan() error {
 	go s.getUDPScanResults(ctx, workerResultsChan)
 
 	<-senderDone // wait for sender to send all jobs
+	close(senderDone)
 
 	close(jobs) // wait for all the workers to finish
 	wg.Wait()
 
-	close(workerResultsChan) // tell the main Woker to stop
+	close(workerResultsChan)
+	<-time.After(s.ResponseTimeout) // wait for the specified response timeout
+	cancel()                        // tell the main Woker to stop
 
 	return nil
 }

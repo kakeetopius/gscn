@@ -192,10 +192,14 @@ func (s *PingScanner) runPing() error {
 	}
 
 	close(jobs)
-	wg.Wait()                // wait for all workers to finish
-	close(workerResultsChan) // tell main worker to stop
+	wg.Wait() // wait for all workers to finish
 
+	cancel() // tell main worker to stop
 	pingScanResults := <-scanResultsChan
+
+	close(scanResultsChan)
+	close(workerResultsChan)
+
 	s.resultMap = pingScanResults
 	spinner.Success("Pinging done")
 	return nil
