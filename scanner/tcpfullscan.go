@@ -40,8 +40,8 @@ type TCPFullScanOptions struct {
 }
 
 type TCPFullScanResults struct {
-	HostResults      `json:"results"`
-	TCPFullScanStats `json:"stats"`
+	Results HostResults      `json:"results"`
+	Stats   TCPFullScanStats `json:"stats"`
 
 	printUpOnly   bool `json:"-"`
 	printOpenOnly bool `json:"-"`
@@ -59,7 +59,7 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 	return &TCPFullScanner{
 		TCPFullScanOptions: opts,
 		results: TCPFullScanResults{
-			HostResults: make(HostResults),
+			Results: make(HostResults),
 		},
 		logger: log.NewLogger(true),
 	}
@@ -73,7 +73,8 @@ func (s *TCPFullScanner) Scan() (ScanResults, error) {
 	}
 	stopTime := time.Now()
 
-	s.results.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.TotalNumOfHosts = len(s.results.Results)
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
 
@@ -88,19 +89,19 @@ func (s *TCPFullScanner) addResultsInfo() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		for host, results := range s.results.HostResults {
+		for host, results := range s.results.Results {
 			if results.HostName != "" {
 				continue
 			}
 			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
-			s.results.HostResults[host] = results
+			s.results.Results[host] = results
 		}
 	}
 }
 
 func (r *TCPFullScanResults) Print() {
-	printScanResultsMap(r.HostResults, r.ScanTime, r.printUpOnly, r.printOpenOnly)
+	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly)
 }
 
 func (r *TCPFullScanResults) String() string {
@@ -130,7 +131,7 @@ func (s *TCPFullScanner) runTCPFullScan() error {
 		}
 		s.hostStates = pingResults
 	}
-	s.results.HostResults = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
+	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
 
 	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
@@ -179,7 +180,7 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 
 			hostIP := result.HostIP
 
-			hostResult := s.results.HostResults[hostIP]
+			hostResult := s.results.Results[hostIP]
 			portIndex := hostResult.portIndex[result.Port.Number]
 			hostResult.Ports[portIndex] = result.Port
 
@@ -190,7 +191,7 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 				hostResult.ClosedPorts--
 			}
 
-			s.results.HostResults[hostIP] = hostResult
+			s.results.Results[hostIP] = hostResult
 		}
 	}
 }

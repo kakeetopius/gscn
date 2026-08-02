@@ -41,8 +41,8 @@ type UDPScanOptions struct {
 }
 
 type UDPScanResults struct {
-	HostResults  `json:"results"`
-	UDPScanStats `json:"stats"`
+	Results HostResults  `json:"results"`
+	Stats   UDPScanStats `json:"stats"`
 
 	printUpOnly   bool `json:"-"`
 	printOpenOnly bool `json:"-"`
@@ -60,7 +60,7 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 	return &UDPScanner{
 		UDPScanOptions: opts,
 		results: UDPScanResults{
-			HostResults: make(HostResults),
+			Results: make(HostResults),
 		},
 		logger: log.NewLogger(true),
 	}
@@ -74,7 +74,8 @@ func (s *UDPScanner) Scan() (ScanResults, error) {
 	}
 	stopTime := time.Now()
 
-	s.results.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.TotalNumOfHosts = len(s.results.Results)
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
 
@@ -88,19 +89,19 @@ func (s *UDPScanner) addResultsInfo() {
 		defer spinner.Success("Resolving Done")
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		for host, results := range s.results.HostResults {
+		for host, results := range s.results.Results {
 			if results.HostName != "" {
 				continue
 			}
 			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
-			s.results.HostResults[host] = results
+			s.results.Results[host] = results
 		}
 	}
 }
 
 func (r *UDPScanResults) Print() {
-	printScanResultsMap(r.HostResults, r.ScanTime, r.printUpOnly, r.printOpenOnly)
+	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly)
 }
 
 func (r *UDPScanResults) String() string {
@@ -129,7 +130,7 @@ func (s *UDPScanner) runUDPScan() error {
 		return err
 	}
 	s.hostStates = pingResults
-	s.results.HostResults = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "udp")
+	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "udp")
 
 	jobs := make(chan PortScanJob, numWorkers)
 	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
@@ -242,7 +243,7 @@ func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan ch
 
 			hostIP := result.HostIP
 
-			hostResult := s.results.HostResults[hostIP]
+			hostResult := s.results.Results[hostIP]
 			portIndex := hostResult.portIndex[result.Port.Number]
 			hostResult.Ports[portIndex] = result.Port
 
@@ -256,7 +257,7 @@ func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan ch
 				hostResult.ClosedPorts--
 			}
 
-			s.results.HostResults[hostIP] = hostResult
+			s.results.Results[hostIP] = hostResult
 		}
 	}
 }

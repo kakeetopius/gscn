@@ -49,8 +49,8 @@ type TCPSynScanOptions struct {
 }
 
 type TCPSynScanResults struct {
-	HostResults     `json:"results"`
-	TCPSynScanStats `json:"stats"`
+	Results HostResults     `json:"results"`
+	Stats   TCPSynScanStats `json:"stats"`
 
 	printUpOnly   bool `json:"-"`
 	printOpenOnly bool `json:"-"`
@@ -68,7 +68,7 @@ func NewTCPSynScanner(opts TCPSynScanOptions) *TCPSynScanner {
 	return &TCPSynScanner{
 		TCPSynScanOptions: opts,
 		results: TCPSynScanResults{
-			HostResults: make(HostResults),
+			Results: make(HostResults),
 		},
 		logger:        log.NewLogger(true),
 		resolveCache:  make(map[netip.Addr]MAC),
@@ -84,7 +84,8 @@ func (s *TCPSynScanner) Scan() (ScanResults, error) {
 	}
 	stopTime := time.Now()
 
-	s.results.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.TotalNumOfHosts = len(s.results.Results)
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
 
@@ -99,19 +100,19 @@ func (s *TCPSynScanner) addResultsInfo() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		for host, results := range s.results.HostResults {
+		for host, results := range s.results.Results {
 			if results.HostName != "" {
 				continue
 			}
 			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
-			s.results.HostResults[host] = results
+			s.results.Results[host] = results
 		}
 	}
 }
 
 func (r *TCPSynScanResults) Print() {
-	printScanResultsMap(r.HostResults, r.ScanTime, r.printUpOnly, r.printOpenOnly)
+	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly)
 }
 
 func (r *TCPSynScanResults) String() string {
@@ -141,7 +142,7 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 		}
 		s.hostStates = pingResults
 	}
-	s.results.HostResults = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
+	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
@@ -262,7 +263,7 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 
 			srcPort := uint16(tcpPacket.SrcPort)
 
-			hostResult, found := s.results.HostResults[srcIP]
+			hostResult, found := s.results.Results[srcIP]
 			if !found {
 				// response not from our scan
 				continue
@@ -277,7 +278,7 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 			port.State = PortStateOpen
 
 			hostResult.Ports[portIndex] = port
-			s.results.HostResults[srcIP] = hostResult
+			s.results.Results[srcIP] = hostResult
 		}
 	}
 }
