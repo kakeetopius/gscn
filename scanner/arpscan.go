@@ -1,5 +1,10 @@
 package scanner
 
+// TODO:
+// 1. improve both this arpscanner and ndpscanner to not just probe with one packet per host but at least probe with
+// three or more per host.
+// 2. both the this arpscanner and ndpscanner should also have a function to set up the result set before transmission begins
+
 import (
 	"context"
 	"fmt"
@@ -70,13 +75,12 @@ func NewARPScanner(opts ARPScanOptions) *ARPScanner {
 
 func (s *ARPScanner) Scan() (ScanResults, error) {
 	start := time.Now()
-	hostResults, err := s.runArp()
+	err := s.runArp()
 	if err != nil {
 		return nil, err
 	}
 	stop := time.Now()
 
-	s.results.HostResults = hostResults
 	s.results.ScanDuration = stop.Sub(start)
 
 	err = s.addResultInfo()
@@ -139,9 +143,9 @@ func (r *ARPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
+func (s *ARPScanner) runArp() error {
 	if len(s.Targets) == 0 && len(s.Interfaces) == 0 {
-		return nil, fmt.Errorf("please provide either an interface or targets to carry out an arp scan for")
+		return fmt.Errorf("please provide either an interface or targets to carry out an arp scan for")
 	}
 
 	if len(s.Targets) == 0 {
@@ -154,7 +158,6 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 	defer cancel()
 	opts := s.ARPScanOptions
 
-	resultsChan := make(chan []ARPHostResult)
 	startSending := make(chan struct{})
 	numHosts := netutil.HostsInIP4Network(opts.Targets)
 
@@ -166,17 +169,18 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer packetSender.Close()
 
 	packetReceiver, err := NewPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer packetReceiver.Close()
 
-	go getARPReplies(ctx, packetReceiver, s, resultsChan, startSending)
+	receiverDone := make(chan struct{})
+	go s.getARPReplies(ctx, packetReceiver, startSending, receiverDone)
 
 	<-startSending // wait for receiving routine to finish setup
 
@@ -188,14 +192,14 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 	if opts.Verbose {
 		bar, err = bar.Start()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer bar.Stop()
 	}
 
 	router, err := route.NewRouter()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, targetNet := range opts.Targets {
@@ -206,7 +210,7 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 
 		route, err := router.Lookup(ipToScan)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		packetReceiver.AddReceivingInterface(route.Interface)
@@ -219,7 +223,7 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 
 			err = sendArpPacket(packetSender, &route.Interface, route.SrcAddr, ipToScan)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			s.results.PacketsSent++
 			bar.Increment()
@@ -227,11 +231,15 @@ func (s *ARPScanner) runArp() ([]ARPHostResult, error) {
 		}
 	}
 
-	s.logger.WaitTimeout(opts.ResponseTimeout, "response")
-	cancel() // tell packet receiving routine to stop
-	results := <-resultsChan
+	packetSender.Wait() // wait for packet sender to send all packets
 
-	return results, nil
+	s.logger.WaitTimeout(opts.ResponseTimeout, "response")
+	packetReceiver.Close()
+
+	<-receiverDone // wait for receiving routine to finish
+	close(receiverDone)
+
+	return nil
 }
 
 func sendArpPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
@@ -275,8 +283,8 @@ func sendArpPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, d
 	return nil
 }
 
-func getARPReplies(ctx context.Context, packetReceiver PacketReceiver, scanner *ARPScanner, resultsChan chan<- []ARPHostResult, startSendChan chan<- struct{}) {
-	opts := scanner.ARPScanOptions
+func (s *ARPScanner) getARPReplies(ctx context.Context, packetReceiver PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
+	opts := s.ARPScanOptions
 
 	packetChan := packetReceiver.Packets()
 
@@ -284,7 +292,8 @@ func getARPReplies(ctx context.Context, packetReceiver PacketReceiver, scanner *
 	receivedFrom := make(map[netip.Addr]struct{}) // to keep track of which IPs we have got replies from
 
 	defer func() {
-		resultsChan <- results
+		s.results.HostResults = results
+		receiverDone <- struct{}{}
 	}()
 
 	startSendChan <- struct{}{}
@@ -315,7 +324,7 @@ func getARPReplies(ctx context.Context, packetReceiver PacketReceiver, scanner *
 				// skip responses outside the specified network
 				continue
 			}
-			scanner.results.PacketsReceived++
+			s.results.PacketsReceived++
 			_, alreadyReceived := receivedFrom[ipAddr]
 			if alreadyReceived {
 				continue

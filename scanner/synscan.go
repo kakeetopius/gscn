@@ -164,48 +164,73 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	}
 
 	var packetSender PacketSender
+	// localhostPacketSender is necessary coz if packets heading to localhost or any ip on any of the device's interfaces are injected directly at the datalink,
+	// they never reache localhost, so they have to be injected at the ip layer. but the ip layer packet injector only works on linux, so for the other OSes there is
+	// no solution yet
+	var localhostPacketSender PacketSender
 	if runtime.GOOS == "linux" {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypeIPLayer)
+		packetSender, err = GetPacketSender(ctx, PacketSenderTypeLinkLayer)
+		if err != nil {
+			return err
+		}
+		localhostPacketSender, err = GetPacketSender(ctx, PacketSenderTypeIPLayer)
 	} else {
 		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
+		localhostPacketSender = packetSender
 	}
 	if err != nil {
 		return err
 	}
 	defer packetSender.Close()
 
-	packetReceiver, err := NewPacketReceiver(ctx, "(ip or ip6) and tcp", 1500, allIfaces...)
+	defer localhostPacketSender.Close()
+
+	receiverCtx, cancelReceiver := context.WithCancel(context.Background())
+	defer cancelReceiver()
+	packetReceiver, err := NewPacketReceiver(receiverCtx, "(ip or ip6) and tcp", 1500, allIfaces...)
 	if err != nil {
 		return err
 	}
 	defer packetReceiver.Close()
 
-	go s.getTCPSynScanResults(ctx, packetReceiver)
+	masterDone := make(chan struct{})
+
+	go s.getTCPSynScanResults(ctx, packetReceiver, masterDone)
 
 	jobs := make(chan PortScanJob, s.Workers)
 	wg := &sync.WaitGroup{}
 	for range s.Workers {
 		wg.Add(1)
-		go s.synScanTCPPort(wg, jobs, packetSender)
+		go s.synScanTCPPort(wg, jobs, packetSender, localhostPacketSender)
 	}
 
 	senderDone := make(chan struct{})
 	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
+
 	<-senderDone // wait for sender to send all jobs
 	close(senderDone)
 
 	close(jobs)
 	wg.Wait() // wait for all to workers to finish
 
+	packetSender.Wait() // wait for the packet sender to send all packets
+
 	<-time.After(s.ResponseTimeout) // wait for the response timeout
-	cancel()                        // tell main worker to stop
+	packetReceiver.Close()
+
+	<-masterDone // wait for master to finish processing what is already enqueued by the packet receiver
+	close(masterDone)
 
 	return nil
 }
 
-func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver PacketReceiver) {
+func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver PacketReceiver, masterDone chan<- struct{}) {
 	// To Be Run By Main Worker (aggregator)
 	packetChan := packetReceiver.Packets()
+
+	defer func() {
+		masterDone <- struct{}{}
+	}()
 
 	for {
 		select {
@@ -229,6 +254,7 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 			if !tcpPacket.SYN || !tcpPacket.ACK {
 				continue
 			}
+
 			ethLayer := packet.Layer(layers.LayerTypeEthernet)
 			if ethLayer == nil {
 				continue
@@ -289,7 +315,7 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 	}
 }
 
-func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, packetSender PacketSender) {
+func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, packetSender PacketSender, localhostPacketSender PacketSender) {
 	// to be run by workers
 	defer func() {
 		wg.Done()
@@ -302,6 +328,11 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 		route, err := s.router.Lookup(addr)
 		if err != nil {
 			continue
+		}
+
+		if addr == route.SrcAddr {
+			// if the target addr is the address of the interface, meaning we are sending to ourselves, we use the localhostPacketSender
+			packetSender = localhostPacketSender
 		}
 
 		packetHeaders := make([]gopacket.SerializableLayer, 0, 3)

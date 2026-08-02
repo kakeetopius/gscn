@@ -152,7 +152,9 @@ func (s *UDPScanner) runUDPScan() error {
 
 	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 
-	go s.getUDPScanResults(ctx, workerResultsChan)
+	masterDone := make(chan struct{})
+
+	go s.getUDPScanResults(ctx, workerResultsChan, masterDone)
 
 	<-senderDone // wait for sender to send all jobs
 	close(senderDone)
@@ -160,9 +162,11 @@ func (s *UDPScanner) runUDPScan() error {
 	close(jobs) // wait for all the workers to finish
 	wg.Wait()
 
-	close(workerResultsChan)
 	<-time.After(s.ResponseTimeout) // wait for the specified response timeout
-	cancel()                        // tell the main Woker to stop
+
+	close(workerResultsChan)
+	<-masterDone // wait for master to process all data in workerResultsChan
+	close(masterDone)
 
 	return nil
 }
@@ -230,8 +234,11 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 	}
 }
 
-func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult) {
+func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult, masterDone chan<- struct{}) {
 	// To Be Run By Main Worker
+	defer func() {
+		masterDone <- struct{}{}
+	}()
 	for {
 		select {
 		case <-ctx.Done():

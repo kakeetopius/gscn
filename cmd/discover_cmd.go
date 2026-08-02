@@ -77,7 +77,7 @@ func discoverArpCmd() *cobra.Command {
 	arpCmd.Flags().SortFlags = false
 
 	arpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the all the subnets the interface is in are scanned.")
-	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
+	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
 	arpCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	arpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
 

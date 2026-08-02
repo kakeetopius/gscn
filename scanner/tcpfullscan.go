@@ -155,7 +155,9 @@ func (s *TCPFullScanner) runTCPFullScan() error {
 
 	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 
-	go s.getTCPFullScanResults(ctx, workerResultsChan)
+	masterDone := make(chan struct{})
+
+	go s.getTCPFullScanResults(ctx, workerResultsChan, masterDone)
 
 	<-senderDone // wait for sender to send all jobs
 	close(senderDone)
@@ -163,15 +165,21 @@ func (s *TCPFullScanner) runTCPFullScan() error {
 	close(jobs)
 	wg.Wait() // wait for all to workers to finish
 
-	close(workerResultsChan)
 	<-time.After(s.ResponseTimeout) // wait for the specified response timeout
-	cancel()                        // tell main worker to stop
+
+	close(workerResultsChan)
+	<-masterDone // wait for master to process all data in the workerResultsChan
+	close(masterDone)
 
 	return nil
 }
 
-func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult) {
+func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult, masterDone chan<- struct{}) {
 	// To Be Run By Main Worker (aggregator)
+	defer func() {
+		masterDone <- struct{}{}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():

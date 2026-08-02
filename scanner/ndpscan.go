@@ -75,13 +75,12 @@ func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
 func (s *NDPScanner) Scan() (ScanResults, error) {
 	start := time.Now()
 
-	var hostResults []NDPHostResult
 	var err error
 
 	if s.FromCache {
-		hostResults, err = ndpResultsUsingNetlink(s.Interface, s.Targets)
+		err = s.ndpResultsUsingNetlink(s.Interface, s.Targets)
 	} else {
-		hostResults, err = s.runNDP()
+		err = s.runNDP()
 	}
 
 	if err != nil {
@@ -89,7 +88,6 @@ func (s *NDPScanner) Scan() (ScanResults, error) {
 	}
 	stop := time.Now()
 
-	s.results.HostResults = hostResults
 	s.results.ScanDuration = stop.Sub(start)
 
 	err = s.addResultInfo()
@@ -150,9 +148,9 @@ func (r *NDPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
+func (s *NDPScanner) runNDP() error {
 	if s.Interface == nil {
-		return nil, fmt.Errorf("please provide an interface to carry out an ndp scan on")
+		return fmt.Errorf("please provide an interface to carry out an ndp scan on")
 	}
 	if len(s.Targets) == 0 {
 		s.logger.Warn("No targets provided. Scanning of hosts on all the ipv6 subnets of the given interfaces which might take alot of time and resources.")
@@ -160,7 +158,6 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 	}
 
 	opts := s.NDPScanOptions
-	resultChan := make(chan []NDPHostResult)
 	startSending := make(chan struct{})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -174,17 +171,18 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer packetSender.Close()
 
 	packetReceiver, err := NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 136", 1024, *s.Interface)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer packetReceiver.Close()
 
-	go getNeighbourAdvertisements(ctx, packetReceiver, s, resultChan, startSending)
+	receiverDone := make(chan struct{})
+	go s.getNeighbourAdvertisements(ctx, packetReceiver, startSending, receiverDone)
 
 	<-startSending // wait for receiving routine to finish setup
 
@@ -192,7 +190,7 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 
 	router, err := route.NewRouter()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, target := range opts.Targets {
@@ -200,24 +198,29 @@ func (s *NDPScanner) runNDP() ([]NDPHostResult, error) {
 
 		route, err := router.Lookup(IPaddr.WithZone(s.Interface.Name))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		packetReceiver.AddReceivingInterface(route.Interface)
 
 		for target.Contains(IPaddr) {
 			err := sendNSPacket(packetSender, &route.Interface, route.SrcAddr, IPaddr)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			s.results.PacketsSent++
 			IPaddr = IPaddr.Next()
 		}
 	}
 
+	packetSender.Wait() // wait for packet sender to send all packets
+
 	s.logger.WaitTimeout(opts.ResponseTimeout, "response")
-	cancel() // tell packet receiving routine to stop
-	results := <-resultChan
-	return results, nil
+	packetReceiver.Close()
+
+	<-receiverDone // wait for receiving routine to finish
+	close(receiverDone)
+
+	return nil
 }
 
 func sendNSPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
@@ -270,7 +273,7 @@ func sendNSPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, ds
 	return nil
 }
 
-func getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiver, scanner *NDPScanner, resultsChan chan<- []NDPHostResult, startSendChan chan<- struct{}) {
+func (s *NDPScanner) getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
 	packetChan := packetReceiver.Packets()
 
 	hostResults := make([]NDPHostResult, 0, 15)
@@ -278,7 +281,8 @@ func getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiv
 	startSendChan <- struct{}{}
 
 	defer func() {
-		resultsChan <- hostResults
+		s.results.HostResults = hostResults
+		receiverDone <- struct{}{}
 	}()
 
 	for {
@@ -299,10 +303,10 @@ func getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiv
 				continue
 			}
 			srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
-			if !netutil.AddrIsPartOfNetworks(scanner.Targets, &srcIP) {
+			if !netutil.AddrIsPartOfNetworks(s.Targets, &srcIP) {
 				continue
 			}
-			scanner.results.PacketsReceived++
+			s.results.PacketsReceived++
 			icmpPacket, _ := icmpLayer.(*layers.ICMPv6NeighborAdvertisement)
 			var hwAddr net.HardwareAddr
 			for _, icmpOption := range icmpPacket.Options {
@@ -323,21 +327,21 @@ func getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiv
 	}
 }
 
-func ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) ([]NDPHostResult, error) {
+func (s *NDPScanner) ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) error {
 	if runtime.GOOS != "linux" {
-		return nil, fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
+		return fmt.Errorf("getting ipv6 neighbour information from the kernel is only available on linux for now")
 	}
 	results := make([]NDPHostResult, 0, 5)
 
 	conn, err := rtnl.Dial(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to establish connection to netlink subsystem: %v", err)
+		return fmt.Errorf("failed to establish connection to netlink subsystem: %v", err)
 	}
 	defer conn.Close()
 
 	neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET6)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for _, neigh := range neighbours {
 		addr, ok := netip.AddrFromSlice(neigh.IP)
@@ -352,7 +356,9 @@ func ndpResultsUsingNetlink(iface *netutil.Interface, targets []netip.Prefix) ([
 			})
 		}
 	}
-	return results, nil
+	s.results.HostResults = results
+
+	return nil
 }
 
 func solicitedNodeMacAddress(targetIP netip.Addr) net.HardwareAddr {

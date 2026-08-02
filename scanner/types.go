@@ -162,6 +162,8 @@ type PacketSender interface {
 
 	SendPacket(packet []byte, iface *netutil.Interface) error
 
+	Wait()
+
 	io.Closer
 }
 

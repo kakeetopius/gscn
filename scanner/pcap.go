@@ -11,10 +11,11 @@ import (
 )
 
 type PcapPacketSender struct {
-	handles     map[int]*pcap.Handle
-	mu          sync.RWMutex
-	sendChannel chan packet
-	ctx         context.Context
+	handles        map[int]*pcap.Handle
+	mu             sync.RWMutex
+	sendChannel    chan packet
+	senderFinished chan struct{}
+	ctx            context.Context
 }
 
 type packet struct {
@@ -24,10 +25,11 @@ type packet struct {
 
 func NewPcapPacketSender(ctx context.Context) *PcapPacketSender {
 	ps := &PcapPacketSender{
-		handles:     make(map[int]*pcap.Handle),
-		sendChannel: make(chan packet, 1500*4),
-		mu:          sync.RWMutex{},
-		ctx:         ctx,
+		handles:        make(map[int]*pcap.Handle),
+		sendChannel:    make(chan packet, 1500*4),
+		senderFinished: make(chan struct{}),
+		mu:             sync.RWMutex{},
+		ctx:            ctx,
 	}
 
 	go ps.startSender()
@@ -37,6 +39,11 @@ func NewPcapPacketSender(ctx context.Context) *PcapPacketSender {
 
 func (ps *PcapPacketSender) Type() PacketSenderType {
 	return PacketSenderTypePcap
+}
+
+func (ps *PcapPacketSender) Wait() {
+	close(ps.sendChannel)
+	<-ps.senderFinished
 }
 
 func (ps *PcapPacketSender) SendPacket(packetData []byte, iface *netutil.Interface) error {
@@ -67,6 +74,10 @@ func (ps *PcapPacketSender) SendPacket(packetData []byte, iface *netutil.Interfa
 }
 
 func (ps *PcapPacketSender) startSender() {
+	defer func() {
+		ps.senderFinished <- struct{}{}
+	}()
+
 	for {
 		select {
 		case <-ps.ctx.Done():
@@ -84,7 +95,6 @@ func (ps *PcapPacketSender) Close() error {
 	for _, handle := range ps.handles {
 		handle.Close()
 	}
-	close(ps.sendChannel)
 	return nil
 }
 
@@ -95,6 +105,7 @@ type PcapPacketReceiver struct {
 	packetChan         chan gopacket.Packet
 	channelCapacity    int
 	isAlreadyReceiving bool
+	closed             bool
 }
 
 type receivingInterface struct {
@@ -146,10 +157,17 @@ func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) err
 }
 
 func (pr *PcapPacketReceiver) Close() error {
+	if pr.closed {
+		return nil
+	}
+
 	for _, iface := range pr.ifaces {
-		iface.handle.Close()
+		iface.handle.Close() // closing the handle will force interface packet channels to also be closed
 	}
 	clear(pr.ifaces)
+	close(pr.packetChan)
+
+	pr.closed = true
 	return nil
 }
 
