@@ -18,7 +18,7 @@ vendor: "GoReleaser"
 license: "MIT"
 contents:
   - dst: /usr/local/bin/gscn
-    src: ./gscn
+    src: ./bin/gscn
     expand: true
 overrides:
   rpm:
