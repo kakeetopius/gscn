@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	goversion "github.com/caarlos0/go-version"
 	"github.com/spf13/cobra"
@@ -24,7 +25,7 @@ var rootCmd = &cobra.Command{
 	Use:          "gscn",
 	Short:        "A simple command line tool to carry out different operations on a network.",
 	SilenceUsage: true,
-	Version:      buildVersion().GitVersion,
+	Version:      cleanVersion(buildVersion().GitVersion),
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -65,7 +66,9 @@ func versionCmd() *cobra.Command {
 		Short:   "Show detailed version information",
 		Aliases: []string{"v"},
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(buildVersion().String())
+			version := buildVersion()
+			version.GitVersion = cleanVersion(version.GitVersion)
+			fmt.Println(version)
 		},
 	}
 }
@@ -75,4 +78,13 @@ func buildVersion() goversion.Info {
 	return goversion.GetVersionInfo(
 		goversion.WithAppDetails("gscn", "Network Scanning Utility.", ""),
 	)
+}
+
+func cleanVersion(v string) string {
+	// sometimes the version returned is of the form v0.2.4+dirty
+	before, _, ok := strings.Cut(v, "+")
+	if !ok {
+		return v
+	}
+	return before
 }
