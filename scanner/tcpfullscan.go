@@ -158,11 +158,14 @@ func (s *TCPFullScanner) runTCPFullScan() error {
 	go s.getTCPFullScanResults(ctx, workerResultsChan)
 
 	<-senderDone // wait for sender to send all jobs
+	close(senderDone)
 
-	close(jobs) // wait for all to workers to finish
-	wg.Wait()
+	close(jobs)
+	wg.Wait() // wait for all to workers to finish
 
-	close(workerResultsChan) // tell main worker to stop
+	close(workerResultsChan)
+	<-time.After(s.ResponseTimeout) // wait for the specified response timeout
+	cancel()                        // tell main worker to stop
 
 	return nil
 }
