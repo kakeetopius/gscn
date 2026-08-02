@@ -50,40 +50,40 @@ Avg RTT:   {{ .AverageRTT }}
 var TCPFullScanResultsTemplate = `
 TCP Full Scan Results
 =====================
-{{- range .HostResults }}
+{{- range .Results }}
 {{ template "host_result" . }}
 {{- end }}
 
 Stats
 -----
-Total Hosts Scanned: {{ .TotalNumOfHosts }}
-Scan Duration:       {{ .ScanTime }}
+Total Hosts Scanned: {{ .Stats.TotalNumOfHosts }}
+Scan Duration:       {{ .Stats.ScanTime }}
 `
 
 var TCPSynScanResultsTemplate = `
-TCP Full Scan Results
+TCP SYN Scan Results
 =====================
-{{- range .HostResults }}
+{{- range .Results }}
 {{ template "host_result" . }}
 {{- end }}
 
 Stats
 -----
-Total Hosts Scanned: {{ .TotalNumOfHosts }}
-Scan Duration:       {{ .ScanTime }}
+Total Hosts Scanned: {{ .Stats.TotalNumOfHosts }}
+Scan Duration:       {{ .Stats.ScanTime }}
 `
 
 var UDPScanResultsTemplate = `
 UDP Scan Results
 ================
-{{- range .HostResults }}
+{{- range .Results }}
 {{ template "host_result" . }}
 {{- end }}
 
 Stats
 -----
-Total Hosts Scanned: {{ .TotalNumOfHosts }}
-Scan Duration:       {{ .ScanTime }}
+Total Hosts Scanned: {{ .Stats.TotalNumOfHosts }}
+Scan Duration:       {{ .Stats.ScanTime }}
 `
 
 var PingScanResultsTemplate = `
