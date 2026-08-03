@@ -13,8 +13,13 @@ import (
 
 func DiscoverCmd() *cobra.Command {
 	discoverCmd := cobra.Command{
-		Use:     "discover <targets>",
-		Short:   "Discover hosts on the local network using ARP for IPv4 or ICMP Neighbour Discovery for IPv6.",
+		Use: "discover <targets>",
+		Example: "\nTargets may be specified as individual IPv4 addresses, IPv4 CIDR ranges, or Non-CIDR ranges e.g.\n" +
+			"  gscn discover <discover-type> 10.1.1.1\n" +
+			"  gscn discover <discover-type> 10.1.1.1/24\n" +
+			"  gscn discover <discover-type> 10.1.1.1-5\n" +
+			"  gscn discover <discover-type> 2001:acad::1\n",
+		Short:   "Discover hosts on the local network using ARP for IPv4 or ICMPv6 Neighbour Discovery for IPv6.",
 		Aliases: []string{"disc", "d"},
 	}
 
@@ -32,24 +37,14 @@ func discoverArpCmd() *cobra.Command {
 
 	arpCmd := cobra.Command{
 		Use:   "arp <targets>",
-		Short: "Discover hosts on the local network using ARP",
-		Example: "\nTargets may be specified as individual IPv4 addresses, IPv4 CIDR ranges, or Non-CIDR ranges e.g.\n" +
-			"  gscn discover arp 10.1.1.1\n" +
-			"  gscn discover arp 10.1.1.1/24\n" +
-			"  gscn discover arp 10.1.1.1-5\n",
-		Args: cobra.MaximumNArgs(1),
+		Short: "Discover hosts on the local network using the Address Resolution Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetStr := ""
-			if len(args) > 0 {
-				targetStr = args[0]
-			}
-
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
 				return err
 			}
 
-			targets, err := getDiscoverTargets(targetStr)
+			targets, err := getDiscoverTargets(args)
 			if err != nil {
 				return err
 			}
@@ -90,24 +85,14 @@ func discoverNDPCmd() *cobra.Command {
 
 	ndpScan := cobra.Command{
 		Use:   "ndp <targets>",
-		Short: "Discover hosts on the local network using the IPv6 Neighbour Discovery Protocol.",
-		Example: "\nTargets may be specified as individual IPv6 addresses, IPv6 CIDR ranges, or Non-CIDR ranges e.g.\n" +
-			"  gscn discover ndp 2001:acad::1\n" +
-			"  gscn discover ndp 2001:acad::1/64\n" +
-			"  gscn discover ndp 2001:acad::1-10\n",
-		Args: cobra.MaximumNArgs(1),
+		Short: "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			targetStr := ""
-			if len(args) > 0 {
-				targetStr = args[0]
-			}
-
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
 				return err
 			}
 
-			targets, err := getDiscoverTargets(targetStr)
+			targets, err := getDiscoverTargets(args)
 			if err != nil {
 				return err
 			}
@@ -146,8 +131,8 @@ func discoverNDPCmd() *cobra.Command {
 	return &ndpScan
 }
 
-func getDiscoverTargets(targetStr string) ([]netip.Prefix, error) {
-	targets, err := scanner.TargetsFromString(targetStr)
+func getDiscoverTargets(targetStrs []string) ([]netip.Prefix, error) {
+	targets, err := scanner.TargetsFromString(targetStrs)
 	if err != nil {
 		if !errors.Is(err, scanner.ErrNoTargets) {
 			return []netip.Prefix{}, err

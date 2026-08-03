@@ -104,7 +104,7 @@ func resolveMAC(addr netip.Addr, ifaceProvider netutil.NetInterfaceProvider) (MA
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	filter := fmt.Sprintf("dst host %s", addr.String())
 
@@ -121,6 +121,7 @@ func resolveMAC(addr netip.Addr, ifaceProvider netutil.NetInterfaceProvider) (MA
 	if err != nil {
 		return nil, err
 	}
+	defer conn.Close()
 	conn.Write([]byte("wagwan"))
 
 	var packet gopacket.Packet

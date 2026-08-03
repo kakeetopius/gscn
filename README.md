@@ -1,6 +1,6 @@
 # gscn
 
-A simple, cross-platform network scanner written in Go. `gscn` provides host discovery, TCP/UDP port scanning, ICMP ping scanning, Wi-Fi scanning with support for both IPv4 and IPv6.
+A simple, cross-platform network scanner written in Go. `gscn` provides host discovery, TCP/UDP/SYN port scanning, ICMP ping scanning etc.
 
 ## Features
 
@@ -22,7 +22,7 @@ A simple, cross-platform network scanner written in Go. `gscn` provides host dis
 - **Windows:** [Npcap](https://npcap.com/#download)
 
 > [!IMPORTANT]
-> ARP, NDP, and ICMP-based scans require administrator/root privileges (or `CAP_NET_RAW` on Linux).
+> ARP, NDP, SYN, and ICMP-based scans require administrator/root privileges (or `CAP_NET_RAW` on Linux).
 
 ## Installation
 
@@ -67,15 +67,15 @@ gscn scan ping 192.168.1.0/24
 
 ## Target Specification
 
-Most commands accept one or more targets as the first positional argument.
+Most commands accept one or more targets as positional arguments, separated by spaces.
 
 | Format                   | Example                                        |
 | ------------------------ | ---------------------------------------------- |
-| Single IPv4/IPv6 address | `10.1.1.1`, `2001:acad::1`                     |
-| CIDR                     | `10.1.1.1/24`, `2001:acad::1/64`               |
-| Range                    | `10.1.1.1-10`, `2001:acad::1-10`               |
+| Single IPv4/IPv6 address | `10.1.1.1` `2001:acad::1`                      |
+| CIDR                     | `10.1.1.1/24` `2001:acad::1/64`                |
+| Range                    | `10.1.1.1-10` `2001:acad::1-10`                |
 | Domain                   | `example.com`                                  |
-| Mixed targets            | `10.1.1.1,example.com,10.4.4.4-10,10.3.3.3/24` |
+| Mixed targets            | `10.1.1.1 example.com 10.4.4.4-10 10.3.3.3/24` |
 
 <details>
 <summary><strong>Global Flags</strong></summary>
@@ -216,7 +216,7 @@ gscn discover ndp -i eth0 --from-cache
 Carry out different types of scans.
 
 > [!NOTE]
-> TCP and UDP scans first perform a ping sweep to determine whether hosts are reachable. Use `--skip-ping` to disable this behavior and scan all targets unconditionally.
+> TCP, SYN, and UDP scans first perform a ping sweep to determine whether hosts are reachable. Use `--skip-ping` to disable this behavior and scan all targets unconditionally.
 
 <details>
 <summary><strong>Show details</strong></summary>
@@ -242,7 +242,7 @@ gscn scan tcp 10.1.1.1
 gscn scan tcp 10.1.1.1/24 -p 1-100 --workers 300
 
 # Scan mixed targets
-gscn scan tcp 10.1.1.1,bing.com,10.4.4.4-10 -p 22,80,443
+gscn scan tcp 10.1.1.1 gscn.com 10.4.4.4-10 -p 22,80,443
 
 # Scan an IPv6 host
 gscn scan tcp 2001:acad::1 -p 80
@@ -276,7 +276,62 @@ gscn scan tcp 10.1.1.1/24 -p 1-100 --notify
 
 </details>
 
-#### 2. scan udp
+#### 2. scan syn
+
+Perform a TCP SYN (half-open) scan.
+
+```sh
+gscn scan syn <targets> [flags]
+```
+
+Sends raw TCP SYN packets and infers port state from the response (SYN-ACK, RST, or no response) without completing the TCP handshake. Requires root privileges (or `CAP_NET_RAW` on Linux).
+
+<details>
+<summary><strong>Examples</strong></summary>
+
+```sh
+# Scan a single host for the common ports like 22,80 etc
+gscn scan syn 10.1.1.1
+
+# Scan a subnet for the first 100 ports using 300 concurrent workers
+gscn scan syn 10.1.1.1/24 -p 1-100 --workers 300
+
+# Scan mixed targets
+gscn scan syn 10.1.1.1 gscn.com 10.4.4.4-10 -p 22,80,443
+
+# Scan an IPv6 host
+gscn scan syn 2001:acad::1 -p 80
+
+# Skip the ping sweep
+gscn scan syn 10.1.1.1/24 -p 22,80 --skip-ping
+
+# Show only open ports on live hosts
+gscn scan syn 10.1.1.1/24 -p 1-1000 --open --up --workers 200
+
+# Send results via the configured notifier
+gscn scan syn 10.1.1.1/24 -p 1-100 --notify
+```
+
+</details>
+
+<details>
+<summary><strong>Flags</strong></summary>
+
+| Flag                                | Description                                              |
+| ----------------------------------- | -------------------------------------------------------- |
+| `-p, --ports <ports>`               | Ports to scan. Supports ranges, lists, or combinations.  |
+| `-H, --hostnames`                   | Resolve hostnames.                                       |
+| `-t, --response-timeout <duration>` | SYN response timeout.                                    |
+| `-w, --workers <n>`                 | Number of concurrent workers.                            |
+| `--ping-count <n>`                  | Number of ICMP Echo Requests sent during the ping sweep. |
+| `--ping-timeout <duration>`         | Ping timeout.                                            |
+| `--skip-ping`                       | Skip the initial ping sweep.                             |
+| `--open`                            | Show only open ports.                                    |
+| `--up`                              | Show only reachable hosts.                               |
+
+</details>
+
+#### 3. scan udp
 
 Perform a UDP scan.
 
@@ -294,7 +349,7 @@ Infers UDP port state using ICMP Port Unreachable responses or the absence of a 
 gscn scan udp 10.1.1.1 -p 53,161
 
 # Scan IPv4 and IPv6 hosts
-gscn scan udp 10.1.1.1,2001:acad::1 -p 53
+gscn scan udp 10.1.1.1 2001:acad::1 -p 53
 
 # Scan a subnet
 gscn scan udp 10.1.1.1/24 -p 1-100
@@ -321,7 +376,7 @@ gscn scan udp 10.1.1.1 -p 53,161 --response-timeout 5s
 
 </details>
 
-#### 3. scan ping
+#### 4. scan ping
 
 Perform an ICMP ping sweep.
 
@@ -342,7 +397,7 @@ gscn scan ping 10.1.1.1/24
 gscn scan ping 10.1.1.1/24 --workers 200 --up
 
 # Ping mixed targets
-gscn scan ping 10.1.1.1,bing.com
+gscn scan ping 10.1.1.1 gscn.com
 
 # Ping an IPv6 host
 gscn scan ping 2001:acad::1

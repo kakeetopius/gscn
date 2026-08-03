@@ -300,14 +300,16 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 				// response not from our scan
 				continue
 			}
-			hostResult.OpenPorts++
-			hostResult.ClosedPorts--
 			hostResult.HostState = HostStateUp
 
 			portIndex := hostResult.portIndex[PortNumber(srcPort)]
 
 			port := hostResult.Ports[portIndex]
-			port.State = PortStateOpen
+			if port.State != PortStateOpen {
+				port.State = PortStateOpen
+				hostResult.OpenPorts++
+				hostResult.ClosedPorts--
+			}
 
 			hostResult.Ports[portIndex] = port
 			s.results.Results[srcIP] = hostResult

@@ -62,7 +62,7 @@ func DoScan(scanner Scanner, opts ScanOptions) error {
 		if err != nil {
 			return err
 		}
-		notify.SendMessageWithNotifier(results, notifer)
+		return notify.SendMessageWithNotifier(results, notifer)
 	}
 
 	return nil

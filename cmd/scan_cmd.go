@@ -12,8 +12,16 @@ import (
 
 func ScanCmd() *cobra.Command {
 	scanCmd := cobra.Command{
-		Use:     "scan",
-		Short:   "Determine information about any host on any network for example open ports.",
+		Use:   "scan",
+		Short: "Scan any host on any network.",
+		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
+			"  gscn scan <scan-type> 10.1.1.1 -p 80\n" +
+			"  gscn scan <scan-type> 2001:acad::1 -p 80\n" +
+			"  gscn scan <scan-type> 10.1.1.1/24 -p 80,90,100\n" +
+			"  gscn scan <scan-type> 10.1.1.1-5 -p 1-100\n" +
+			"  gscn scan <scan-type> gscn.com -p 1-100\n" +
+			"  gscn scan <scan-type> 2001:acad::1 10.1.1.1 -p 80\n" +
+			"  gscn scan <scan-type> 10.1.1.1 gscn.com 10.4.4.4-10 10.3.3.3/24 -p 1-100,433,8096\n",
 		Aliases: []string{"s"},
 	}
 
@@ -34,21 +42,13 @@ func tcpFullScanCmd() *cobra.Command {
 	tcpCmd := cobra.Command{
 		Use:   "tcp <targets>",
 		Short: "Carry out a TCP full scan.",
-		Args:  cobra.ExactArgs(1),
-		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
-			"  gscn scan tcp 10.1.1.1 -p 80\n" +
-			"  gscn scan tcp 2001:acad::1 -p 80\n" +
-			"  gscn scan tcp 10.1.1.1/24 -p 80,90,100\n" +
-			"  gscn scan tcp 10.1.1.1-5 -p 1-100\n" +
-			"  gscn scan tcp bing.com -p 1-100\n" +
-			"  gscn scan tcp 2001:acad::1,10.1.1.1 -p 80\n" +
-			"  gscn scan tcp 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096\n",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var err error
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
-			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
 			if err != nil {
 				return err
 			}
@@ -100,21 +100,13 @@ func tcpSynScanCmd() *cobra.Command {
 	tcpCmd := cobra.Command{
 		Use:   "syn <targets>",
 		Short: "Carry out a TCP SYN scan.",
-		Args:  cobra.ExactArgs(1),
-		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
-			"  gscn scan syn 10.1.1.1 -p 80\n" +
-			"  gscn scan syn 2001:acad::1 -p 80\n" +
-			"  gscn scan syn 10.1.1.1/24 -p 80,90,100\n" +
-			"  gscn scan syn 10.1.1.1-5 -p 1-100\n" +
-			"  gscn scan syn bing.com -p 1-100\n" +
-			"  gscn scan syn 2001:acad::1,10.1.1.1 -p 80\n" +
-			"  gscn scan syn 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096\n",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var err error
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
-			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
 			if err != nil {
 				return err
 			}
@@ -165,22 +157,14 @@ func udpScanCmd() *cobra.Command {
 	udpCmd := cobra.Command{
 		Use:   "udp <targets>",
 		Short: "Carry out a udp scan",
-		Args:  cobra.ExactArgs(1),
-		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
-			"  gscn scan udp 10.1.1.1 -p 80\n" +
-			"  gscn scan udp 2001:acad::1 -p 80\n" +
-			"  gscn scan udp 10.1.1.1/24 -p 80,90,100\n" +
-			"  gscn scan udp 10.1.1.1-5 -p 1-100\n" +
-			"  gscn scan udp bing.com -p 1-100\n" +
-			"  gscn scan udp 2001:acad::1,10.1.1.1 -p 80\n" +
-			"  gscn scan udp 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24 -p 1-100,433,8096\n",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
 
 			var err error
-			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
 			if err != nil {
 				return err
 			}
@@ -226,22 +210,14 @@ func pingScanCmd() *cobra.Command {
 	pingCmd := cobra.Command{
 		Use:   "ping <targets>",
 		Short: "Carry out a ping scan",
-		Args:  cobra.ExactArgs(1),
-		Example: "\nTargets may be specified as individual IPv4/IPv6 addresses, IPv4/IPv6 CIDR ranges, Non-CIDR Ranges, domain names, or any combination of the above. e.g.\n" +
-			"  gscn scan ping 10.1.1.1\n" +
-			"  gscn scan ping 2001:acad::1\n" +
-			"  gscn scan ping 10.1.1.1/24\n" +
-			"  gscn scan ping 10.1.1.1-5\n" +
-			"  gscn scan ping bing.com\n" +
-			"  gscn scan ping 2001:acad::1,10.1.1.1\n" +
-			"  gscn scan ping 10.1.1.1,bing.com,10.4.4.4-10,10.3.3.3/24\n",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
 
 			var err error
-			opts.Targets, opts.HostNames, err = getScanTargets(args[0])
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
 			if err != nil {
 				return err
 			}
@@ -275,16 +251,16 @@ func pingScanCmd() *cobra.Command {
 	return &pingCmd
 }
 
-// getScanTargets takes a string of comma separated targets and returns a slice of netip.Prefixes and a map of netip.Addr to hostnames.
+// getScanTargets takes strings of targets and returns a slice of netip.Prefixes and a map of netip.Addr to hostnames.
 // It also returns an error if there are no targets provided or if there is an error parsing the targets.
-func getScanTargets(targetStr string) ([]netip.Prefix, map[netip.Addr]string, error) {
+func getScanTargets(targetStrs []string) ([]netip.Prefix, map[netip.Addr]string, error) {
 	var targets []netip.Prefix
 	var err error
 
 	var hostNames map[netip.Addr]string
 
-	if targetStr != "" {
-		targets, hostNames, err = scanner.TargetsFromStringWithDNSLookup(targetStr)
+	if len(targetStrs) != 0 {
+		targets, hostNames, err = scanner.TargetsFromStringWithDNSLookup(targetStrs)
 		if err != nil {
 			return nil, nil, err
 		}
