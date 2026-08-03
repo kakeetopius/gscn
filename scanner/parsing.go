@@ -20,7 +20,7 @@ type ipParseError struct {
 
 var ErrNoTargets = errors.New("no targets provided")
 
-// TargetsFromString parses a comma-separated string of network targets and returns
+// TargetsFromString parses strings of network targets and returns
 // a deduplicated slice of netip.Prefix values.
 //
 // The input string format supports multiple target types:
@@ -31,16 +31,15 @@ var ErrNoTargets = errors.New("no targets provided")
 // Example: "10.1.1.1/24,10.1.1.1,10.1.1.1-2"
 //
 // Returns an error if any target string cannot be parsed or the string is empty
-func TargetsFromString(s string) ([]netip.Prefix, error) {
-	if s == "" {
+func TargetsFromString(s []string) ([]netip.Prefix, error) {
+	if len(s) == 0 {
 		return nil, ErrNoTargets
 	}
 
-	targetStrings := strings.Split(s, ",")
 	targets := make([]netip.Prefix, 0, 5)
 	seenStrings := make(map[string]struct{})
 
-	for _, targetString := range targetStrings {
+	for _, targetString := range s {
 		if targetString == "" {
 			return nil, fmt.Errorf("invalid target specification string: %s", s)
 		}
@@ -60,7 +59,7 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 	return netutil.Unique(targets), nil
 }
 
-// TargetsFromStringWithDNSLookup parses a comma-separated string of network targets
+// TargetsFromStringWithDNSLookup parses strings of network targets
 // and performs DNS lookups for unresolvable addresses, treating them as domain names.
 //
 // The input string format supports multiple target types:
@@ -75,18 +74,17 @@ func TargetsFromString(s string) ([]netip.Prefix, error) {
 //   - A deduplicated slice of netip.Prefix values
 //   - A map of resolved IP addresses to their original hostname strings
 //   - An error if DNS lookup fails for any unresolvable target or if the string provided is empty.
-func TargetsFromStringWithDNSLookup(s string) ([]netip.Prefix, map[netip.Addr]string, error) {
-	if s == "" {
+func TargetsFromStringWithDNSLookup(s []string) ([]netip.Prefix, map[netip.Addr]string, error) {
+	if len(s) == 0 {
 		return nil, nil, ErrNoTargets
 	}
 	resolver := net.Resolver{}
-	commaSeparatedTargets := strings.Split(s, ",")
 	targets := make([]netip.Prefix, 0, 5)
 	hostNames := make(map[netip.Addr]string)
 
 	seenStrings := make(map[string]struct{})
 
-	for _, targetString := range commaSeparatedTargets {
+	for _, targetString := range s {
 		if targetString == "" {
 			return nil, nil, fmt.Errorf("invalid target specification string: %s", s)
 		}

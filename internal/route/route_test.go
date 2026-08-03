@@ -68,6 +68,7 @@ func TestGeneralRouterLookup(t *testing.T) {
 			},
 		},
 		ifaceProvider: netutil.MockInterfaceProvider(),
+		cache:         make(map[netip.Addr]Route),
 	}
 
 	tests := []struct {

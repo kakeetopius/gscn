@@ -45,7 +45,7 @@ func NotifierFromConfig(config *viper.Viper) (Notifier, error) {
 	return nil, fmt.Errorf("notifier %v not supported", notifierName)
 }
 
-func SendMessageWithNotifier(msg fmt.Stringer, notifier Notifier) error {
+func SendMessageWithNotifier(msg fmt.Stringer, notifier Notifier) (err error) {
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
 		return err
@@ -60,9 +60,5 @@ func SendMessageWithNotifier(msg fmt.Stringer, notifier Notifier) error {
 	}()
 
 	err = notifier.SendMessage(msg.String())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return
 }
