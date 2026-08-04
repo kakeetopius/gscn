@@ -35,7 +35,5 @@ type PacketSender interface {
 type PacketReceiver interface {
 	Packets() <-chan gopacket.Packet
 
-	AddReceivingInterface(iface netutil.Interface) error
-
 	io.Closer
 }

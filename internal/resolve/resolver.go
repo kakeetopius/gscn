@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -18,11 +19,19 @@ type resolver struct {
 	resolveCache      map[netip.Addr]netutil.MAC
 	cacheMu           sync.RWMutex
 	interfaceProvider netutil.NetInterfaceProvider
+	macNotFound       map[netip.Addr]struct{}
 }
 
 func NewResolver() Resolver {
+	interfaceProvider := &netutil.RealNetInterfaceProvider{}
+	_, err := interfaceProvider.Interfaces()
+	if err != nil {
+		return nil
+	}
+
 	return &resolver{
 		resolveCache:      make(map[netip.Addr]netutil.MAC),
+		macNotFound:       make(map[netip.Addr]struct{}),
 		interfaceProvider: &netutil.RealNetInterfaceProvider{},
 	}
 }
@@ -30,9 +39,11 @@ func NewResolver() Resolver {
 func (r *resolver) Resolve(addr netip.Addr) (netutil.MAC, error) {
 	r.cacheMu.Lock()
 	defer r.cacheMu.Unlock()
-
 	if mac, found := r.resolveCache[addr]; found {
 		return mac, nil
+	}
+	if _, ok := r.macNotFound[addr]; ok {
+		return nil, ErrMacNotFound{addr}
 	}
 
 	var err error
@@ -43,34 +54,44 @@ func (r *resolver) Resolve(addr netip.Addr) (netutil.MAC, error) {
 	} else {
 		mac, err = r.resolveMAC(addr)
 		if err != nil {
+			var errMac ErrMacNotFound
+			if errors.As(err, &errMac) {
+				r.macNotFound[errMac.DstIP] = struct{}{}
+			}
 			return nil, err
 		}
 	}
 
 	r.resolveCache[addr] = mac
+
 	return mac, nil
 }
 
 func (r *resolver) resolveMAC(addr netip.Addr) (netutil.MAC, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// The filter captures all packets sent to `addr`, including any ARP requests generated while resolving the destination MAC. If the kernel does not already
+	// have a valid neighbor cache entry for `addr`, the first captured packet may be an ARP request whose Ethernet destination is the broadcast address
+	// (ff:ff:ff:ff:ff:ff). In that case, the broadcast is returned.
+	//
+	// To avoid this, scanners should first probe eg, ping each target so the kernel resolves and caches its MAC address. Subsequent packets can then be
+	// transmitted directly to the destination host, allowing the correct destination MAC to be observed.
+	filter := fmt.Sprintf("dst host %s", addr.String())
+
 	allIfaces, err := r.interfaceProvider.Interfaces()
 	if err != nil {
 		return nil, err
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	filter := fmt.Sprintf("dst host %s", addr.String())
-
-	packetReceiver, err := packet.NewPacketReceiver(ctx, filter, 1, allIfaces...)
-	if err != nil {
-		return nil, err
+	packetReceiver, perr := packet.NewPacketReceiver(ctx, filter, 1, allIfaces...)
+	if perr != nil {
+		return nil, perr
 	}
+	packets := packetReceiver.Packets()
 	defer packetReceiver.Close()
 
-	packets := packetReceiver.Packets()
-
 	// dial and try to send some data to the destination ip so we can read the dst mac that will be used by the kernel.
-	conn, err := net.Dial("udp", fmt.Sprintf("%v:%v", addr.String(), 69))
+	conn, err := net.Dial("udp", net.JoinHostPort(addr.String(), "69"))
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +100,7 @@ func (r *resolver) resolveMAC(addr netip.Addr) (netutil.MAC, error) {
 
 	var packet gopacket.Packet
 	select {
-	case <-time.After(1 * time.Second):
+	case <-time.After(500 * time.Millisecond):
 		return nil, ErrMacNotFound{DstIP: addr}
 	case p, ok := <-packets:
 		if !ok {
@@ -94,6 +115,11 @@ func (r *resolver) resolveMAC(addr netip.Addr) (netutil.MAC, error) {
 	}
 	ethHdr, ok := eth.(*layers.Ethernet)
 	if !ok {
+		return nil, ErrMacNotFound{DstIP: addr}
+	}
+
+	// filter out non ip responses
+	if ethHdr.EthernetType != layers.EthernetTypeIPv4 && ethHdr.EthernetType != layers.EthernetTypeIPv6 {
 		return nil, ErrMacNotFound{DstIP: addr}
 	}
 

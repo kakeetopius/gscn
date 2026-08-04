@@ -16,6 +16,7 @@ type PcapPacketSender struct {
 	sendChannel    chan packet
 	senderFinished chan struct{}
 	ctx            context.Context
+	cancelFunc     context.CancelFunc
 }
 
 type packet struct {
@@ -24,12 +25,14 @@ type packet struct {
 }
 
 func NewPcapPacketSender(ctx context.Context) *PcapPacketSender {
+	newCtx, cancel := context.WithCancel(ctx)
 	ps := &PcapPacketSender{
 		handles:        make(map[int]*pcap.Handle),
 		sendChannel:    make(chan packet, 1500*4),
 		senderFinished: make(chan struct{}),
 		mu:             sync.RWMutex{},
-		ctx:            ctx,
+		ctx:            newCtx,
+		cancelFunc:     cancel,
 	}
 
 	go ps.startSender()
@@ -95,52 +98,60 @@ func (ps *PcapPacketSender) Close() error {
 	for _, handle := range ps.handles {
 		handle.Close()
 	}
+	ps.cancelFunc()
 	return nil
 }
 
 type PcapPacketReceiver struct {
-	ctx                context.Context
-	filter             string
-	ifaces             map[int]receivingInterface
-	packetChan         chan gopacket.Packet
-	channelCapacity    int
-	isAlreadyReceiving bool
-	closed             bool
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	filter     string
+	ifaces     map[int]receivingInterface
+	packetChan chan gopacket.Packet
+	closed     bool
 }
 
 type receivingInterface struct {
-	netutil.Interface
+	*netutil.Interface
 	handle *pcap.Handle
 }
 
-func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, receivingInterfaces ...netutil.Interface) (PacketReceiver, error) {
+func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, receivingInterfaces ...netutil.Interface) (*PcapPacketReceiver, error) {
+	newCtx, cancel := context.WithCancel(ctx)
 	packetReceiver := PcapPacketReceiver{
-		ctx:        ctx,
+		ctx:        newCtx,
+		cancelFunc: cancel,
 		filter:     filter,
 		ifaces:     make(map[int]receivingInterface),
 		packetChan: make(chan gopacket.Packet, channelCapacity),
 	}
 
 	for _, iface := range receivingInterfaces {
-		packetReceiver.AddReceivingInterface(iface)
+		err := packetReceiver.AddReceivingInterface(&iface)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &packetReceiver, nil
 }
 
-func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) error {
+func (pr *PcapPacketReceiver) AddReceivingInterface(iface *netutil.Interface) error {
 	_, found := pr.ifaces[iface.Index]
 	if found {
 		return nil
 	}
 
-	handle, err := getIfaceHandle(&iface)
+	handle, err := getIfaceHandle(iface)
 	if err != nil {
 		return err
 	}
-	err = handle.SetBPFFilter(pr.filter)
-	if err != nil {
-		return err
+
+	if pr.filter != "" {
+		err = handle.SetBPFFilter(pr.filter)
+		if err != nil {
+			return err
+		}
 	}
 
 	receivingIface := receivingInterface{
@@ -149,9 +160,7 @@ func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) err
 	}
 	pr.ifaces[iface.Index] = receivingIface
 
-	if pr.isAlreadyReceiving {
-		go pr.capturePacketsOnInterface(receivingIface)
-	}
+	go pr.capturePacketsOnInterface(receivingIface)
 
 	return nil
 }
@@ -161,26 +170,25 @@ func (pr *PcapPacketReceiver) Close() error {
 		return nil
 	}
 
+	pr.cancelFunc()
 	pr.closed = true
-	for _, iface := range pr.ifaces {
-		iface.handle.Close() // closing the handle will force interface packet channels to also be closed
-	}
+
 	clear(pr.ifaces)
 	close(pr.packetChan)
 	return nil
 }
 
 func (pr *PcapPacketReceiver) Packets() <-chan gopacket.Packet {
-	for _, iface := range pr.ifaces {
-		go pr.capturePacketsOnInterface(iface)
-	}
-	pr.isAlreadyReceiving = true
 	return pr.packetChan
 }
 
 func (pr *PcapPacketReceiver) capturePacketsOnInterface(iface receivingInterface) {
 	packetSource := gopacket.NewPacketSource(iface.handle, iface.handle.LinkType())
 	ifacePacketChan := packetSource.Packets()
+
+	defer func() {
+		iface.handle.Close()
+	}()
 
 	for {
 		select {
