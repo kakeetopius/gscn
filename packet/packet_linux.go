@@ -1,6 +1,6 @@
 //go:build linux
 
-package scanner
+package packet
 
 import (
 	"context"
@@ -10,19 +10,6 @@ import (
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"golang.org/x/sys/unix"
 )
-
-type LinuxPacketSender struct {
-	ctx               context.Context
-	sendChannel       chan linuxPacket
-	socketFD          int
-	senderFinished    chan struct{}
-	generalSocketAddr unix.SockaddrLinklayer
-}
-
-type linuxPacket struct {
-	data          []byte
-	outgoingIface unix.SockaddrLinklayer
-}
 
 func GetPacketSender(ctx context.Context, senderType PacketSenderType) (PacketSender, error) {
 	switch senderType {
@@ -35,6 +22,19 @@ func GetPacketSender(ctx context.Context, senderType PacketSenderType) (PacketSe
 	default:
 		return nil, fmt.Errorf("unknown sender type: %v", senderType)
 	}
+}
+
+type LinuxPacketSender struct {
+	ctx               context.Context
+	sendChannel       chan linuxPacket
+	socketFD          int
+	senderFinished    chan struct{}
+	generalSocketAddr unix.SockaddrLinklayer
+}
+
+type linuxPacket struct {
+	data          []byte
+	outgoingIface unix.SockaddrLinklayer
 }
 
 func NewLinuxPacketSender(ctx context.Context) (*LinuxPacketSender, error) {

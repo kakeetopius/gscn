@@ -3,7 +3,6 @@ package scanner
 // TODO:
 // 1. improve both this arpscanner and ndpscanner to not just probe with one packet per host but at least probe with
 // three or more per host.
-// 2. both the this arpscanner and ndpscanner should also have a function to set up the result set before transmission begins
 
 import (
 	"context"
@@ -21,6 +20,7 @@ import (
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/route"
+	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
 )
 
@@ -50,10 +50,10 @@ type ARPScanResults struct {
 }
 
 type ARPHostResult struct {
-	IPAddr   netip.Addr `json:"ip"`
-	MacAddr  MAC        `json:"mac"`
-	HostName string     `json:"hostname"`
-	Vendor   string     `json:"vendor"`
+	IPAddr   netip.Addr  `json:"ip"`
+	MacAddr  netutil.MAC `json:"mac"`
+	HostName string      `json:"hostname"`
+	Vendor   string      `json:"vendor"`
 }
 
 type ARPScanStats struct {
@@ -161,19 +161,19 @@ func (s *ARPScanner) runArp() error {
 	startSending := make(chan struct{})
 	numHosts := netutil.HostsInIP4Network(opts.Targets)
 
-	var packetSender PacketSender
+	var packetSender packet.PacketSender
 	var err error
 	if runtime.GOOS == "linux" {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypeLinkLayer)
+		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypeLinkLayer)
 	} else {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
+		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypePcap)
 	}
 	if err != nil {
 		return err
 	}
 	defer packetSender.Close()
 
-	packetReceiver, err := NewPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
+	packetReceiver, err := packet.NewPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func (s *ARPScanner) runArp() error {
 	return nil
 }
 
-func sendArpPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
+func sendArpPacket(packetSender packet.PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
@@ -283,7 +283,7 @@ func sendArpPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, d
 	return nil
 }
 
-func (s *ARPScanner) getARPReplies(ctx context.Context, packetReceiver PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
+func (s *ARPScanner) getARPReplies(ctx context.Context, packetReceiver packet.PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
 	opts := s.ARPScanOptions
 
 	packetChan := packetReceiver.Packets()
@@ -332,7 +332,7 @@ func (s *ARPScanner) getARPReplies(ctx context.Context, packetReceiver PacketRec
 			receivedFrom[ipAddr] = struct{}{}
 			results = append(results, ARPHostResult{
 				IPAddr:  ipAddr,
-				MacAddr: MAC(arpPacket.SourceHwAddress),
+				MacAddr: netutil.MAC(arpPacket.SourceHwAddress),
 			})
 		}
 	}

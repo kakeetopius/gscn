@@ -1,15 +1,12 @@
 package scanner
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
-	"net"
 	"net/netip"
 	"strings"
 	"time"
 
-	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/pterm/pterm"
@@ -86,10 +83,6 @@ func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, p
 	return pinger.ResultMap(), nil
 }
 
-func zeroMac() MAC {
-	return MAC{0, 0, 0, 0, 0, 0}
-}
-
 func randomEphemeralPort() uint16 {
 	var (
 		minEphemeralPort = 49152
@@ -98,53 +91,8 @@ func randomEphemeralPort() uint16 {
 	return uint16(rand.IntN(maxEphemeralPort-minEphemeralPort+1) + minEphemeralPort)
 }
 
-func resolveMAC(addr netip.Addr, ifaceProvider netutil.NetInterfaceProvider) (MAC, error) {
-	allIfaces, err := ifaceProvider.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	filter := fmt.Sprintf("dst host %s", addr.String())
-
-	packetReceiver, err := NewPacketReceiver(ctx, filter, 1, allIfaces...)
-	if err != nil {
-		return nil, err
-	}
-	defer packetReceiver.Close()
-
-	packets := packetReceiver.Packets()
-
-	// dial and try to send some data to the destination ip so we can read the dst mac that will be used by the kernel.
-	conn, err := net.Dial("udp", fmt.Sprintf("%v:%v", addr.String(), 69))
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	conn.Write([]byte("wagwan"))
-
-	var packet gopacket.Packet
-	select {
-	case <-time.After(1 * time.Second):
-		return nil, ErrCouldNotGetMAC
-	case p, ok := <-packets:
-		if !ok {
-			return nil, ErrCouldNotGetMAC
-		}
-		packet = p
-	}
-
-	eth := packet.Layer(layers.LayerTypeEthernet)
-	if eth == nil {
-		return nil, ErrCouldNotGetMAC
-	}
-	ethHdr, ok := eth.(*layers.Ethernet)
-	if !ok {
-		return nil, ErrCouldNotGetMAC
-	}
-
-	return MAC(ethHdr.DstMAC), nil
+func zeroMac() netutil.MAC {
+	return netutil.MAC{0, 0, 0, 0, 0, 0}
 }
 
 func getAllIfaceNames(ifaces []netutil.Interface) string {

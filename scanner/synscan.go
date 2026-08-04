@@ -17,7 +17,9 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
+	"github.com/kakeetopius/gscn/internal/resolve"
 	"github.com/kakeetopius/gscn/internal/route"
+	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
 )
 
@@ -29,9 +31,7 @@ type TCPSynScanner struct {
 	ifaceProvider netutil.NetInterfaceProvider
 	logger        log.Logger
 	router        route.Router
-
-	resolveCache map[netip.Addr]MAC
-	cacheMu      sync.RWMutex
+	macResolver   resolve.Resolver
 }
 
 type TCPSynScanOptions struct {
@@ -72,8 +72,8 @@ func NewTCPSynScanner(opts TCPSynScanOptions) *TCPSynScanner {
 			Results: make(HostResults),
 		},
 		logger:        log.NewLogger(true),
-		resolveCache:  make(map[netip.Addr]MAC),
 		ifaceProvider: &netutil.RealNetInterfaceProvider{},
+		macResolver:   resolve.NewResolver(),
 	}
 }
 
@@ -163,19 +163,19 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 		return err
 	}
 
-	var packetSender PacketSender
+	var packetSender packet.PacketSender
 	// localhostPacketSender is necessary coz if packets heading to localhost or any ip on any of the device's interfaces are injected directly at the datalink,
 	// they never reache localhost, so they have to be injected at the ip layer. but the ip layer packet injector only works on linux, so for the other OSes there is
 	// no solution yet
-	var localhostPacketSender PacketSender
+	var localhostPacketSender packet.PacketSender
 	if runtime.GOOS == "linux" {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypeLinkLayer)
+		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypeLinkLayer)
 		if err != nil {
 			return err
 		}
-		localhostPacketSender, err = GetPacketSender(ctx, PacketSenderTypeIPLayer)
+		localhostPacketSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypeIPLayer)
 	} else {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
+		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypePcap)
 		localhostPacketSender = packetSender
 	}
 	if err != nil {
@@ -187,7 +187,7 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 
 	receiverCtx, cancelReceiver := context.WithCancel(context.Background())
 	defer cancelReceiver()
-	packetReceiver, err := NewPacketReceiver(receiverCtx, "(ip or ip6) and tcp", 1500, allIfaces...)
+	packetReceiver, err := packet.NewPacketReceiver(receiverCtx, "(ip or ip6) and tcp", 1500, allIfaces...)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	return nil
 }
 
-func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver PacketReceiver, masterDone chan<- struct{}) {
+func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver packet.PacketReceiver, masterDone chan<- struct{}) {
 	// To Be Run By Main Worker (aggregator)
 	packetChan := packetReceiver.Packets()
 
@@ -317,7 +317,7 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 	}
 }
 
-func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, packetSender PacketSender, localhostPacketSender PacketSender) {
+func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) {
 	// to be run by workers
 	defer func() {
 		wg.Done()
@@ -340,10 +340,10 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 		packetHeaders := make([]gopacket.SerializableLayer, 0, 3)
 
 		iface := &route.Interface
-		if packetSender.Type() != PacketSenderTypeIPLayer {
+		if packetSender.Type() != packet.PacketSenderTypeIPLayer {
 			// If the packetSender is of type PacketSenderTypeIPLayer we dont bother with the ethernet header at all
 
-			var dstMac MAC
+			var dstMac netutil.MAC
 
 			if addr == route.SrcAddr {
 				// if the target is the interface's ip we use the looback interface instead
@@ -352,16 +352,17 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 					continue
 				}
 			} else {
-				dstMac, err = s.getMACOf(route.NextHop)
+				dstMac, err = s.macResolver.Resolve(route.NextHop)
+				var macErr resolve.ErrMacNotFound
 				if err != nil {
-					if !errors.Is(err, ErrCouldNotGetMAC) {
+					if !errors.As(err, &macErr) {
 						continue
 					}
 					// if we fail to get mac we just set to the broadcast.
-					dstMac = MAC{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+					dstMac = netutil.MAC{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 				}
 			}
-			srcMac := MAC(iface.HardwareAddr)
+			srcMac := netutil.MAC(iface.HardwareAddr)
 			if dstMac == nil {
 				dstMac = zeroMac()
 			}
@@ -444,28 +445,4 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 		}
 
 	}
-}
-
-func (s *TCPSynScanner) getMACOf(addr netip.Addr) (MAC, error) {
-	s.cacheMu.Lock()
-	defer s.cacheMu.Unlock()
-
-	if mac, found := s.resolveCache[addr]; found {
-		return mac, nil
-	}
-
-	var err error
-	var mac MAC
-
-	if addr.IsLoopback() {
-		mac = MAC{0, 0, 0, 0, 0, 0}
-	} else {
-		mac, err = resolveMAC(addr, s.ifaceProvider)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	s.resolveCache[addr] = mac
-	return mac, nil
 }
