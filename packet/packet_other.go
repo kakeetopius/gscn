@@ -1,6 +1,6 @@
 //go:build !linux
 
-package scanner
+package packet
 
 import (
 	"context"

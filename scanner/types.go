@@ -5,14 +5,8 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
 	"net/netip"
-	"slices"
 	"time"
-
-	"github.com/google/gopacket"
-	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 type (
@@ -30,8 +24,6 @@ const (
 	PortStateOpen
 	PortStatePossibleFilter // used when  a host's port state cant be known definitevly
 )
-
-type MAC net.HardwareAddr
 
 // Scanner defines the interface for network scanning operations.
 type Scanner interface {
@@ -125,52 +117,4 @@ func (s HostResults) MarshalJSON() ([]byte, error) {
 
 func (s HostResult) TotalNumberOfPorts() int {
 	return s.OpenPorts + s.ClosedPorts + s.FilteredPorts
-}
-
-func (m MAC) String() string {
-	return net.HardwareAddr(m).String()
-}
-
-func (m MAC) MarshalJSON() ([]byte, error) {
-	return json.Marshal(net.HardwareAddr(m).String())
-}
-
-func (m MAC) IsZero() bool {
-	zeroMac := MAC{0, 0, 0, 0, 0, 0}
-
-	return slices.Equal(m, zeroMac)
-}
-
-var ErrCouldNotGetMAC = fmt.Errorf("could not find the mac address for the given address")
-
-// PacketSenderType identifies the implementation used to transmit packets.
-type PacketSenderType int
-
-const (
-	// PacketSenderTypePcap sends packets using libpcap.
-	PacketSenderTypePcap PacketSenderType = iota
-
-	// PacketSenderTypeLinkLayer sends packets using Linux AF_PACKET raw sockets.
-	PacketSenderTypeLinkLayer
-
-	// PacketSenderTypeIPLayer sends packets using Linux AF_INET/AF_INET6 raw sockets.
-	PacketSenderTypeIPLayer
-)
-
-type PacketSender interface {
-	Type() PacketSenderType
-
-	SendPacket(packet []byte, iface *netutil.Interface) error
-
-	Wait()
-
-	io.Closer
-}
-
-type PacketReceiver interface {
-	Packets() <-chan gopacket.Packet
-
-	AddReceivingInterface(iface netutil.Interface) error
-
-	io.Closer
 }

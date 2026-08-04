@@ -18,6 +18,7 @@ import (
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/route"
+	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
 )
 
@@ -48,10 +49,10 @@ type NDPScanResults struct {
 }
 
 type NDPHostResult struct {
-	IPAddr   netip.Addr `json:"ip"`
-	MacAddr  MAC        `json:"mac"`
-	HostName string     `json:"hostname"`
-	Vendor   string     `json:"vendor"`
+	IPAddr   netip.Addr  `json:"ip"`
+	MacAddr  netutil.MAC `json:"mac"`
+	HostName string      `json:"hostname"`
+	Vendor   string      `json:"vendor"`
 	IsRouter bool
 }
 
@@ -163,19 +164,19 @@ func (s *NDPScanner) runNDP() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var packetSender PacketSender
+	var packetSender packet.PacketSender
 	var err error
 	if runtime.GOOS == "linux" {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypeLinkLayer)
+		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypeLinkLayer)
 	} else {
-		packetSender, err = GetPacketSender(ctx, PacketSenderTypePcap)
+		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypePcap)
 	}
 	if err != nil {
 		return err
 	}
 	defer packetSender.Close()
 
-	packetReceiver, err := NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 136", 1024, *s.Interface)
+	packetReceiver, err := packet.NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 136", 1024, *s.Interface)
 	if err != nil {
 		return err
 	}
@@ -223,7 +224,7 @@ func (s *NDPScanner) runNDP() error {
 	return nil
 }
 
-func sendNSPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
+func sendNSPacket(packetSender packet.PacketSender, iface *netutil.Interface, srcIP, dstIP netip.Addr) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       solicitedNodeMacAddress(dstIP),
@@ -273,7 +274,7 @@ func sendNSPacket(packetSender PacketSender, iface *netutil.Interface, srcIP, ds
 	return nil
 }
 
-func (s *NDPScanner) getNeighbourAdvertisements(ctx context.Context, packetReceiver PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
+func (s *NDPScanner) getNeighbourAdvertisements(ctx context.Context, packetReceiver packet.PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
 	packetChan := packetReceiver.Packets()
 
 	hostResults := make([]NDPHostResult, 0, 15)
@@ -318,7 +319,7 @@ func (s *NDPScanner) getNeighbourAdvertisements(ctx context.Context, packetRecei
 
 			var result NDPHostResult
 			result.IPAddr = srcIP
-			result.MacAddr = MAC(hwAddr)
+			result.MacAddr = netutil.MAC(hwAddr)
 			if icmpPacket.Router() {
 				result.IsRouter = true
 			}
@@ -351,7 +352,7 @@ func (s *NDPScanner) ndpResultsUsingNetlink(iface *netutil.Interface, targets []
 		if netutil.AddrIsPartOfNetworks(targets, &addr) {
 			results = append(results, NDPHostResult{
 				IPAddr:  addr,
-				MacAddr: MAC(neigh.HwAddr),
+				MacAddr: netutil.MAC(neigh.HwAddr),
 				Vendor:  netutil.MACVendor(neigh.HwAddr.String()),
 			})
 		}
