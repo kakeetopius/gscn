@@ -302,7 +302,9 @@ func parsePortSpec(s string) ([]PortNumber, error) {
 
 	ports := make([]PortNumber, 0, 5)
 
-	if strings.ContainsRune(s, '-') {
+	if s == "common" {
+		ports = append(ports, CommonPorts...)
+	} else if strings.ContainsRune(s, '-') {
 		// Port Range Provided eg 10-20
 		dashIndex := strings.LastIndex(s, "-")
 		if dashIndex == len(s)-1 { // if '-' is at the end

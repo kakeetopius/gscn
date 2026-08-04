@@ -141,7 +141,9 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	}
 
 	if !s.SkipPingScan {
-		pingResults, err := pingHosts(s.Targets, s.PingTimeout, int(s.Workers), s.PingCount) // first check if hosts are up.
+		// pinging for this scanner type is important because kernel will be build able to build the neighbor cache for those hosts that are up which will
+		// be useful for the macResolver
+		pingResults, err := pingHosts(s.Targets, s.PingTimeout, int(s.Workers), s.PingCount)
 		if err != nil {
 			return err
 		}
@@ -329,6 +331,7 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 
 		route, err := s.router.Lookup(addr)
 		if err != nil {
+			fmt.Println(err)
 			continue
 		}
 
@@ -356,6 +359,7 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 				var macErr resolve.ErrMacNotFound
 				if err != nil {
 					if !errors.As(err, &macErr) {
+						fmt.Println(err)
 						continue
 					}
 					// if we fail to get mac we just set to the broadcast.

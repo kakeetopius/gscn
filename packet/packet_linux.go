@@ -25,11 +25,12 @@ func GetPacketSender(ctx context.Context, senderType PacketSenderType) (PacketSe
 }
 
 type LinuxPacketSender struct {
-	ctx               context.Context
 	sendChannel       chan linuxPacket
 	socketFD          int
 	senderFinished    chan struct{}
 	generalSocketAddr unix.SockaddrLinklayer
+	ctx               context.Context
+	cancelFunc        context.CancelFunc
 }
 
 type linuxPacket struct {
@@ -46,12 +47,14 @@ func NewLinuxPacketSender(ctx context.Context) (*LinuxPacketSender, error) {
 		Protocol: uint16(bits.Htons(unix.ETH_P_ALL)),
 	}
 
+	newCtx, cancel := context.WithCancel(ctx)
 	ps := &LinuxPacketSender{
 		socketFD:          sockfd,
 		generalSocketAddr: addr,
 		sendChannel:       make(chan linuxPacket, 1500*4),
 		senderFinished:    make(chan struct{}),
-		ctx:               ctx,
+		ctx:               newCtx,
+		cancelFunc:        cancel,
 	}
 
 	go ps.startSender()
@@ -81,6 +84,7 @@ func (ps *LinuxPacketSender) SendPacket(packetData []byte, iface *netutil.Interf
 }
 
 func (ps *LinuxPacketSender) Close() error {
+	ps.cancelFunc()
 	return unix.Close(ps.socketFD)
 }
 
@@ -102,11 +106,12 @@ func (ps *LinuxPacketSender) startSender() {
 }
 
 type LinuxRawIPSender struct {
-	ctx            context.Context
 	sendChannel    chan linuxIPPacket
 	ipv4Sock       int
 	ipv6Sock       int
 	senderFinished chan struct{}
+	ctx            context.Context
+	cancelFunc     context.CancelFunc
 }
 
 type linuxIPPacket struct {
@@ -130,12 +135,14 @@ func NewLinuxRawIPSender(ctx context.Context) (*LinuxRawIPSender, error) {
 		return nil, err
 	}
 
+	newCtx, cancel := context.WithCancel(ctx)
 	ps := &LinuxRawIPSender{
 		ipv4Sock:       ipv4Sock,
 		ipv6Sock:       ipv6Sock,
 		sendChannel:    make(chan linuxIPPacket, 1500*4),
 		senderFinished: make(chan struct{}),
-		ctx:            ctx,
+		ctx:            newCtx,
+		cancelFunc:     cancel,
 	}
 
 	go ps.startSender()
@@ -161,6 +168,7 @@ func (ps *LinuxRawIPSender) Wait() {
 }
 
 func (ps *LinuxRawIPSender) Close() error {
+	ps.cancelFunc()
 	unix.Close(ps.ipv4Sock)
 	return unix.Close(ps.ipv6Sock)
 }
