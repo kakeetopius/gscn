@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/pterm/pterm"
@@ -192,11 +191,11 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 			hostIP := result.HostIP
 
 			hostResult := s.results.Results[hostIP]
-			portIndex := hostResult.portIndex[result.Port.Number]
-			hostResult.Ports[portIndex] = result.Port
 
-			switch result.Port.State {
-			case PortStateOpen:
+			if result.Port.State == PortStateOpen {
+				portIndex := hostResult.portIndex[result.Port.Number]
+				hostResult.Ports[portIndex].State = PortStateOpen
+
 				hostResult.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
 				hostResult.OpenPorts++
 				hostResult.ClosedPorts--
@@ -228,15 +227,12 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- P
 		result := PortScanWorkerResult{
 			HostIP: target.Addr(),
 			Port: Port{
-				Number:   PortNumber(target.Port()),
-				Protocol: proto,
+				State:  PortStateClosed,
+				Number: PortNumber(target.Port()),
 			},
 		}
-		if err != nil {
-			result.Port.State = PortStateClosed
-		} else {
+		if err == nil {
 			result.Port.State = PortStateOpen
-			result.Port.Name = netutil.Service(layers.TCPPort(target.Port()).String())
 		}
 
 		resultsChan <- result

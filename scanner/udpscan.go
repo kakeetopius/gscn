@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/pterm/pterm"
@@ -187,12 +186,11 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 		result := PortScanWorkerResult{
 			HostIP: target.Addr(),
 			Port: Port{
-				Number:   PortNumber(target.Port()),
-				Protocol: proto,
+				State:  PortStateClosed,
+				Number: PortNumber(target.Port()),
 			},
 		}
 		if scanner.hostStates[target.Addr()].HostState == HostStateDown {
-			result.Port.State = PortStateClosed
 			resultsChan <- result
 			continue
 		}
@@ -202,14 +200,12 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 		}
 		conn, err := dialer.Dial(proto, target.String())
 		if err != nil {
-			result.Port.State = PortStateClosed
 			resultsChan <- result
 			continue
 		}
 
 		err = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		if err != nil {
-			result.Port.State = PortStateClosed
 			resultsChan <- result
 			continue
 		}
@@ -220,14 +216,12 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 			// Here we assume that if the read attempt on the socket timed out then the port is open
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				result.Port.State = PortStatePossibleFilter
-				result.Port.Name = netutil.Service(layers.UDPPort(target.Port()).String())
 			} else {
 				// any other error means the port is closed
 				result.Port.State = PortStateClosed
 			}
 		} else {
 			result.Port.State = PortStateOpen
-			result.Port.Name = netutil.Service(layers.UDPPort(target.Port()).String())
 		}
 
 		resultsChan <- result
@@ -255,7 +249,7 @@ func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan ch
 
 			hostResult := s.results.Results[hostIP]
 			portIndex := hostResult.portIndex[result.Port.Number]
-			hostResult.Ports[portIndex] = result.Port
+			hostResult.Ports[portIndex].State = result.Port.State
 
 			switch result.Port.State {
 			case PortStateOpen:

@@ -18,7 +18,7 @@ import (
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/resolve"
-	"github.com/kakeetopius/gscn/internal/route"
+	"github.com/kakeetopius/gscn/internal/routing"
 	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
 )
@@ -30,7 +30,7 @@ type TCPSynScanner struct {
 	hostStates    PingScanResultsMap
 	ifaceProvider netutil.NetInterfaceProvider
 	logger        log.Logger
-	router        route.Router
+	router        routing.Router
 	macResolver   resolve.Resolver
 }
 
@@ -62,30 +62,34 @@ type TCPSynScanStats struct {
 	ScanTime        time.Duration `json:"scan_duration"`
 }
 
-func NewTCPSynScanner(opts TCPSynScanOptions) *TCPSynScanner {
+func NewTCPSynScanner(opts TCPSynScanOptions) (*TCPSynScanner, error) {
 	if opts.HostNames == nil {
 		opts.HostNames = make(map[netip.Addr]string)
+	}
+	ifaceProvider, err := netutil.InterfaceProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	router, err := routing.NewRouter(ifaceProvider)
+	if err != nil {
+		return nil, err
 	}
 	return &TCPSynScanner{
 		TCPSynScanOptions: opts,
 		results: TCPSynScanResults{
 			Results: make(HostResults),
 		},
+		ifaceProvider: ifaceProvider,
 		logger:        log.NewLogger(true),
-		ifaceProvider: &netutil.RealNetInterfaceProvider{},
-		macResolver:   resolve.NewResolver(),
-	}
+		macResolver:   resolve.NewResolver(ifaceProvider),
+		router:        router,
+	}, nil
 }
 
 func (s *TCPSynScanner) Scan() (ScanResults, error) {
-	router, err := route.NewRouter()
-	if err != nil {
-		return nil, err
-	}
-	s.router = router
-
 	startTime := time.Now()
-	err = s.runTCPSynScan()
+	err := s.runTCPSynScan()
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +308,10 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 			}
 			hostResult.HostState = HostStateUp
 
-			portIndex := hostResult.portIndex[PortNumber(srcPort)]
+			portIndex, found := hostResult.portIndex[PortNumber(srcPort)]
+			if !found {
+				continue
+			}
 
 			port := hostResult.Ports[portIndex]
 			if port.State != PortStateOpen {
@@ -350,7 +357,7 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 
 			if addr == route.SrcAddr {
 				// if the target is the interface's ip we use the looback interface instead
-				iface, err = netutil.LoobackInterface(s.ifaceProvider)
+				iface, err = netutil.LoopbackInterface(s.ifaceProvider)
 				if err != nil {
 					continue
 				}

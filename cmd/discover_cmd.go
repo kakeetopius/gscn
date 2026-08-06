@@ -57,7 +57,10 @@ func discoverArpCmd() *cobra.Command {
 			opts.Interfaces = ifaces
 			opts.Verbose = true
 
-			arpScanner := scanner.NewARPScanner(opts)
+			arpScanner, err := scanner.NewARPScanner(opts)
+			if err != nil {
+				return err
+			}
 
 			return scanner.DoScan(arpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
@@ -107,7 +110,10 @@ func discoverNDPCmd() *cobra.Command {
 				opts.Interface = &ifaces[0]
 			}
 
-			ndpScanner := scanner.NewNDPScanner(opts)
+			ndpScanner, err := scanner.NewNDPScanner(opts)
+			if err != nil {
+				return err
+			}
 			return scanner.DoScan(ndpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
@@ -144,18 +150,21 @@ func getDiscoverTargets(targetStrs []string) ([]netip.Prefix, error) {
 
 func getDiscoverInterfaces(ifStrs []string) ([]netutil.Interface, error) {
 	ifaces := make([]netutil.Interface, 0, len(ifStrs))
-	ifaceProvider := netutil.RealNetInterfaceProvider{}
+	ifaceProvider, err := netutil.InterfaceProvider()
+	if err != nil {
+		return nil, err
+	}
 
 	for _, ifStr := range ifStrs {
 		iface, err := ifaceProvider.InterfaceByName(ifStr)
 		if err != nil {
 			return nil, err
 		}
-		err = netutil.VerifyInterface(&ifaceProvider, iface)
+		err = netutil.VerifyInterface(&iface)
 		if err != nil {
 			return nil, err
 		}
-		ifaces = append(ifaces, *iface)
+		ifaces = append(ifaces, iface)
 	}
 
 	return ifaces, nil

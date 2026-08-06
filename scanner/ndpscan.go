@@ -17,15 +17,17 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/route"
+	"github.com/kakeetopius/gscn/internal/routing"
 	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
 )
 
 type NDPScanner struct {
 	NDPScanOptions
-	results NDPScanResults
-	logger  log.Logger
+	results       NDPScanResults
+	logger        log.Logger
+	ifaceProvider netutil.NetInterfaceProvider
+	router        routing.Router
 }
 
 type NDPScanOptions struct {
@@ -62,15 +64,26 @@ type NDPScanStats struct {
 	ScanDuration    time.Duration `json:"scan_duration"`
 }
 
-func NewNDPScanner(opts NDPScanOptions) *NDPScanner {
+func NewNDPScanner(opts NDPScanOptions) (*NDPScanner, error) {
 	if opts.HostNames == nil {
 		opts.HostNames = make(map[netip.Addr]string)
+	}
+	ifaceProvider, err := netutil.InterfaceProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	router, err := routing.NewRouter(ifaceProvider)
+	if err != nil {
+		return nil, err
 	}
 	return &NDPScanner{
 		NDPScanOptions: opts,
 		results:        NDPScanResults{},
 		logger:         log.NewLogger(opts.Verbose),
-	}
+		ifaceProvider:  ifaceProvider,
+		router:         router,
+	}, nil
 }
 
 func (s *NDPScanner) Scan() (ScanResults, error) {
@@ -189,15 +202,10 @@ func (s *NDPScanner) runNDP() error {
 
 	s.logger.Info("Probing host(s) on interface(s): " + opts.Interface.Name)
 
-	router, err := route.NewRouter()
-	if err != nil {
-		return err
-	}
-
 	for _, target := range opts.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
 
-		route, err := router.Lookup(IPaddr.WithZone(s.Interface.Name))
+		route, err := s.router.Lookup(IPaddr.WithZone(s.Interface.Name))
 		if err != nil {
 			return err
 		}

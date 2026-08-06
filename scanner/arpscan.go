@@ -19,15 +19,17 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/route"
+	"github.com/kakeetopius/gscn/internal/routing"
 	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
 )
 
 type ARPScanner struct {
 	ARPScanOptions
-	results ARPScanResults
-	logger  log.Logger
+	results       ARPScanResults
+	logger        log.Logger
+	ifaceProvider netutil.NetInterfaceProvider
+	router        routing.Router
 }
 
 type ARPScanOptions struct {
@@ -62,15 +64,26 @@ type ARPScanStats struct {
 	ScanDuration    time.Duration `json:"scan_duration"`
 }
 
-func NewARPScanner(opts ARPScanOptions) *ARPScanner {
+func NewARPScanner(opts ARPScanOptions) (*ARPScanner, error) {
 	if opts.HostNames == nil {
 		opts.HostNames = make(map[netip.Addr]string)
+	}
+	ifaceProvider, err := netutil.InterfaceProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	router, err := routing.NewRouter(ifaceProvider)
+	if err != nil {
+		return nil, err
 	}
 	return &ARPScanner{
 		ARPScanOptions: opts,
 		results:        ARPScanResults{},
 		logger:         log.NewLogger(opts.Verbose),
-	}
+		ifaceProvider:  ifaceProvider,
+		router:         router,
+	}, nil
 }
 
 func (s *ARPScanner) Scan() (ScanResults, error) {
@@ -197,18 +210,13 @@ func (s *ARPScanner) runArp() error {
 		defer bar.Stop()
 	}
 
-	router, err := route.NewRouter()
-	if err != nil {
-		return err
-	}
-
 	for _, targetNet := range opts.Targets {
 		ipToScan := targetNet.Masked().Addr() // first IP in range
 
 		networkAddr := ipToScan
 		broadCast := broadCastAddr(targetNet)
 
-		route, err := router.Lookup(ipToScan)
+		route, err := s.router.Lookup(ipToScan)
 		if err != nil {
 			return err
 		}

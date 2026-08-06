@@ -119,9 +119,12 @@ func tcpSynScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tcpScanner := scanner.NewTCPSynScanner(opts)
+			synScanner, err := scanner.NewTCPSynScanner(opts)
+			if err != nil {
+				return err
+			}
 
-			return scanner.DoScan(tcpScanner, scanner.ScanOptions{
+			return scanner.DoScan(synScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,

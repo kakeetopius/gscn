@@ -1,4 +1,4 @@
-package route
+package routing
 
 import (
 	"net/netip"
@@ -7,23 +7,23 @@ import (
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
-func NewRouter() (Router, error) {
-	rt, err := getRoutingTable()
-	if err != nil {
-		return nil, err
-	}
-	return &generalRouter{
-		ifaceProvider: &netutil.RealNetInterfaceProvider{},
-		table:         rt,
-		cache:         make(map[netip.Addr]Route),
-	}, nil
-}
-
 type generalRouter struct {
 	table         routingTable
 	ifaceProvider netutil.NetInterfaceProvider
 	cache         map[netip.Addr]Route
 	cacheMu       sync.Mutex
+}
+
+func NewRouter(ifaceProvider netutil.NetInterfaceProvider) (Router, error) {
+	rt, err := getRoutingTable()
+	if err != nil {
+		return nil, err
+	}
+	return &generalRouter{
+		ifaceProvider: ifaceProvider,
+		table:         rt,
+		cache:         make(map[netip.Addr]Route),
+	}, nil
 }
 
 func (r *generalRouter) Lookup(dst netip.Addr) (Route, error) {
@@ -75,7 +75,7 @@ func (r *generalRouter) Lookup(dst netip.Addr) (Route, error) {
 		best = &Route{
 			Network:   route.Network,
 			NextHop:   route.Gateway,
-			Interface: *iface,
+			Interface: iface,
 			Metric:    route.Metric,
 		}
 
@@ -85,11 +85,22 @@ func (r *generalRouter) Lookup(dst netip.Addr) (Route, error) {
 			best.DirectlyConnected = true
 		}
 
-		srcAddr, err := netutil.GetIfaceAddrOnSameNetworkAs(r.ifaceProvider, best.NextHop, &best.Interface)
-		if err != nil {
-			return Route{}, err
+		srcAddr := route.PrefSrc
+		if srcAddr == nil {
+			src, err := best.Interface.AddrOnSameNetworkAs(best.NextHop)
+			if err != nil {
+				// Fall back to the first interface ip.
+				ifAddr, err := best.Interface.FirstAddr(netutil.AddressFamilyOf(dst))
+				if err != nil {
+					return Route{}, err
+				}
+				src = ifAddr.Addr()
+			}
+
+			srcAddr = &src
 		}
-		best.SrcAddr = srcAddr
+
+		best.SrcAddr = *srcAddr
 	}
 
 	if best == nil {

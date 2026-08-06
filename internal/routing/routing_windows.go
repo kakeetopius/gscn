@@ -1,6 +1,6 @@
 //go:build windows
 
-package route
+package routing
 
 import (
 	"fmt"
