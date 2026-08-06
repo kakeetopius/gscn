@@ -1,6 +1,6 @@
 //go:build linux
 
-package route
+package routing
 
 import (
 	"net/netip"
@@ -58,11 +58,21 @@ func getRoutingTable() (routingTable, error) {
 			gateway = gw
 		}
 
+		var prefSrc *netip.Addr
+		if route.Attributes.Src != nil {
+			src, ok := netip.AddrFromSlice(route.Attributes.Src)
+			if !ok {
+				continue
+			}
+			prefSrc = &src
+		}
+
 		rTable = append(rTable, routingTableEntry{
 			Network: prefix,
 			Gateway: gateway,
 			Metric:  route.Attributes.Priority,
 			IfIndex: int(route.Attributes.OutIface),
+			PrefSrc: prefSrc,
 		})
 	}
 

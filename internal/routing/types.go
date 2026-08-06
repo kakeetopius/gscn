@@ -1,5 +1,5 @@
-// Package route helps to find where to direct packets to.
-package route
+// Package routing provides a very basic router to help determine where to send raw packets to.
+package routing
 
 import (
 	"fmt"
@@ -51,6 +51,9 @@ type routingTableEntry struct {
 
 	// Metric is the route's cost. Lower values indicate more preferred routes when multiple routes have the same prefix length.
 	Metric uint32
+
+	// PrefSrc is  source ip to use for this packets going this route if available.
+	PrefSrc *netip.Addr
 }
 
 // ErrRouteNotFound indicates that no route exists for the specified destination IP address.

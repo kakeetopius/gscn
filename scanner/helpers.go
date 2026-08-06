@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/pterm/pterm"
 )
@@ -48,13 +47,13 @@ func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[neti
 				}
 				switch protocol {
 				case "tcp":
-					port.Name = netutil.Service(layers.TCPPort(p).String())
+					port.Name = netutil.TCPServiceName(uint16(p))
 				case "udp":
-					port.Name = netutil.Service(layers.UDPPort(p).String())
+					port.Name = netutil.UDPServiceName(uint16(p))
 				}
 				hostResult.Ports = append(hostResult.Ports, port)
 
-				hostResult.portIndex[PortNumber(p)] = i
+				hostResult.portIndex[p] = i
 			}
 
 			results[addr] = hostResult
@@ -144,8 +143,7 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 			if port.State == PortStateClosed && totalPortsScanned > 10 {
 				continue // do not add closed ports to table if scanned ports are above 10
 			}
-			service := netutil.Service(layers.TCPPort(port.Number).String())
-			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), service})
+			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), port.Name})
 		}
 
 		hostStateStyle := pterm.FgDefault

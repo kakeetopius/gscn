@@ -1,4 +1,4 @@
-package route
+package routing
 
 import (
 	"net/netip"

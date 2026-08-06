@@ -15,7 +15,7 @@ import (
 // The pcap library on windows requires some special names for the interface which can only be gotten via the pcap.FindAllDevs() function which returns pcap.Interface structs
 // but these structs returned by pcap.FindAllDevs() do not contain all information for example the interfaces' hardware address, index etc.
 // So these functions help to connect the two: pcap.Interface and net.Interface via the only common data that can be got from both -> their IP addresses.
-// All that is needed from pcap.Interface struct is the Name field which is then assigned to the Interface.PcapName field.
+// All that is needed from pcap.Interface struct is the Name field which is then assigned to the [Interface.PcapName] field.
 
 func InterfaceProvider() (*realNetInterfaceProvider, error) {
 	devs, err := pcap.FindAllDevs()
@@ -99,22 +99,4 @@ func netInterfaceFromAddrs(givenAddrs []netip.Prefix) (net.Interface, error) {
 		}
 	}
 	return net.Interface{}, fmt.Errorf("could not find matching net.Interface")
-}
-
-// pcapInterfaceFromAddrs finds a pcap.Interface that contains any of the given addresses.
-// It returns the first matching interface or an error if no match is found.
-func pcapInterfaceFromAddrs(givenAddrs []netip.Prefix) (pcap.Interface, error) {
-	ifaces, err := pcap.FindAllDevs()
-	if err != nil {
-		return pcap.Interface{}, err
-	}
-	for _, iface := range ifaces {
-		ifaceAddrs := pcapInterfaceAddressSliceToPrefixSlice(iface.Addresses)
-		for _, ifaceaddr := range ifaceAddrs {
-			if slices.Contains(givenAddrs, ifaceaddr) {
-				return iface, nil
-			}
-		}
-	}
-	return pcap.Interface{}, fmt.Errorf("could not find matching pcap.Interface")
 }
