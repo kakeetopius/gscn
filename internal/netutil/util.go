@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/endobit/oui"
@@ -19,63 +20,27 @@ import (
 
 var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
 
-type Interface struct {
-	// PcapName is the interface's name that can be used by pcap.OpenLive() function to set up a pcap handle. On linux it is the same as the Name field
-	// in net.Interface but on Windows it is different.
-	PcapName string
+type AddressFamily uint16
 
-	LinkType layers.LinkType
-
-	net.Interface
-
-	// Addresses of the interface all converted to netip.Prefix.
-	addresses []netip.Prefix
-}
-
-// AllAddrs returns all addresses of the interface as netip.Prefix.
-func (i Interface) AllAddrs() []netip.Prefix {
-	return i.addresses
-}
-
-// IP4Addrs returns all IPv4 addresses of the interface as netip.Prefix.
-func (i Interface) IP4Addrs() []netip.Prefix {
-	ip4Addrs := make([]netip.Prefix, 0, len(i.addresses))
-
-	for _, a := range i.addresses {
-		if a.Addr().Is4() {
-			ip4Addrs = append(ip4Addrs, a)
-		}
+func AddressFamilyOf(addr netip.Addr) AddressFamily {
+	if addr.Is4() {
+		return syscall.AF_INET
+	} else if addr.Is6() {
+		return syscall.AF_INET6
 	}
 
-	return ip4Addrs
+	return syscall.AF_UNSPEC
 }
 
-// IP6Addrs returns all IPv6 addresses of the interface as netip.Prefix.
-func (i Interface) IP6Addrs() []netip.Prefix {
-	ip6Addrs := make([]netip.Prefix, 0, len(i.addresses))
-
-	for _, a := range i.addresses {
-		if a.Addr().Is6() {
-			ip6Addrs = append(ip6Addrs, a)
-		}
+func (f AddressFamily) String() string {
+	switch f {
+	case syscall.AF_INET:
+		return "ipv4"
+	case syscall.AF_INET6:
+		return "ipv6"
 	}
 
-	return ip6Addrs
-}
-
-// NetInterfaceProvider is an interface that abstracts the retrieval of network interfaces and their addresses.
-type NetInterfaceProvider interface {
-	// Returns all network interfaces
-	Interfaces() ([]Interface, error)
-
-	// Returns IP Addresses of a particular interface.
-	AddrsOf(*Interface) []netip.Prefix
-
-	// Returns an interface with the given name
-	InterfaceByName(name string) (*Interface, error)
-
-	// Returns an interface with the given index
-	InterfaceByIndex(index int) (*Interface, error)
+	return ""
 }
 
 // GetIfaceByIP finds the first network interface whose assigned IP network
@@ -90,7 +55,7 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*I
 	}
 
 	for _, iface := range allIfaces {
-		addrs := interfaceProvider.AddrsOf(&iface)
+		addrs := iface.allAddresses
 		for _, addr := range addrs {
 			if addr.Addr() == IPAddr {
 				return &iface, nil
@@ -99,46 +64,6 @@ func GetIfaceByIP(interfaceProvider NetInterfaceProvider, IPAddr netip.Addr) (*I
 	}
 
 	return nil, ErrNoInterfaceConnectedToTarget
-}
-
-// GetFirstIfaceIPNet returns the first interface address that matches the
-// requested IP family and converts it to netip.Prefix.
-//
-// When ip6 is true, it searches for an IPv6 address; otherwise it searches for
-// IPv4. An error is returned if address lookup fails, the interface has no addresses, conversion fails, or no address
-// of the requested family is found.
-func GetFirstIfaceIPNet(interfaceProvider NetInterfaceProvider, iface *Interface, ip6 bool) (*netip.Prefix, error) {
-	addrs := interfaceProvider.AddrsOf(iface)
-	if len(addrs) < 1 {
-		return nil, fmt.Errorf("the interface %v has no IP addresses", iface.Name)
-	}
-
-	for _, addr := range addrs {
-		if addr.Addr().Is6() == ip6 {
-			return &addr, nil
-		}
-	}
-
-	if ip6 {
-		return nil, fmt.Errorf("the interface %v has no IPv6 addresses", iface.Name)
-	}
-	return nil, fmt.Errorf("the interface %v has no IPv4 addresses", iface.Name)
-}
-
-// GetIfaceAddrOnSameNetworkAs returns the first interface address that is on the same network as addr.
-func GetIfaceAddrOnSameNetworkAs(interfaceProvider NetInterfaceProvider, addr netip.Addr, iface *Interface) (netip.Addr, error) {
-	ifaceAddrs := interfaceProvider.AddrsOf(iface)
-	if len(ifaceAddrs) < 1 {
-		return netip.Addr{}, fmt.Errorf("the interface %v has no IP addresses", iface.Name)
-	}
-
-	for _, ifaceAddr := range ifaceAddrs {
-		if ifaceAddr.Masked().Contains(addr) {
-			return ifaceAddr.Addr(), nil
-		}
-	}
-
-	return netip.Addr{}, fmt.Errorf("could not get interface address on the same network as: %v", addr.String())
 }
 
 // IPNetToPrefix converts a net.IPNet value into its netip.Prefix equivalent.
@@ -161,6 +86,16 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	ones, _ := ipnet.Mask.Size()
 
 	return netip.PrefixFrom(addr, ones), nil
+}
+
+// AddrToPrefix converts a net.Addr to a netip.Prefix.
+// It returns an error if the address is not an *net.IPNet or if conversion fails.
+func AddrToPrefix(addr net.Addr) (netip.Prefix, error) {
+	ipnet, ok := addr.(*net.IPNet)
+	if !ok {
+		return netip.Prefix{}, fmt.Errorf("invalid IPNet")
+	}
+	return IPNetToPrefix(ipnet)
 }
 
 // AddrSliceToPrefixSlice converts a slice of net.Addr to a slice of netip.Prefix.
@@ -231,11 +166,19 @@ func Unique[T comparable](slice []T) []T {
 	return results
 }
 
-// Service extracts the service name from a gopacket-style
+func TCPServiceName(portNum uint16) string {
+	return cleanServiceName(layers.TCPPort(portNum).String())
+}
+
+func UDPServiceName(portNum uint16) string {
+	return cleanServiceName(layers.UDPPort(portNum).String())
+}
+
+// cleanServiceName extracts the service name from a gopacket-style
 // string in the format "port(service)" (for example, "80(http)").
 // It returns an empty string when the input is empty, malformed, or does not
 // include both opening and closing parentheses.
-func Service(s string) string {
+func cleanServiceName(s string) string {
 	// format: number(name) eg 80(http)
 	if s == "" {
 		return s
@@ -259,7 +202,7 @@ func MACVendor(mac string) string {
 // The interface must not be loopback, must be administratively up, must be
 // running, and must have at least one assigned address as reported by
 // interfaceProvider. It returns an error describing the first failed check.
-func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) error {
+func VerifyInterface(iface *Interface) error {
 	zeroMac := net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 	if iface.Flags&net.FlagLoopback != 0 {
@@ -274,8 +217,7 @@ func VerifyInterface(interfaceProvider NetInterfaceProvider, iface *Interface) e
 		return fmt.Errorf("interface %v has an invalid mac address", iface.Name)
 	}
 
-	ifaceAddrs := interfaceProvider.AddrsOf(iface)
-	if len(ifaceAddrs) < 1 {
+	if len(iface.allAddresses) < 1 {
 		return fmt.Errorf("interface %v has no IP addresses", iface.Name)
 	}
 
@@ -294,8 +236,8 @@ func ReverseLookup(ctx context.Context, addr string) string {
 	return ""
 }
 
-func GetLinktypeOf(pcapName string) (layers.LinkType, error) {
-	handle, err := pcap.OpenLive(pcapName, 1, false, time.Millisecond)
+func GetLinktypeOf(ifacePcapName string) (layers.LinkType, error) {
+	handle, err := pcap.OpenLive(ifacePcapName, 1, false, time.Millisecond)
 	if err != nil {
 		return 0, err
 	}
@@ -303,7 +245,7 @@ func GetLinktypeOf(pcapName string) (layers.LinkType, error) {
 	return handle.LinkType(), nil
 }
 
-func LoobackInterface(p NetInterfaceProvider) (*Interface, error) {
+func LoopbackInterface(p NetInterfaceProvider) (*Interface, error) {
 	ifaces, err := p.Interfaces()
 	if err != nil {
 		return nil, err

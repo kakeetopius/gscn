@@ -7,15 +7,7 @@ import (
 	"net/netip"
 )
 
-type RealNetInterfaceProvider struct {
-	interfaces    []Interface
-	isInitialised bool
-}
-
-func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
-	if r.isInitialised {
-		return r.interfaces, nil
-	}
+func InterfaceProvider() (*realNetInterfaceProvider, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -27,15 +19,13 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		if err != nil {
 			continue
 		}
-		prefixes, err := AddrSliceToPrefixSlice(addrs)
-		if err != nil {
-			return nil, err
-		}
 		netIface := Interface{
 			PcapName:  iface.Name,
 			Interface: iface,
-			addresses: prefixes,
 		}
+		netIface.allAddresses = make([]netip.Prefix, 0, len(addrs))
+		netIface.AppendNetAddr(addrs...)
+
 		linktype, err := GetLinktypeOf(netIface.PcapName)
 		if err != nil {
 			return nil, err
@@ -45,62 +35,9 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		interfaces = append(interfaces, netIface)
 	}
 
-	r.interfaces = interfaces
-	r.isInitialised = true
-	return interfaces, nil
-}
-
-func (*RealNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
-	return iface.addresses
-}
-
-func (*RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
-	netIface, neterr := net.InterfaceByName(name)
-	if neterr != nil {
-		return nil, neterr
-	}
-	addrs, err := netIface.Addrs()
-	if err != nil {
-		return nil, err
-	}
-	prefixes, err := AddrSliceToPrefixSlice(addrs)
-	if err != nil {
-		return nil, err
-	}
-	linkType, err := GetLinktypeOf(netIface.Name)
-	if err != nil {
-		return nil, err
+	r := realNetInterfaceProvider{
+		interfaces: interfaces,
 	}
 
-	return &Interface{
-		PcapName:  netIface.Name,
-		Interface: *netIface,
-		addresses: prefixes,
-		LinkType:  linkType,
-	}, nil
-}
-
-func (*RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
-	netIface, neterr := net.InterfaceByIndex(index)
-	if neterr != nil {
-		return nil, neterr
-	}
-	addrs, err := netIface.Addrs()
-	if err != nil {
-		return nil, err
-	}
-	prefixes, err := AddrSliceToPrefixSlice(addrs)
-	if err != nil {
-		return nil, err
-	}
-	linkType, err := GetLinktypeOf(netIface.Name)
-	if err != nil {
-		return nil, err
-	}
-	return &Interface{
-		PcapName:  netIface.Name,
-		Interface: *netIface,
-		addresses: prefixes,
-		LinkType:  linkType,
-	}, nil
+	return &r, nil
 }

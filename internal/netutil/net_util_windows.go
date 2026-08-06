@@ -17,15 +17,7 @@ import (
 // So these functions help to connect the two: pcap.Interface and net.Interface via the only common data that can be got from both -> their IP addresses.
 // All that is needed from pcap.Interface struct is the Name field which is then assigned to the Interface.PcapName field.
 
-type RealNetInterfaceProvider struct {
-	interfaces    []Interface
-	isInitialised bool
-}
-
-func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
-	if r.isInitialised {
-		return r.interfaces, nil
-	}
+func InterfaceProvider() (*realNetInterfaceProvider, error) {
 	devs, err := pcap.FindAllDevs()
 	if err != nil {
 		return nil, err
@@ -44,8 +36,10 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		iface := Interface{
 			PcapName:  dev.Name,
 			Interface: netIface,
-			addresses: addrs,
 		}
+
+		iface.allAddresses = make([]netip.Prefix, 0, len(addrs))
+		iface.AppendPrefix(addrs...)
 
 		linkType, err := GetLinktypeOf(iface.PcapName)
 		if err != nil {
@@ -55,77 +49,11 @@ func (r *RealNetInterfaceProvider) Interfaces() ([]Interface, error) {
 		ifaces = append(ifaces, iface)
 	}
 
-	r.interfaces = ifaces
-	r.isInitialised = true
-	return ifaces, nil
-}
-
-func (*RealNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
-	return iface.addresses
-}
-
-func (*RealNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
-	iface, err := net.InterfaceByName(name)
-	if err != nil {
-		return nil, err
-	}
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return nil, err
-	}
-	// convert from a []net.Addr to a []netip.Prefix
-	prefixAddrs, err := AddrSliceToPrefixSlice(addrs)
-	if err != nil {
-		return nil, err
+	r := &realNetInterfaceProvider{
+		interfaces: ifaces,
 	}
 
-	pcapIface, err := pcapInterfaceFromAddrs(prefixAddrs) // it is needed coz the pcap.Interface has the special Name required for opening a pcap handle for sending packets.
-	if err != nil {
-		return nil, err
-	}
-	linkType, err := GetLinktypeOf(pcapIface.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Interface{
-		PcapName:  pcapIface.Name,
-		Interface: *iface,
-		addresses: prefixAddrs,
-		LinkType:  linkType,
-	}, nil
-}
-
-func (*RealNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
-	iface, err := net.InterfaceByIndex(index)
-	if err != nil {
-		return nil, err
-	}
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return nil, err
-	}
-	// convert from a []net.Addr to a []netip.Prefix
-	prefixAddrs, err := AddrSliceToPrefixSlice(addrs)
-	if err != nil {
-		return nil, err
-	}
-
-	pcapIface, err := pcapInterfaceFromAddrs(prefixAddrs) // it is needed coz the pcap.Interface has the special Name required for opening a pcap handle for sending packets.
-	if err != nil {
-		return nil, err
-	}
-
-	linkType, err := GetLinktypeOf(pcapIface.Name)
-	if err != nil {
-		return nil, err
-	}
-	return &Interface{
-		PcapName:  pcapIface.Name,
-		Interface: *iface,
-		addresses: prefixAddrs,
-		LinkType:  linkType,
-	}, nil
+	return r, nil
 }
 
 // pcapInterfaceAddressSliceToPrefixSlice converts a slice of pcap.InterfaceAddress to netip.Prefix.
