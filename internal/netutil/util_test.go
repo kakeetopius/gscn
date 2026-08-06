@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +29,7 @@ func mustPrefix(s string) netip.Prefix {
 }
 
 // ifaceByName pulls an interface out of the mock slice
-func ifaceByName(t *testing.T, name string) *Interface {
+func ifaceByName(t *testing.T, name string) Interface {
 	t.Helper()
 	p := &MockNetInterfaceProvider{}
 	iface, err := p.InterfaceByName(name)
@@ -154,12 +155,10 @@ func TestGetIfaceByIP(t *testing.T) {
 }
 
 func TestGetFirstIfaceIPNet(t *testing.T) {
-	provider := &MockNetInterfaceProvider{}
-
 	tests := []struct {
 		name       string
 		ifaceName  string
-		ip6        bool
+		family     AddressFamily
 		wantPrefix netip.Prefix
 		wantErr    bool
 	}{
@@ -167,37 +166,37 @@ func TestGetFirstIfaceIPNet(t *testing.T) {
 		{
 			name:       "eth0 first ipv4 address",
 			ifaceName:  "eth0",
-			ip6:        false,
+			family:     syscall.AF_INET,
 			wantPrefix: mustPrefix("192.168.1.10/24"),
 		},
 		{
 			name:       "wlan0 ipv4",
 			ifaceName:  "wlan0",
-			ip6:        false,
+			family:     syscall.AF_INET,
 			wantPrefix: mustPrefix("172.16.0.100/12"),
 		},
 		{
 			name:       "docker0 ipv4",
 			ifaceName:  "docker0",
-			ip6:        false,
+			family:     syscall.AF_INET,
 			wantPrefix: mustPrefix("172.90.0.1/16"),
 		},
 		{
 			name:       "lo ipv4",
 			ifaceName:  "lo",
-			ip6:        false,
+			family:     syscall.AF_INET,
 			wantPrefix: mustPrefix("127.0.0.1/8"),
 		},
 		{
 			name:       "windows ethernet ipv4",
 			ifaceName:  "Ethernet",
-			ip6:        false,
+			family:     syscall.AF_INET,
 			wantPrefix: mustPrefix("192.168.0.105/24"),
 		},
 		{
 			name:       "dummy0 first ipv4",
 			ifaceName:  "dummy0",
-			ip6:        false,
+			family:     syscall.AF_INET,
 			wantPrefix: mustPrefix("198.51.100.1/24"),
 		},
 
@@ -205,25 +204,25 @@ func TestGetFirstIfaceIPNet(t *testing.T) {
 		{
 			name:       "eth0 first ipv6 is link-local",
 			ifaceName:  "eth0",
-			ip6:        true,
+			family:     syscall.AF_INET6,
 			wantPrefix: mustPrefix("fe80::1a:2b3c:4d5e/64"),
 		},
 		{
 			name:       "lo ipv6",
 			ifaceName:  "lo",
-			ip6:        true,
+			family:     syscall.AF_INET6,
 			wantPrefix: mustPrefix("::1/128"),
 		},
 		{
 			name:       "veth ipv6 first address",
 			ifaceName:  "veth3a2f1b",
-			ip6:        true,
+			family:     syscall.AF_INET6,
 			wantPrefix: mustPrefix("fe80::411:22ff:fe33:4455/64"),
 		},
 		{
 			name:       "windows ethernet first ipv6 is link-local",
 			ifaceName:  "Ethernet",
-			ip6:        true,
+			family:     syscall.AF_INET6,
 			wantPrefix: mustPrefix("fe80::c:29ff:feab:cdef/64"),
 		},
 
@@ -231,19 +230,19 @@ func TestGetFirstIfaceIPNet(t *testing.T) {
 		{
 			name:      "eth1 has no addresses ipv4",
 			ifaceName: "eth1",
-			ip6:       false,
+			family:    syscall.AF_INET6,
 			wantErr:   true,
 		},
 		{
 			name:      "eth1 has no addresses ipv6",
 			ifaceName: "eth1",
-			ip6:       true,
+			family:    syscall.AF_INET6,
 			wantErr:   true,
 		},
 		{
 			name:      "windows ethernet 2 has no addresses",
 			ifaceName: "Ethernet 2",
-			ip6:       false,
+			family:    syscall.AF_INET6,
 			wantErr:   true,
 		},
 
@@ -251,19 +250,19 @@ func TestGetFirstIfaceIPNet(t *testing.T) {
 		{
 			name:      "wlan0 ipv4-only asked for ipv6",
 			ifaceName: "wlan0",
-			ip6:       true,
+			family:    syscall.AF_INET6,
 			wantErr:   true,
 		},
 		{
 			name:      "docker0 ipv4-only asked for ipv6",
 			ifaceName: "docker0",
-			ip6:       true,
+			family:    syscall.AF_INET6,
 			wantErr:   true,
 		},
 		{
 			name:      "dummy0 ipv4-only asked for ipv6",
 			ifaceName: "dummy0",
-			ip6:       true,
+			family:    syscall.AF_INET6,
 			wantErr:   true,
 		},
 	}
@@ -271,7 +270,7 @@ func TestGetFirstIfaceIPNet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			iface := ifaceByName(t, tt.ifaceName)
-			got, err := GetFirstIfaceIPNet(provider, iface, tt.ip6)
+			got, err := iface.FirstAddr(tt.family)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -561,7 +560,7 @@ func TestService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Service(tt.input)
+			got := cleanServiceName(tt.input)
 
 			if got != tt.expected {
 				t.Fatalf("got %q, want %q", got, tt.expected)
@@ -571,8 +570,6 @@ func TestService(t *testing.T) {
 }
 
 func TestGetIfaceAddrOnSameNetworkAs(t *testing.T) {
-	provider := MockInterfaceProvider()
-
 	tests := []struct {
 		name      string
 		ifaceName string
@@ -664,7 +661,7 @@ func TestGetIfaceAddrOnSameNetworkAs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			iface := ifaceByName(t, tt.ifaceName)
 
-			got, err := GetIfaceAddrOnSameNetworkAs(provider, tt.target, iface)
+			got, err := iface.AddrOnSameNetworkAs(tt.target)
 
 			if tt.wantErr {
 				require.Error(t, err)

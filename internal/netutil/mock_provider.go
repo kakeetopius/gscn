@@ -20,8 +20,14 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("192.168.1.10/24"),
+			netip.MustParsePrefix("fe80::1a:2b3c:4d5e/64"),
+		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("192.168.1.10/24"),
+		},
+		ip6Addresses: []netip.Prefix{
 			netip.MustParsePrefix("fe80::1a:2b3c:4d5e/64"),
 		},
 	},
@@ -35,7 +41,9 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},
 			Flags:        0,
 		},
-		addresses: []netip.Prefix{},
+		allAddresses: []netip.Prefix{},
+		ip4Addresses: []netip.Prefix{},
+		ip6Addresses: []netip.Prefix{},
 	},
 	// Linux loopback
 	{
@@ -47,8 +55,14 @@ var mockInterfaces = []Interface{
 			HardwareAddr: nil,
 			Flags:        net.FlagUp | net.FlagLoopback,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("127.0.0.1/8"),
+			netip.MustParsePrefix("::1/128"),
+		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("127.0.0.1/8"),
+		},
+		ip6Addresses: []netip.Prefix{
 			netip.MustParsePrefix("::1/128"),
 		},
 	},
@@ -62,9 +76,13 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x11, 0x22, 0x33, 0x44, 0x55, 0x66},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("172.16.0.100/12"),
 		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("172.16.0.100/12"),
+		},
+		ip6Addresses: []netip.Prefix{},
 	},
 	// Linux docker bridge, up, IPv4 only
 	{
@@ -76,9 +94,13 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x02, 0x42, 0xAB, 0xCD, 0xEF, 0x01},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("172.90.0.1/16"),
 		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("172.90.0.1/16"),
+		},
+		ip6Addresses: []netip.Prefix{},
 	},
 	// Linux veth
 	{
@@ -90,7 +112,12 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x06, 0x11, 0x22, 0x33, 0x44, 0x55},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
+			netip.MustParsePrefix("fe80::411:22ff:fe33:4455/64"),
+			netip.MustParsePrefix("2001:db8:1::2/48"),
+		},
+		ip4Addresses: []netip.Prefix{},
+		ip6Addresses: []netip.Prefix{
 			netip.MustParsePrefix("fe80::411:22ff:fe33:4455/64"),
 			netip.MustParsePrefix("2001:db8:1::2/48"),
 		},
@@ -105,8 +132,15 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x0C, 0x29, 0xAB, 0xCD, 0xEF},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("192.168.0.105/24"),
+			netip.MustParsePrefix("fe80::c:29ff:feab:cdef/64"),
+			netip.MustParsePrefix("2001:db8:cafe::105/64"),
+		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("192.168.0.105/24"),
+		},
+		ip6Addresses: []netip.Prefix{
 			netip.MustParsePrefix("fe80::c:29ff:feab:cdef/64"),
 			netip.MustParsePrefix("2001:db8:cafe::105/64"),
 		},
@@ -121,8 +155,14 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x74, 0xD4, 0x35, 0x11, 0x22, 0x33},
 			Flags:        net.FlagUp | net.FlagBroadcast | net.FlagMulticast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("10.10.1.45/22"),
+			netip.MustParsePrefix("fe80::c:29bc:fed8:2/64"),
+		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("10.10.1.45/22"),
+		},
+		ip6Addresses: []netip.Prefix{
 			netip.MustParsePrefix("fe80::c:29bc:fed8:2/64"),
 		},
 	},
@@ -136,8 +176,14 @@ var mockInterfaces = []Interface{
 			HardwareAddr: nil,
 			Flags:        net.FlagUp | net.FlagLoopback,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("127.0.0.1/8"),
+			netip.MustParsePrefix("::1/128"),
+		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("127.0.0.1/8"),
+		},
+		ip6Addresses: []netip.Prefix{
 			netip.MustParsePrefix("::1/128"),
 		},
 	},
@@ -150,7 +196,9 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x50, 0x56, 0xC0, 0x00, 0x08},
 			Flags:        0,
 		},
-		addresses: []netip.Prefix{},
+		allAddresses: []netip.Prefix{},
+		ip4Addresses: []netip.Prefix{},
+		ip6Addresses: []netip.Prefix{},
 	},
 	// Linux dummy
 	{
@@ -162,11 +210,17 @@ var mockInterfaces = []Interface{
 			HardwareAddr: net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 			Flags:        net.FlagUp | net.FlagBroadcast,
 		},
-		addresses: []netip.Prefix{
+		allAddresses: []netip.Prefix{
 			netip.MustParsePrefix("198.51.100.1/24"),
 			netip.MustParsePrefix("198.51.100.2/24"),
 			netip.MustParsePrefix("198.51.100.3/24"),
 		},
+		ip4Addresses: []netip.Prefix{
+			netip.MustParsePrefix("198.51.100.1/24"),
+			netip.MustParsePrefix("198.51.100.2/24"),
+			netip.MustParsePrefix("198.51.100.3/24"),
+		},
+		ip6Addresses: []netip.Prefix{},
 	},
 }
 
@@ -176,24 +230,20 @@ func (m *MockNetInterfaceProvider) Interfaces() ([]Interface, error) {
 	return mockInterfaces, nil
 }
 
-func (m *MockNetInterfaceProvider) AddrsOf(iface *Interface) []netip.Prefix {
-	return iface.addresses
-}
-
-func (m *MockNetInterfaceProvider) InterfaceByName(name string) (*Interface, error) {
+func (m *MockNetInterfaceProvider) InterfaceByName(name string) (Interface, error) {
 	for i := range mockInterfaces {
 		if mockInterfaces[i].Name == name {
-			return &mockInterfaces[i], nil
+			return mockInterfaces[i], nil
 		}
 	}
-	return nil, fmt.Errorf("interface %q not found", name)
+	return Interface{}, fmt.Errorf("interface %q not found", name)
 }
 
-func (m *MockNetInterfaceProvider) InterfaceByIndex(index int) (*Interface, error) {
+func (m *MockNetInterfaceProvider) InterfaceByIndex(index int) (Interface, error) {
 	for i := range mockInterfaces {
 		if mockInterfaces[i].Index == index {
-			return &mockInterfaces[i], nil
+			return mockInterfaces[i], nil
 		}
 	}
-	return nil, fmt.Errorf("interface with index %q not found", index)
+	return Interface{}, fmt.Errorf("interface with index %q not found", index)
 }

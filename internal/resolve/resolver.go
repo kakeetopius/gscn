@@ -22,17 +22,11 @@ type resolver struct {
 	macNotFound       map[netip.Addr]struct{}
 }
 
-func NewResolver() Resolver {
-	interfaceProvider := &netutil.RealNetInterfaceProvider{}
-	_, err := interfaceProvider.Interfaces()
-	if err != nil {
-		return nil
-	}
-
+func NewResolver(interfaceProvider netutil.NetInterfaceProvider) Resolver {
 	return &resolver{
 		resolveCache:      make(map[netip.Addr]netutil.MAC),
 		macNotFound:       make(map[netip.Addr]struct{}),
-		interfaceProvider: &netutil.RealNetInterfaceProvider{},
+		interfaceProvider: interfaceProvider,
 	}
 }
 
