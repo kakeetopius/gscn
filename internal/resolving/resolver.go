@@ -67,7 +67,7 @@ func (r *resolver) resolveMAC(addr netip.Addr) (netutil.MAC, error) {
 
 	// The filter captures all packets sent to `addr`, including any ARP requests generated while resolving the destination MAC. If the kernel does not already
 	// have a valid neighbor cache entry for `addr`, the first captured packet may be an ARP request whose Ethernet destination is the broadcast address
-	// (ff:ff:ff:ff:ff:ff). In that case, the broadcast is returned.
+	// (ff:ff:ff:ff:ff:ff). In that case, the packet reciever will capture that ARP request packet instead,
 	//
 	// To avoid this, scanners should first probe eg, ping each target so the kernel resolves and caches its MAC address. Subsequent packets can then be
 	// transmitted directly to the destination host, allowing the correct destination MAC to be observed.
@@ -77,9 +77,9 @@ func (r *resolver) resolveMAC(addr netip.Addr) (netutil.MAC, error) {
 	if err != nil {
 		return nil, err
 	}
-	packetReceiver, perr := packet.NewPacketReceiver(ctx, filter, 1, allIfaces...)
-	if perr != nil {
-		return nil, perr
+	packetReceiver, err := packet.NewPacketReceiver(ctx, filter, 5, allIfaces...)
+	if err != nil {
+		return nil, err
 	}
 	packets := packetReceiver.Packets()
 	defer packetReceiver.Close()

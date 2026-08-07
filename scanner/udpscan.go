@@ -114,6 +114,9 @@ func (r *UDPScanResults) String() string {
 }
 
 func (s *UDPScanner) runUDPScan() error {
+	if s.Workers <= 0 {
+		return fmt.Errorf("invalid number of workers")
+	}
 	numWorkers := s.Workers
 
 	pterm.Warning.Println("UDP Scans are not reliable and may show inconsistent or wrong results.")

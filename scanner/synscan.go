@@ -143,6 +143,9 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	if len(s.TargetPorts) == 0 {
 		s.TargetPorts = CommonPorts
 	}
+	if s.Workers <= 0 {
+		return fmt.Errorf("invalid number of workers")
+	}
 
 	if !s.SkipPingScan {
 		// pinging for this scanner type is important because kernel will be build able to build the neighbor cache for those hosts that are up which will

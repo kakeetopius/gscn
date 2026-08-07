@@ -114,6 +114,9 @@ func (r *TCPFullScanResults) String() string {
 }
 
 func (s *TCPFullScanner) runTCPFullScan() error {
+	if s.Workers <= 0 {
+		return fmt.Errorf("invalid number of workers")
+	}
 	numWorkers := s.Workers
 
 	if len(s.Targets) == 0 {

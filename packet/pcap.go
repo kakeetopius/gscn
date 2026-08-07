@@ -124,7 +124,7 @@ func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, 
 		cancelFunc: cancel,
 		filter:     filter,
 		ifaces:     make(map[int]receivingInterface),
-		packetChan: make(chan gopacket.Packet, channelCapacity+20),
+		packetChan: make(chan gopacket.Packet, channelCapacity),
 	}
 
 	for _, iface := range receivingInterfaces {

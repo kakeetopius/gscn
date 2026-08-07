@@ -215,9 +215,6 @@ gscn discover ndp -i eth0 --from-cache
 
 Carry out different types of scans.
 
-> [!NOTE]
-> TCP, SYN, and UDP scans first perform a ping sweep to determine whether hosts are reachable. Use `--skip-ping` to disable this behavior and scan all targets unconditionally.
-
 <details>
 <summary><strong>Show details</strong></summary>
 
@@ -284,7 +281,7 @@ Perform a TCP SYN (half-open) scan.
 gscn scan syn <targets> [flags]
 ```
 
-Sends raw TCP SYN packets and infers port state from the response (SYN-ACK, RST, or no response) without completing the TCP handshake. Requires root privileges (or `CAP_NET_RAW` on Linux).
+Sends raw TCP SYN packets and infers port state from the response (SYN-ACK, or no response) without completing the TCP handshake. Requires root privileges (or `CAP_NET_RAW` on Linux).
 
 <details>
 <summary><strong>Examples</strong></summary>
