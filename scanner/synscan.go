@@ -143,6 +143,9 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	if len(s.TargetPorts) == 0 {
 		s.TargetPorts = CommonPorts
 	}
+	if s.Workers <= 0 {
+		return fmt.Errorf("invalid number of workers")
+	}
 
 	if !s.SkipPingScan {
 		// pinging for this scanner type is important because kernel will be build able to build the neighbor cache for those hosts that are up which will
@@ -332,6 +335,12 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 		wg.Done()
 	}()
 
+	packetBuf := gopacket.NewSerializeBuffer()
+	packetBufOpts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+
 	for job := range jobs {
 		portNum := job.target.Port()
 		addr := job.target.Addr()
@@ -342,15 +351,16 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 			continue
 		}
 
+		ps := packetSender
 		if addr == route.SrcAddr {
 			// if the target addr is the address of the interface, meaning we are sending to ourselves, we use the localhostPacketSender
-			packetSender = localhostPacketSender
+			ps = localhostPacketSender
 		}
 
 		packetHeaders := make([]gopacket.SerializableLayer, 0, 3)
 
 		iface := &route.Interface
-		if packetSender.Type() != packet.PacketSenderTypeIPLayer {
+		if ps.Type() != packet.PacketSenderTypeIPLayer {
 			// If the packetSender is of type PacketSenderTypeIPLayer we dont bother with the ethernet header at all
 
 			var dstMac netutil.MAC
@@ -400,13 +410,6 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 			SYN:        true,
 			Window:     1024,
 			DataOffset: 5,
-			Options: []layers.TCPOption{
-				{
-					OptionType:   layers.TCPOptionKindMSS,
-					OptionLength: 4,
-					OptionData:   []byte{0x05, 0xb4}, // 1460
-				},
-			},
 		}
 
 		var ip gopacket.SerializableLayer
@@ -435,21 +438,15 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 
 		packetHeaders = append(packetHeaders, ip, tcp)
 
-		buf := gopacket.NewSerializeBuffer()
-		opts := gopacket.SerializeOptions{
-			FixLengths:       true,
-			ComputeChecksums: true,
-		}
-
-		err = gopacket.SerializeLayers(buf, opts, packetHeaders...)
+		err = gopacket.SerializeLayers(packetBuf, packetBufOpts, packetHeaders...)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		packetBytes := buf.Bytes()
+		packetBytes := packetBuf.Bytes()
 
-		err = packetSender.SendPacket(packetBytes, iface)
+		err = ps.SendPacket(packetBytes, iface)
 		if err != nil {
 			fmt.Println(err)
 			continue

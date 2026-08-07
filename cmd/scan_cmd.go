@@ -85,7 +85,7 @@ func tcpFullScanCmd() *cobra.Command {
 
 	tcpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 500*time.Millisecond, "Amount of time to wait for ping replies when doing scans.")
 
-	tcpCmd.Flags().BoolVar(&opts.SkipPingScan, "skip-ping", false, "Skip pinging hosts before scanning ports.")
+	tcpCmd.Flags().BoolVar(&opts.SkipPingScan, "skip-ping", false, "Skip pinging hosts before scanning ports. All hosts are treated as up.")
 
 	tcpCmd.Flags().BoolVar(&opts.PrintOpenOnly, "open", false, "Only show open and possibly filtered ports.")
 	tcpCmd.Flags().BoolVar(&opts.PrintUpOnly, "up", false, "Show results for only up hosts.")
@@ -141,8 +141,9 @@ func tcpSynScanCmd() *cobra.Command {
 	tcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 800*time.Millisecond, "Amount of time to wait for responses")
 
 	tcpCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
-	tcpCmd.Flags().IntVar(&opts.PingCount, "ping-count", 3, "Number of ICMP Echo Request packets to send when pinging")
+	tcpCmd.Flags().IntVar(&opts.PingCount, "ping-count", 5, "Number of ICMP Echo Request packets to send when pinging")
 
+	tcpCmd.Flags().BoolVar(&opts.SkipPingScan, "skip-ping", false, "Skip pinging hosts before scanning ports. All hosts are treated as up.")
 	tcpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 500*time.Millisecond, "Amount of time to wait for ping replies when doing scans.")
 
 	tcpCmd.Flags().BoolVar(&opts.PrintOpenOnly, "open", false, "Only show open and possibly filtered ports.")

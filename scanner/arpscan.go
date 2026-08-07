@@ -39,7 +39,6 @@ type ARPScanOptions struct {
 	WithVendorInfo      bool
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
-	Workers             int
 	Verbose             bool
 }
 

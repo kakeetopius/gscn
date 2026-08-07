@@ -9,7 +9,7 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
-// NetInterfaceProvider is an interface that abstracts the retrieval of network interfaces and their addresses.
+// NetInterfaceProvider is an interface that abstracts the retrieval of network interfaces.
 type NetInterfaceProvider interface {
 	// Returns all network interfaces
 	Interfaces() ([]Interface, error)
@@ -143,7 +143,7 @@ func (i Interface) FirstAddr(family AddressFamily) (*netip.Prefix, error) {
 
 // AddrOnSameNetworkAs returns the first interface address that is on the same network as addr.
 func (i Interface) AddrOnSameNetworkAs(addr netip.Addr) (netip.Addr, error) {
-	if len(i.allAddresses) < 1 {
+	if len(i.allAddresses) == 0 {
 		return netip.Addr{}, fmt.Errorf("the interface %v has no IP addresses", i.Name)
 	}
 

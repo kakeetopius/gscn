@@ -159,6 +159,9 @@ func (r PingScanResults) String() string {
 }
 
 func (s *PingScanner) runPing() error {
+	if s.Workers <= 0 {
+		return fmt.Errorf("invalid number of workers")
+	}
 	spinner, err := pterm.DefaultSpinner.Start("Pinging Hosts")
 	if err != nil {
 		return err
