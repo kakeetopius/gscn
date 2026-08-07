@@ -209,7 +209,7 @@ func (s *NDPScanner) runNDP() error {
 		if err != nil {
 			return err
 		}
-		packetReceiver.AddReceivingInterface(&route.Interface)
+		packetReceiver.AddReceivingInterface(route.Interface)
 
 		for target.Contains(IPaddr) {
 			err := sendNSPacket(packetSender, &route.Interface, route.SrcAddr, IPaddr)

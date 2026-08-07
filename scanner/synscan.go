@@ -17,7 +17,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
-	"github.com/kakeetopius/gscn/internal/resolve"
+	"github.com/kakeetopius/gscn/internal/resolving"
 	"github.com/kakeetopius/gscn/internal/routing"
 	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
@@ -31,7 +31,7 @@ type TCPSynScanner struct {
 	ifaceProvider netutil.NetInterfaceProvider
 	logger        log.Logger
 	router        routing.Router
-	macResolver   resolve.Resolver
+	macResolver   resolving.Resolver
 }
 
 type TCPSynScanOptions struct {
@@ -82,7 +82,7 @@ func NewTCPSynScanner(opts TCPSynScanOptions) (*TCPSynScanner, error) {
 		},
 		ifaceProvider: ifaceProvider,
 		logger:        log.NewLogger(true),
-		macResolver:   resolve.NewResolver(ifaceProvider),
+		macResolver:   resolving.NewResolver(ifaceProvider),
 		router:        router,
 	}, nil
 }
@@ -363,7 +363,7 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 				}
 			} else {
 				dstMac, err = s.macResolver.Resolve(route.NextHop)
-				var macErr resolve.ErrMacNotFound
+				var macErr resolving.ErrMacNotFound
 				if err != nil {
 					if !errors.As(err, &macErr) {
 						fmt.Println(err)

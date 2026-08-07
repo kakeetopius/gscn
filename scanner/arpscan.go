@@ -221,7 +221,7 @@ func (s *ARPScanner) runArp() error {
 			return err
 		}
 
-		packetReceiver.AddReceivingInterface(&route.Interface)
+		packetReceiver.AddReceivingInterface(route.Interface)
 
 		for targetNet.Contains(ipToScan) {
 			if (ipToScan == networkAddr || ipToScan == broadCast) && !targetNet.IsSingleIP() {

@@ -1,4 +1,4 @@
-package resolve
+package resolving
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type resolver struct {
 	macNotFound       map[netip.Addr]struct{}
 }
 
-func NewResolver(interfaceProvider netutil.NetInterfaceProvider) Resolver {
+func NewResolver(interfaceProvider netutil.NetInterfaceProvider) *resolver {
 	return &resolver{
 		resolveCache:      make(map[netip.Addr]netutil.MAC),
 		macNotFound:       make(map[netip.Addr]struct{}),
