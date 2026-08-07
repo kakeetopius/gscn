@@ -1,5 +1,5 @@
-// Package resolve is used to resolve network addresses to their mac address
-package resolve
+// Package resolving provides a very very basic mac address resolver.
+package resolving
 
 import (
 	"fmt"

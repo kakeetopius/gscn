@@ -112,7 +112,7 @@ type PcapPacketReceiver struct {
 }
 
 type receivingInterface struct {
-	*netutil.Interface
+	netutil.Interface
 	handle *pcap.Handle
 }
 
@@ -123,11 +123,11 @@ func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, 
 		cancelFunc: cancel,
 		filter:     filter,
 		ifaces:     make(map[int]receivingInterface),
-		packetChan: make(chan gopacket.Packet, channelCapacity),
+		packetChan: make(chan gopacket.Packet, channelCapacity+20),
 	}
 
 	for _, iface := range receivingInterfaces {
-		err := packetReceiver.AddReceivingInterface(&iface)
+		err := packetReceiver.AddReceivingInterface(iface)
 		if err != nil {
 			return nil, err
 		}
@@ -136,13 +136,13 @@ func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, 
 	return &packetReceiver, nil
 }
 
-func (pr *PcapPacketReceiver) AddReceivingInterface(iface *netutil.Interface) error {
+func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) error {
 	_, found := pr.ifaces[iface.Index]
 	if found {
 		return nil
 	}
 
-	handle, err := getIfaceHandle(iface)
+	handle, err := getIfaceHandle(&iface)
 	if err != nil {
 		return err
 	}
@@ -171,10 +171,9 @@ func (pr *PcapPacketReceiver) Close() error {
 	}
 
 	pr.cancelFunc()
-	pr.closed = true
-
 	clear(pr.ifaces)
 	close(pr.packetChan)
+	pr.closed = true
 	return nil
 }
 
