@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"sync"
 	"syscall"
 
 	"github.com/google/gopacket/layers"
@@ -23,39 +22,29 @@ type NetInterfaceProvider interface {
 }
 
 type realNetInterfaceProvider struct {
-	interfaces []Interface
-	mu         sync.RWMutex
+	interfaces     []Interface
+	ifaceIndex     map[int]int
+	ifaceNameIndex map[string]int
 }
 
 func (r *realNetInterfaceProvider) Interfaces() ([]Interface, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	return r.interfaces, nil
 }
 
 func (r *realNetInterfaceProvider) InterfaceByName(name string) (Interface, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	for i := range r.interfaces {
-		if r.interfaces[i].Name == name {
-			return r.interfaces[i], nil
-		}
+	if index, ok := r.ifaceNameIndex[name]; ok {
+		return r.interfaces[index], nil
 	}
+
 	return Interface{}, fmt.Errorf("interface %q not found", name)
 }
 
-func (r *realNetInterfaceProvider) InterfaceByIndex(index int) (Interface, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	for i := range r.interfaces {
-		if r.interfaces[i].Index == index {
-			return r.interfaces[i], nil
-		}
+func (r *realNetInterfaceProvider) InterfaceByIndex(ifIndex int) (Interface, error) {
+	if index, ok := r.ifaceIndex[ifIndex]; ok {
+		return r.interfaces[index], nil
 	}
-	return Interface{}, fmt.Errorf("interface with index %q not found", index)
+
+	return Interface{}, fmt.Errorf("interface with index %q not found", ifIndex)
 }
 
 type Interface struct {

@@ -1,4 +1,4 @@
-//go:build unix
+//go:build !windows
 
 package netutil
 
@@ -13,8 +13,13 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 		return nil, err
 	}
 
-	interfaces := make([]Interface, 0, len(ifaces))
-	for _, iface := range ifaces {
+	r := realNetInterfaceProvider{
+		ifaceIndex:     make(map[int]int, len(ifaces)),
+		ifaceNameIndex: make(map[string]int, len(ifaces)),
+		interfaces:     make([]Interface, 0, len(ifaces)),
+	}
+
+	for i, iface := range ifaces {
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
@@ -32,11 +37,9 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 		}
 		netIface.LinkType = linktype
 
-		interfaces = append(interfaces, netIface)
-	}
-
-	r := realNetInterfaceProvider{
-		interfaces: interfaces,
+		r.interfaces = append(r.interfaces, netIface)
+		r.ifaceIndex[netIface.Index] = i
+		r.ifaceNameIndex[netIface.Name] = i
 	}
 
 	return &r, nil

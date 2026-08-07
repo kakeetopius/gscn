@@ -108,6 +108,7 @@ type PcapPacketReceiver struct {
 	filter     string
 	ifaces     map[int]receivingInterface
 	packetChan chan gopacket.Packet
+	receiverWg sync.WaitGroup
 	closed     bool
 }
 
@@ -171,8 +172,11 @@ func (pr *PcapPacketReceiver) Close() error {
 	}
 
 	pr.cancelFunc()
+	pr.receiverWg.Wait()
+
 	clear(pr.ifaces)
 	close(pr.packetChan)
+
 	pr.closed = true
 	return nil
 }
@@ -182,24 +186,32 @@ func (pr *PcapPacketReceiver) Packets() <-chan gopacket.Packet {
 }
 
 func (pr *PcapPacketReceiver) capturePacketsOnInterface(iface receivingInterface) {
+	pr.receiverWg.Add(1)
 	packetSource := gopacket.NewPacketSource(iface.handle, iface.handle.LinkType())
 	ifacePacketChan := packetSource.Packets()
 
 	defer func() {
 		iface.handle.Close()
+		pr.receiverWg.Done()
 	}()
 
 	for {
+		var packet gopacket.Packet
+		var ok bool
+
 		select {
 		case <-pr.ctx.Done():
 			return
-		case packet, ok := <-ifacePacketChan:
+		case packet, ok = <-ifacePacketChan:
 			if !ok {
 				return
 			}
-			if !pr.closed {
-				pr.packetChan <- packet
-			}
+		}
+
+		select {
+		case <-pr.ctx.Done():
+			return
+		case pr.packetChan <- packet:
 		}
 	}
 }

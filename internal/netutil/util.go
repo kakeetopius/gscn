@@ -18,8 +18,6 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
-
 type AddressFamily uint16
 
 func AddressFamilyOf(addr netip.Addr) AddressFamily {
@@ -42,6 +40,8 @@ func (f AddressFamily) String() string {
 
 	return ""
 }
+
+var ErrNoInterfaceConnectedToTarget = errors.New("no interface connected to any of the target addresses")
 
 // GetIfaceByIP finds the first network interface whose assigned IP network
 // is equal to IPAddr
