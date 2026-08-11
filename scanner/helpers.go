@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"net/netip"
@@ -65,7 +66,7 @@ func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[neti
 	return results
 }
 
-func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResultsMap, error) {
+func pingHosts(ctx context.Context, targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResultsMap, error) {
 	pinger := NewPingScanner(PingScanOptions{
 		Targets:       targets,
 		PingTimeout:   pingTimeout,
@@ -74,7 +75,7 @@ func pingHosts(targets []netip.Prefix, pingTimeout time.Duration, workers int, p
 		ResultMapOnly: true,
 	})
 
-	_, err := pinger.Scan()
+	_, err := pinger.Scan(ctx)
 	if err != nil {
 		return PingScanResultsMap{}, err
 	}

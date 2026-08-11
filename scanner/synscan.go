@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"math/rand"
 	"net"
 	"net/netip"
 	"runtime"
 	"strings"
-	"sync"
+	"text/template"
 	"time"
 
 	"github.com/google/gopacket"
@@ -21,6 +20,7 @@ import (
 	"github.com/kakeetopius/gscn/internal/routing"
 	"github.com/kakeetopius/gscn/packet"
 	"github.com/pterm/pterm"
+	"golang.org/x/sync/errgroup"
 )
 
 type TCPSynScanner struct {
@@ -87,9 +87,9 @@ func NewTCPSynScanner(opts TCPSynScanOptions) (*TCPSynScanner, error) {
 	}, nil
 }
 
-func (s *TCPSynScanner) Scan() (ScanResults, error) {
+func (s *TCPSynScanner) Scan(ctx context.Context) (ScanResults, error) {
 	startTime := time.Now()
-	err := s.runTCPSynScan()
+	err := s.runTCPSynScan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (r *TCPSynScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *TCPSynScanner) runTCPSynScan() error {
+func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	if len(s.Targets) == 0 {
 		return fmt.Errorf("no hosts to scan provided")
 	}
@@ -150,9 +150,9 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	if !s.SkipPingScan {
 		// pinging for this scanner type is important because kernel will be build able to build the neighbor cache for those hosts that are up which will
 		// be useful for the macResolver
-		pingResults, err := pingHosts(s.Targets, s.PingTimeout, int(s.Workers), s.PingCount)
-		if err != nil {
-			return err
+		pingResults, pingErr := pingHosts(ctx, s.Targets, s.PingTimeout, int(s.Workers), s.PingCount)
+		if pingErr != nil {
+			return pingErr
 		}
 		s.hostStates = pingResults
 	}
@@ -162,10 +162,13 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 	if err != nil {
 		return err
 	}
-	defer spinner.Success("Scanning Done")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer func() {
+		if err != nil {
+			spinner.Fail("Scan Failed")
+		} else {
+			spinner.Success("Scanning Done")
+		}
+	}()
 
 	allIfaces, err := s.ifaceProvider.Interfaces()
 	if err != nil {
@@ -191,36 +194,32 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 		return err
 	}
 	defer packetSender.Close()
-
 	defer localhostPacketSender.Close()
 
-	receiverCtx, cancelReceiver := context.WithCancel(context.Background())
-	defer cancelReceiver()
-	packetReceiver, err := packet.NewPacketReceiver(receiverCtx, "(ip or ip6) and tcp", 1500, allIfaces...)
+	packetReceiver, err := packet.NewPacketReceiver(ctx, "(ip or ip6) and tcp", 1500, allIfaces...)
 	if err != nil {
 		return err
 	}
 	defer packetReceiver.Close()
 
 	masterDone := make(chan struct{})
-
 	go s.getTCPSynScanResults(ctx, packetReceiver, masterDone)
 
 	jobs := make(chan PortScanJob, s.Workers)
-	wg := &sync.WaitGroup{}
+	g, ctx := errgroup.WithContext(ctx)
 	for range s.Workers {
-		wg.Add(1)
-		go s.synScanTCPPort(wg, jobs, packetSender, localhostPacketSender)
+		g.Go(func() error {
+			return s.synScanTCPPort(jobs, packetSender, localhostPacketSender)
+		})
 	}
 
-	senderDone := make(chan struct{})
-	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
-
-	<-senderDone // wait for sender to send all jobs
-	close(senderDone)
+	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 
 	close(jobs)
-	wg.Wait() // wait for all to workers to finish
+	err = g.Wait() // wait for all to workers to finish
+	if err != nil {
+		return err
+	}
 
 	packetSender.Wait() // wait for the packet sender to send all packets
 
@@ -229,7 +228,6 @@ func (s *TCPSynScanner) runTCPSynScan() error {
 
 	<-masterDone // wait for master to finish processing what is already enqueued by the packet receiver
 	close(masterDone)
-
 	return nil
 }
 
@@ -329,11 +327,8 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 	}
 }
 
-func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) {
+func (s *TCPSynScanner) synScanTCPPort(jobs chan PortScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) error {
 	// to be run by workers
-	defer func() {
-		wg.Done()
-	}()
 
 	packetBuf := gopacket.NewSerializeBuffer()
 	packetBufOpts := gopacket.SerializeOptions{
@@ -347,8 +342,7 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 
 		route, err := s.router.Lookup(addr)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return err
 		}
 
 		ps := packetSender
@@ -369,15 +363,14 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 				// if the target is the interface's ip we use the looback interface instead
 				iface, err = netutil.LoopbackInterface(s.ifaceProvider)
 				if err != nil {
-					continue
+					return err
 				}
 			} else {
 				dstMac, err = s.macResolver.Resolve(route.NextHop)
 				var macErr resolving.ErrMacNotFound
 				if err != nil {
 					if !errors.As(err, &macErr) {
-						fmt.Println(err)
-						continue
+						return err
 					}
 					// if we fail to get mac we just set to the broadcast.
 					dstMac = netutil.MAC{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
@@ -440,17 +433,17 @@ func (s *TCPSynScanner) synScanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob
 
 		err = gopacket.SerializeLayers(packetBuf, packetBufOpts, packetHeaders...)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return err
 		}
 
 		packetBytes := packetBuf.Bytes()
 
 		err = ps.SendPacket(packetBytes, iface)
 		if err != nil {
-			fmt.Println(err)
-			continue
+			return err
 		}
 
 	}
+
+	return nil
 }
