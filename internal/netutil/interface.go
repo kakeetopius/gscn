@@ -22,9 +22,9 @@ type NetInterfaceProvider interface {
 }
 
 type realNetInterfaceProvider struct {
-	interfaces     []Interface
-	ifaceIndex     map[int]int
-	ifaceNameIndex map[string]int
+	interfaces    []Interface
+	ifaceNameIdx  map[string]int
+	ifaceIndexIdx map[int]int
 }
 
 func (r *realNetInterfaceProvider) Interfaces() ([]Interface, error) {
@@ -32,7 +32,7 @@ func (r *realNetInterfaceProvider) Interfaces() ([]Interface, error) {
 }
 
 func (r *realNetInterfaceProvider) InterfaceByName(name string) (Interface, error) {
-	if index, ok := r.ifaceNameIndex[name]; ok {
+	if index, ok := r.ifaceNameIdx[name]; ok {
 		return r.interfaces[index], nil
 	}
 
@@ -40,7 +40,7 @@ func (r *realNetInterfaceProvider) InterfaceByName(name string) (Interface, erro
 }
 
 func (r *realNetInterfaceProvider) InterfaceByIndex(ifIndex int) (Interface, error) {
-	if index, ok := r.ifaceIndex[ifIndex]; ok {
+	if index, ok := r.ifaceIndexIdx[ifIndex]; ok {
 		return r.interfaces[index], nil
 	}
 

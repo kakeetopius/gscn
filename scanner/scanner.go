@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 
@@ -17,8 +18,8 @@ type ScanOptions struct {
 	Config            *viper.Viper
 }
 
-func DoScan(scanner Scanner, opts ScanOptions) error {
-	results, err := scanner.Scan()
+func DoScan(ctx context.Context, scanner Scanner, opts ScanOptions) error {
+	results, err := scanner.Scan(ctx)
 	if err != nil {
 		return err
 	}

@@ -3,15 +3,16 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"iter"
 	"maps"
 	"net/netip"
 	"os"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/netutil"
@@ -46,10 +47,12 @@ type PingScanResults struct {
 }
 
 type PingHostResult struct {
-	IP         netip.Addr    `json:"ip"`
-	HostName   string        `json:"hostname"`
-	HostState  HostState     `json:"state"`
-	AverageRTT time.Duration `json:"rtt"`
+	IP             netip.Addr    `json:"ip"`
+	HostName       string        `json:"hostname"`
+	HostState      HostState     `json:"state"`
+	AverageRTT     time.Duration `json:"rtt"`
+	PacketsSent    int
+	PacketReceived int
 }
 
 type PingStats struct {
@@ -77,9 +80,9 @@ func NewPingScanner(opts PingScanOptions) *PingScanner {
 	}
 }
 
-func (s *PingScanner) Scan() (ScanResults, error) {
+func (s *PingScanner) Scan(ctx context.Context) (ScanResults, error) {
 	startTime := time.Now()
-	err := s.runPing()
+	err := s.runPing(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +161,7 @@ func (r PingScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *PingScanner) runPing() error {
+func (s *PingScanner) runPing(ctx context.Context) error {
 	if s.Workers <= 0 {
 		return fmt.Errorf("invalid number of workers")
 	}
@@ -176,11 +179,8 @@ func (s *PingScanner) runPing() error {
 		go pingHost(s, wg, jobs, workerResultsChan)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	scanResultsChan := make(chan PingScanResultsMap)
-	go s.getPingScanResults(ctx, workerResultsChan, scanResultsChan)
+	masterDone := make(chan struct{})
+	go s.getPingScanResults(ctx, workerResultsChan, masterDone)
 
 	// send jobs
 	for _, target := range s.Targets {
@@ -197,13 +197,9 @@ func (s *PingScanner) runPing() error {
 	close(jobs)
 	wg.Wait() // wait for all workers to finish
 
-	cancel() // tell main worker to stop
-	pingScanResults := <-scanResultsChan
-
-	close(scanResultsChan)
 	close(workerResultsChan)
+	<-masterDone // wait for master to finish
 
-	s.resultMap = pingScanResults
 	spinner.Success("Pinging done")
 	return nil
 }
@@ -225,7 +221,7 @@ func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, r
 		pinger.Count = job.PingCount
 		pingTimeout := scanner.PingTimeout
 		if pingTimeout == 0*time.Second {
-			pingTimeout = 1 * time.Second
+			pingTimeout = time.Second * time.Duration(scanner.PingCount)
 		}
 		pinger.Timeout = pingTimeout
 
@@ -237,21 +233,26 @@ func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, r
 		err := pinger.Run()
 		if err == nil {
 			stats := pinger.Statistics()
+			pingResult.PacketsSent = stats.PacketsSent
 			if stats.PacketsRecv > 0 {
 				pingResult.HostState = HostStateUp
 				pingResult.AverageRTT = stats.AvgRtt
+				pingResult.PacketReceived = stats.PacketsRecv
 			}
 		}
 		resultChan <- pingResult
 	}
 }
 
-func (s *PingScanner) getPingScanResults(ctx context.Context, workerResultsChan chan PingHostResult, scanResultsChan chan PingScanResultsMap) {
+func (s *PingScanner) getPingScanResults(ctx context.Context, workerResultsChan chan PingHostResult, masterDone chan struct{}) {
 	// To Be Run By Main Worker (aggregator)
-	scanResults := make(map[netip.Addr]PingHostResult)
+	if s.resultMap == nil {
+		s.resultMap = make(map[netip.Addr]PingHostResult)
+	}
 	defer func() {
-		scanResultsChan <- scanResults
+		masterDone <- struct{}{}
 	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -267,7 +268,7 @@ func (s *PingScanner) getPingScanResults(ctx context.Context, workerResultsChan 
 			case HostStateUp:
 				s.scanResults.UpHosts++
 			}
-			scanResults[result.IP] = result
+			s.resultMap[result.IP] = result
 		}
 	}
 }
@@ -276,7 +277,7 @@ func printPingScanResults(results *PingScanResults, printUpOnly bool) {
 	stats := results.PingStats
 
 	var tableData [][]string
-	tableData = pterm.TableData{{"Host", "State", "Average RTT"}}
+	tableData = pterm.TableData{{"Host", "State", "Sent", "Recvd", "Average RTT"}}
 	totalHosts := stats.TotalHosts
 	for _, result := range results.HostResults {
 		if result.HostState == HostStateDown && printUpOnly {
@@ -297,7 +298,13 @@ func printPingScanResults(results *PingScanResults, printUpOnly bool) {
 		case HostStateDown:
 			hostStateStyle = pterm.FgRed
 		}
-		tableData = append(tableData, []string{hostIdentity, hostStateStyle.Sprint(result.HostState), result.AverageRTT.Truncate(time.Microsecond).String()})
+		tableData = append(tableData, []string{
+			hostIdentity,
+			hostStateStyle.Sprint(result.HostState),
+			strconv.Itoa(result.PacketsSent),
+			strconv.Itoa(result.PacketReceived),
+			result.AverageRTT.Truncate(time.Microsecond).String(),
+		})
 	}
 	if len(tableData) > 1 {
 		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()

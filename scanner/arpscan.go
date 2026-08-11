@@ -7,12 +7,12 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"net"
 	"net/netip"
 	"runtime"
 	"slices"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/google/gopacket"
@@ -85,9 +85,9 @@ func NewARPScanner(opts ARPScanOptions) (*ARPScanner, error) {
 	}, nil
 }
 
-func (s *ARPScanner) Scan() (ScanResults, error) {
+func (s *ARPScanner) Scan(ctx context.Context) (ScanResults, error) {
 	start := time.Now()
-	err := s.runArp()
+	err := s.runArp(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (r *ARPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *ARPScanner) runArp() error {
+func (s *ARPScanner) runArp(ctx context.Context) error {
 	if len(s.Targets) == 0 && len(s.Interfaces) == 0 {
 		return fmt.Errorf("please provide either an interface or targets to carry out an arp scan for")
 	}
@@ -166,8 +166,6 @@ func (s *ARPScanner) runArp() error {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	opts := s.ARPScanOptions
 
 	startSending := make(chan struct{})

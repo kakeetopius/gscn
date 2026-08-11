@@ -17,6 +17,7 @@ type PcapPacketSender struct {
 	senderFinished chan struct{}
 	ctx            context.Context
 	cancelFunc     context.CancelFunc
+	closed         bool
 }
 
 type packet struct {
@@ -95,6 +96,10 @@ func (ps *PcapPacketSender) startSender() {
 }
 
 func (ps *PcapPacketSender) Close() error {
+	if ps.closed {
+		return nil
+	}
+	ps.closed = true
 	for _, handle := range ps.handles {
 		handle.Close()
 	}

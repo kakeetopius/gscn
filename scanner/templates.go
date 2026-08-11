@@ -89,7 +89,7 @@ Scan Duration:       {{ .Stats.ScanTime }}
 var PingScanResultsTemplate = `
 Ping Scan Results
 =================
-{{ printf "%-40s %-30s %-10s %s" "IP ADDRESS" "HOSTNAME" "STATE" "AVG RTT" }}
+{{ printf "%-40s %-10s %-10s %s" "IP ADDRESS" "HOSTNAME" "STATE" "AVG RTT" }}
 {{ printf "%-40s %-30s %-10s %s" "----------" "--------" "-----" "-------" }}
 {{- range .HostResults }}
 {{ printf "%-40s %-30s %-10s %s" .IP .HostName .HostState .AverageRTT }}

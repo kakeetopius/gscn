@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html/template"
 	"net"
 	"net/netip"
 	"os"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/log"
@@ -65,9 +65,9 @@ func NewUDPScanner(opts UDPScanOptions) *UDPScanner {
 	}
 }
 
-func (s *UDPScanner) Scan() (ScanResults, error) {
+func (s *UDPScanner) Scan(ctx context.Context) (ScanResults, error) {
 	startTime := time.Now()
-	err := s.runUDPScan()
+	err := s.runUDPScan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (r *UDPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *UDPScanner) runUDPScan() error {
+func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 	if s.Workers <= 0 {
 		return fmt.Errorf("invalid number of workers")
 	}
@@ -127,7 +127,7 @@ func (s *UDPScanner) runUDPScan() error {
 		s.TargetPorts = CommonPorts
 	}
 
-	pingResults, err := pingHosts(s.Targets, s.PingTimeout, int(s.Workers), s.PingCount) // first check if hosts are up.
+	pingResults, err := pingHosts(ctx, s.Targets, s.PingTimeout, int(s.Workers), s.PingCount) // first check if hosts are up.
 	if err != nil {
 		return err
 	}
@@ -148,18 +148,10 @@ func (s *UDPScanner) runUDPScan() error {
 	}
 	defer spinner.Success("Scanning Done")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	senderDone := make(chan struct{})
-
-	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
-
 	masterDone := make(chan struct{})
-
 	go s.getUDPScanResults(ctx, workerResultsChan, masterDone)
 
-	<-senderDone // wait for sender to send all jobs
-	close(senderDone)
+	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 
 	close(jobs) // wait for all the workers to finish
 	wg.Wait()

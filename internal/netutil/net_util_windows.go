@@ -24,11 +24,13 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 	}
 
 	r := realNetInterfaceProvider{
-		ifaceIndex:     make(map[int]int, len(devs)),
-		ifaceNameIndex: make(map[string]int, len(devs)),
-		interfaces:     make([]Interface, 0, len(devs)),
+		ifaceIndexIdx: make(map[int]int, len(devs)),
+		ifaceNameIdx:  make(map[string]int, len(devs)),
+		interfaces:    make([]Interface, 0, len(devs)),
 	}
-	for i, dev := range devs {
+
+	var ifaceSliceCurrentIdx int
+	for _, dev := range devs {
 		// first convert []pcap.InterfaceAddress to []netip.Prefix
 		addrs := pcapInterfaceAddressSliceToPrefixSlice(dev.Addresses)
 
@@ -52,8 +54,10 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 		iface.LinkType = linkType
 
 		r.interfaces = append(r.interfaces, iface)
-		r.ifaceIndex[netIface.Index] = i
-		r.ifaceNameIndex[netIface.Name] = i
+		r.ifaceIndexIdx[iface.Index] = ifaceSliceCurrentIdx
+		r.ifaceNameIdx[iface.Name] = ifaceSliceCurrentIdx
+
+		ifaceSliceCurrentIdx++
 	}
 
 	return &r, nil
