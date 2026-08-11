@@ -52,8 +52,8 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 		iface.LinkType = linkType
 
 		r.interfaces = append(r.interfaces, iface)
-		r.ifaceIndex[netIface.Index] = i
-		r.ifaceNameIndex[netIface.Name] = i
+		r.ifaceIndex[iface.Index] = i
+		r.ifaceNameIndex[iface.Name] = i
 	}
 
 	return &r, nil

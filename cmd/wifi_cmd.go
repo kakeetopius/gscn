@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/kakeetopius/gscn/internal/config"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
@@ -31,7 +33,7 @@ func WifiCmd() *cobra.Command {
 				return err
 			}
 
-			return scanner.DoScan(wifiScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), wifiScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,

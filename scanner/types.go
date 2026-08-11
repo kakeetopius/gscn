@@ -3,6 +3,7 @@
 package scanner
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -28,7 +29,7 @@ const (
 // Scanner defines the interface for network scanning operations.
 type Scanner interface {
 	// Scan executes the network scan and returns the scan results
-	Scan() (ScanResults, error)
+	Scan(ctx context.Context) (ScanResults, error)
 }
 
 // ScanResults defines the interface that all scan result types must implement.

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"net/netip"
 	"time"
@@ -62,7 +63,7 @@ func discoverArpCmd() *cobra.Command {
 				return err
 			}
 
-			return scanner.DoScan(arpScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
@@ -114,7 +115,7 @@ func discoverNDPCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return scanner.DoScan(ndpScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), ndpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,

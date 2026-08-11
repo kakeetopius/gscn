@@ -3,13 +3,13 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"net"
 	"net/netip"
 	"runtime"
 	"slices"
 	"strings"
 	"syscall"
+	"text/template"
 	"time"
 
 	"github.com/google/gopacket"
@@ -86,7 +86,7 @@ func NewNDPScanner(opts NDPScanOptions) (*NDPScanner, error) {
 	}, nil
 }
 
-func (s *NDPScanner) Scan() (ScanResults, error) {
+func (s *NDPScanner) Scan(ctx context.Context) (ScanResults, error) {
 	start := time.Now()
 
 	var err error
@@ -94,7 +94,7 @@ func (s *NDPScanner) Scan() (ScanResults, error) {
 	if s.FromCache {
 		err = s.ndpResultsUsingNetlink(s.Interface, s.Targets)
 	} else {
-		err = s.runNDP()
+		err = s.runNDP(ctx)
 	}
 
 	if err != nil {
@@ -162,7 +162,7 @@ func (r *NDPScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *NDPScanner) runNDP() error {
+func (s *NDPScanner) runNDP(ctx context.Context) error {
 	if s.Interface == nil {
 		return fmt.Errorf("please provide an interface to carry out an ndp scan on")
 	}
@@ -173,9 +173,6 @@ func (s *NDPScanner) runNDP() error {
 
 	opts := s.NDPScanOptions
 	startSending := make(chan struct{})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var packetSender packet.PacketSender
 	var err error

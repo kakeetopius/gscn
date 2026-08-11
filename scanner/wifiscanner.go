@@ -3,8 +3,8 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/mdlayher/wifi"
@@ -37,9 +37,9 @@ func NewWiFiScanner(opts WiFiScannerOptions) *WiFiScanner {
 	}
 }
 
-func (s *WiFiScanner) Scan() (ScanResults, error) {
+func (s *WiFiScanner) Scan(ctx context.Context) (ScanResults, error) {
 	start := time.Now()
-	err := runWifiScan(s)
+	err := runWifiScan(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (r *WiFiScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func runWifiScan(scanner *WiFiScanner) error {
+func runWifiScan(ctx context.Context, scanner *WiFiScanner) error {
 	client, err := wifi.New()
 	if err != nil {
 		return err
@@ -79,9 +79,6 @@ func runWifiScan(scanner *WiFiScanner) error {
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning for access points....")
 	if err != nil {
