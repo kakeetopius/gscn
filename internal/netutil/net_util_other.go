@@ -14,12 +14,13 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 	}
 
 	r := realNetInterfaceProvider{
-		ifaceIndex:     make(map[int]int, len(ifaces)),
-		ifaceNameIndex: make(map[string]int, len(ifaces)),
-		interfaces:     make([]Interface, 0, len(ifaces)),
+		ifaceIndexIdx: make(map[int]int, len(ifaces)),
+		ifaceNameIdx:  make(map[string]int, len(ifaces)),
+		interfaces:    make([]Interface, 0, len(ifaces)),
 	}
 
-	for i, iface := range ifaces {
+	var ifaceSliceCurrentIdx int
+	for _, iface := range ifaces {
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
@@ -38,8 +39,10 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 		netIface.LinkType = linktype
 
 		r.interfaces = append(r.interfaces, netIface)
-		r.ifaceIndex[netIface.Index] = i
-		r.ifaceNameIndex[netIface.Name] = i
+		r.ifaceIndexIdx[netIface.Index] = ifaceSliceCurrentIdx
+		r.ifaceNameIdx[netIface.Name] = ifaceSliceCurrentIdx
+
+		ifaceSliceCurrentIdx++
 	}
 
 	return &r, nil

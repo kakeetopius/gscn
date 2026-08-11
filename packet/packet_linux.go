@@ -31,6 +31,7 @@ type LinuxPacketSender struct {
 	generalSocketAddr unix.SockaddrLinklayer
 	ctx               context.Context
 	cancelFunc        context.CancelFunc
+	closed            bool
 }
 
 type linuxPacket struct {
@@ -84,6 +85,10 @@ func (ps *LinuxPacketSender) SendPacket(packetData []byte, iface *netutil.Interf
 }
 
 func (ps *LinuxPacketSender) Close() error {
+	if ps.closed {
+		return nil
+	}
+	ps.closed = true
 	ps.cancelFunc()
 	return unix.Close(ps.socketFD)
 }
@@ -112,6 +117,7 @@ type LinuxRawIPSender struct {
 	senderFinished chan struct{}
 	ctx            context.Context
 	cancelFunc     context.CancelFunc
+	closed         bool
 }
 
 type linuxIPPacket struct {
@@ -168,6 +174,10 @@ func (ps *LinuxRawIPSender) Wait() {
 }
 
 func (ps *LinuxRawIPSender) Close() error {
+	if ps.closed {
+		return nil
+	}
+	ps.closed = true
 	ps.cancelFunc()
 	unix.Close(ps.ipv4Sock)
 	return unix.Close(ps.ipv6Sock)

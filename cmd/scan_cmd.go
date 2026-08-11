@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/netip"
 	"time"
@@ -64,7 +65,7 @@ func tcpFullScanCmd() *cobra.Command {
 
 			tcpScanner := scanner.NewTCPFullScanner(opts)
 
-			return scanner.DoScan(tcpScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), tcpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
@@ -124,7 +125,7 @@ func tcpSynScanCmd() *cobra.Command {
 				return err
 			}
 
-			return scanner.DoScan(synScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), synScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
@@ -181,7 +182,7 @@ func udpScanCmd() *cobra.Command {
 			}
 
 			udpScanner := scanner.NewUDPScanner(opts)
-			return scanner.DoScan(udpScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), udpScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
@@ -231,7 +232,7 @@ func pingScanCmd() *cobra.Command {
 			}
 
 			pingScanner := scanner.NewPingScanner(opts)
-			return scanner.DoScan(pingScanner, scanner.ScanOptions{
+			return scanner.DoScan(context.Background(), pingScanner, scanner.ScanOptions{
 				ResultsOutputFile: outputFile,
 				PrintJSON:         outputJSON,
 				PrintJSONPretty:   jsonPretty,
@@ -245,9 +246,9 @@ func pingScanCmd() *cobra.Command {
 	pingCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
 
 	pingCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
-	pingCmd.Flags().IntVarP(&opts.PingCount, "count", "c", 4, "Number of ICMP Echo Request packets to send when pinging")
+	pingCmd.Flags().IntVarP(&opts.PingCount, "count", "c", 3, "Number of ICMP Echo Request packets to send when pinging")
 
-	pingCmd.Flags().DurationVarP(&opts.PingTimeout, "timeout", "t", 2*time.Second, "Amount of time to wait for ping replies when doing scans.")
+	pingCmd.Flags().DurationVarP(&opts.PingTimeout, "timeout", "t", 0*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
 	pingCmd.Flags().BoolVar(&opts.PrintOnlyUp, "up", false, "Show results for only up hosts.")
 	return &pingCmd

@@ -3,11 +3,11 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"net"
 	"net/netip"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/kakeetopius/gscn/internal/log"
@@ -64,9 +64,9 @@ func NewTCPFullScanner(opts TCPFullScanOptions) *TCPFullScanner {
 	}
 }
 
-func (s *TCPFullScanner) Scan() (ScanResults, error) {
+func (s *TCPFullScanner) Scan(ctx context.Context) (ScanResults, error) {
 	startTime := time.Now()
-	err := s.runTCPFullScan()
+	err := s.runTCPFullScan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (r *TCPFullScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *TCPFullScanner) runTCPFullScan() error {
+func (s *TCPFullScanner) runTCPFullScan(ctx context.Context) error {
 	if s.Workers <= 0 {
 		return fmt.Errorf("invalid number of workers")
 	}
@@ -127,7 +127,7 @@ func (s *TCPFullScanner) runTCPFullScan() error {
 	}
 
 	if !s.SkipPingScan {
-		pingResults, err := pingHosts(s.Targets, s.PingTimeout, int(s.Workers), s.PingCount) // first check if hosts are up.
+		pingResults, err := pingHosts(ctx, s.Targets, s.PingTimeout, int(s.Workers), s.PingCount) // first check if hosts are up.
 		if err != nil {
 			return err
 		}
@@ -150,19 +150,10 @@ func (s *TCPFullScanner) runTCPFullScan() error {
 	}
 	defer spinner.Success("Scanning Done")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	senderDone := make(chan struct{})
-
-	go sendPortScanningJobs(ctx, senderDone, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
-
 	masterDone := make(chan struct{})
-
 	go s.getTCPFullScanResults(ctx, workerResultsChan, masterDone)
 
-	<-senderDone // wait for sender to send all jobs
-	close(senderDone)
+	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
 
 	close(jobs)
 	wg.Wait() // wait for all to workers to finish
