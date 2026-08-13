@@ -76,9 +76,12 @@ func discoverArpCmd() *cobra.Command {
 	arpCmd.Flags().SortFlags = false
 
 	arpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the all the subnets the interface is in are scanned.")
+	arpCmd.Flags().UintVarP(&opts.ProbeCount, "count", "c", 4, "The number of ARP requests to send for each host")
+	arpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any ARP packets rather passively listen for ARP replies from the given targets.")
 	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
 	arpCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	arpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
+	arpCmd.Flags().BoolVar(&opts.FromCache, "from-cache", false, "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.")
 
 	return &arpCmd
 }
@@ -128,6 +131,8 @@ func discoverNDPCmd() *cobra.Command {
 	ndpScan.Flags().SortFlags = false
 
 	ndpScan.Flags().StringVarP(&iface, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
+	ndpScan.Flags().UintVarP(&opts.ProbeCount, "count", "c", 4, "The number of ICMPv6 Neighbour Solicitation Packets to send for each host")
+	ndpScan.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any ICMPv6 Neighbour Solicitation packets rather passively listen for Neighbor Advertisements from the given targets.")
 	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
 	ndpScan.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
 	ndpScan.Flags().BoolVar(&opts.FromCache, "from-cache", false, "Discover hosts from the kernel's cached neighbour tables instead of actively probing hosts.")

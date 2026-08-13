@@ -1,5 +1,4 @@
-// Package scanner provides functionality for scanning network devices using various network protocols,
-// including ARP, NDP, TCP, UDP etc
+// Package scanner provides scanners for carrying out different scanning operations on a network.
 package scanner
 
 import (
@@ -26,7 +25,7 @@ const (
 	PortStatePossibleFilter // used when  a host's port state cant be known definitevly
 )
 
-// Scanner defines the interface for network scanning operations.
+// Scanner defines the interface for network scanners
 type Scanner interface {
 	// Scan executes the network scan and returns the scan results
 	Scan(ctx context.Context) (ScanResults, error)

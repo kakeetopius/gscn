@@ -1,9 +1,5 @@
 package scanner
 
-// TODO:
-// 1. improve both this arpscanner and ndpscanner to not just probe with one packet per host but at least probe with
-// three or more per host.
-
 import (
 	"context"
 	"fmt"
@@ -12,11 +8,13 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"text/template"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/kakeetopius/gscn/internal/log"
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/kakeetopius/gscn/internal/routing"
@@ -26,10 +24,12 @@ import (
 
 type ARPScanner struct {
 	ARPScanOptions
-	results       ARPScanResults
-	logger        log.Logger
-	ifaceProvider netutil.NetInterfaceProvider
-	router        routing.Router
+	results        ARPScanResults
+	logger         log.Logger
+	ifaceProvider  netutil.NetInterfaceProvider
+	router         routing.Router
+	packetReceiver *packet.PcapPacketReceiver
+	packetSender   packet.PacketSender
 }
 
 type ARPScanOptions struct {
@@ -40,6 +40,9 @@ type ARPScanOptions struct {
 	HostNames           map[netip.Addr]string
 	AddUnknownHostNames bool
 	Verbose             bool
+	Passive             bool
+	ProbeCount          uint
+	FromCache           bool
 }
 
 type ARPScanResults struct {
@@ -86,12 +89,19 @@ func NewARPScanner(opts ARPScanOptions) (*ARPScanner, error) {
 }
 
 func (s *ARPScanner) Scan(ctx context.Context) (ScanResults, error) {
+	var err error
+
 	start := time.Now()
-	err := s.runArp(ctx)
+	if s.FromCache {
+		err = s.getNeighborsWithNetlink()
+	} else {
+		err = s.runArp(ctx)
+	}
+	stop := time.Now()
+
 	if err != nil {
 		return nil, err
 	}
-	stop := time.Now()
 
 	s.results.ScanDuration = stop.Sub(start)
 
@@ -166,10 +176,7 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 		}
 	}
 
-	opts := s.ARPScanOptions
-
 	startSending := make(chan struct{})
-	numHosts := netutil.HostsInIP4Network(opts.Targets)
 
 	var packetSender packet.PacketSender
 	var err error
@@ -182,24 +189,47 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 		return err
 	}
 	defer packetSender.Close()
+	s.packetSender = packetSender
 
 	packetReceiver, err := packet.NewPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
 	if err != nil {
 		return err
 	}
 	defer packetReceiver.Close()
+	s.packetReceiver = packetReceiver
 
 	receiverDone := make(chan struct{})
-	go s.getARPReplies(ctx, packetReceiver, startSending, receiverDone)
+	go s.getARPReplies(ctx, startSending, receiverDone)
 
 	<-startSending // wait for receiving routine to finish setup
 
-	if len(opts.Interfaces) != 0 {
-		s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(opts.Interfaces))
+	if !s.Passive {
+		err = s.sendARPProbes()
+		if err != nil {
+			return err
+		}
+		packetSender.Wait() // wait for packet sender to send all packets
 	}
 
+	s.logger.WaitTimeout(s.ResponseTimeout, "response")
+	packetReceiver.Close()
+
+	<-receiverDone // wait for receiving routine to finish
+	close(receiverDone)
+
+	return nil
+}
+
+func (s *ARPScanner) sendARPProbes() error {
+	if len(s.Interfaces) != 0 {
+		s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(s.Interfaces))
+	}
+
+	numHosts := netutil.HostsInIP4Network(s.Targets)
+
+	var err error
 	bar := pterm.DefaultProgressbar.WithTotal(int(numHosts))
-	if opts.Verbose {
+	if s.Verbose {
 		bar, err = bar.Start()
 		if err != nil {
 			return err
@@ -207,7 +237,7 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 		defer bar.Stop()
 	}
 
-	for _, targetNet := range opts.Targets {
+	for _, targetNet := range s.Targets {
 		ipToScan := targetNet.Masked().Addr() // first IP in range
 
 		networkAddr := ipToScan
@@ -218,7 +248,7 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 			return err
 		}
 
-		packetReceiver.AddReceivingInterface(route.Interface)
+		s.packetReceiver.AddReceivingInterface(route.Interface)
 
 		for targetNet.Contains(ipToScan) {
 			if (ipToScan == networkAddr || ipToScan == broadCast) && !targetNet.IsSingleIP() {
@@ -226,23 +256,17 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 				continue
 			}
 
-			err = sendArpPacket(packetSender, &route.Interface, route.SrcAddr, ipToScan)
-			if err != nil {
-				return err
+			for range s.ProbeCount {
+				err = sendArpPacket(s.packetSender, &route.Interface, route.SrcAddr, ipToScan)
+				if err != nil {
+					return err
+				}
+				s.results.PacketsSent++
 			}
-			s.results.PacketsSent++
 			bar.Increment()
 			ipToScan = ipToScan.Next()
 		}
 	}
-
-	packetSender.Wait() // wait for packet sender to send all packets
-
-	s.logger.WaitTimeout(opts.ResponseTimeout, "response")
-	packetReceiver.Close()
-
-	<-receiverDone // wait for receiving routine to finish
-	close(receiverDone)
 
 	return nil
 }
@@ -288,10 +312,55 @@ func sendArpPacket(packetSender packet.PacketSender, iface *netutil.Interface, s
 	return nil
 }
 
-func (s *ARPScanner) getARPReplies(ctx context.Context, packetReceiver packet.PacketReceiver, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
+func (s *ARPScanner) getNeighborsWithNetlink() error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("getting ipv4 neighbour information from the kernel is only available on linux for now")
+	}
+
+	results := make([]ARPHostResult, 0, 5)
+
+	conn, err := rtnl.Dial(nil)
+	if err != nil {
+		return fmt.Errorf("failed to establish connection to netlink subsystem: %v", err)
+	}
+	defer conn.Close()
+
+	for _, iface := range s.Interfaces {
+		neighbours, err := conn.Neighbours(&iface.Interface, syscall.AF_INET)
+		if err != nil {
+			return err
+		}
+		for _, neigh := range neighbours {
+			addr, ok := netip.AddrFromSlice(neigh.IP)
+			if !ok {
+				continue
+			}
+			if neigh.Interface.Index != iface.Index {
+				continue
+			}
+			if addr.IsMulticast() {
+				continue
+			}
+			if netutil.MAC(neigh.HwAddr).IsBroadCast() {
+				continue
+			}
+
+			results = append(results, ARPHostResult{
+				IPAddr:  addr,
+				MacAddr: netutil.MAC(neigh.HwAddr),
+				Vendor:  netutil.MACVendor(neigh.HwAddr.String()),
+			})
+		}
+	}
+	s.results.HostResults = results
+
+	return nil
+}
+
+func (s *ARPScanner) getARPReplies(ctx context.Context, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
 	opts := s.ARPScanOptions
 
-	packetChan := packetReceiver.Packets()
+	packetChan := s.packetReceiver.Packets()
 
 	results := make([]ARPHostResult, 0, 15)
 	receivedFrom := make(map[netip.Addr]struct{}) // to keep track of which IPs we have got replies from
@@ -360,7 +429,7 @@ func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
 func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendors bool) {
 	if len(arpResults.HostResults) == 0 {
 		fmt.Println()
-		pterm.Info.Println("Host(s) not found on that network.")
+		pterm.Info.Println("No hosts found")
 	} else {
 		fmt.Println()
 		var tableData [][]string
