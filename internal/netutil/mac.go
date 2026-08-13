@@ -17,7 +17,9 @@ func (m MAC) MarshalJSON() ([]byte, error) {
 }
 
 func (m MAC) IsZero() bool {
-	zeroMac := MAC{0, 0, 0, 0, 0, 0}
+	return slices.Equal(m, MAC{0, 0, 0, 0, 0, 0})
+}
 
-	return slices.Equal(m, zeroMac)
+func (m MAC) IsBroadCast() bool {
+	return slices.Equal(m, MAC{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
 }

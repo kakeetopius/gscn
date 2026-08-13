@@ -226,10 +226,8 @@ func getIfaceHandle(iface *netutil.Interface) (*pcap.Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = handle.SetImmediateMode(true)
-	if err != nil {
-		return nil, err
-	}
+	defer handle.CleanUp()
+
 	err = handle.SetSnapLen(1500)
 	if err != nil {
 		return nil, err
@@ -238,6 +236,9 @@ func getIfaceHandle(iface *netutil.Interface) (*pcap.Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	err = handle.SetImmediateMode(true)
+	if err != nil {
+		return nil, err
+	}
 	return handle.Activate()
 }
