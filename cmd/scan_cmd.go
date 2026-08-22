@@ -245,8 +245,8 @@ func pingScanCmd() *cobra.Command {
 	pingCmd.Flags().SortFlags = false
 	pingCmd.Flags().BoolVarP(&opts.AddUnknownHostNames, "hostnames", "H", false, "Carry out a reverse lookup to get host names of the IP addresses given.")
 
-	pingCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 64, "Number of workers to run concurrently when scanning with a maximum of 500")
-	pingCmd.Flags().IntVarP(&opts.PingCount, "count", "c", 3, "Number of ICMP Echo Request packets to send when pinging")
+	pingCmd.Flags().IntVarP(&opts.Workers, "workers", "w", 1, "Number of workers to run concurrently when scanning with a maximum of 500")
+	pingCmd.Flags().IntVarP(&opts.PingCount, "count", "c", 1, "Number of ICMP Echo Request packets to send when pinging")
 
 	pingCmd.Flags().DurationVarP(&opts.PingTimeout, "timeout", "t", 0*time.Second, "Amount of time to wait for ping replies when doing scans.")
 
