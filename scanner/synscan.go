@@ -330,13 +330,13 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 func (s *TCPSynScanner) synScanTCPPort(jobs chan PortScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) error {
 	// to be run by workers
 
-	packetBuf := gopacket.NewSerializeBuffer()
 	packetBufOpts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
-
 	for job := range jobs {
+		packetBuf := gopacket.NewSerializeBuffer()
+
 		portNum := job.target.Port()
 		addr := job.target.Addr()
 
