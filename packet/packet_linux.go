@@ -105,7 +105,10 @@ func (ps *LinuxPacketSender) startSender() {
 			if !ok {
 				return
 			}
-			unix.Sendto(ps.socketFD, packet.data, 0, &packet.outgoingIface)
+			err := unix.Sendto(ps.socketFD, packet.data, 0, &packet.outgoingIface)
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
 	}
 }
