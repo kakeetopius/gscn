@@ -15,7 +15,7 @@ import (
 func DiscoverCmd() *cobra.Command {
 	discoverCmd := cobra.Command{
 		Use: "discover <targets>",
-		Example: "\nTargets may be specified as individual IPv4 addresses, IPv4 CIDR ranges, or Non-CIDR ranges e.g.\n" +
+		Example: "\nTargets for commands that require them may be specified as individual IPv4 addresses, IPv4 CIDR ranges, or Non-CIDR ranges e.g.\n" +
 			"  gscn discover <discover-type> 10.1.1.1\n" +
 			"  gscn discover <discover-type> 10.1.1.1/24\n" +
 			"  gscn discover <discover-type> 10.1.1.1-5\n" +
@@ -149,7 +149,7 @@ func discoverDHCPv4Cmd() *cobra.Command {
 	var ifaceStrings []string
 
 	dhcpCmd := cobra.Command{
-		Use:   "dhcp <targets>",
+		Use:   "dhcp",
 		Short: "Discover dhcpv4 servers on the connected networks.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Load(cfgFile)

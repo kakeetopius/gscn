@@ -459,7 +459,12 @@ func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendo
 			}
 			tableData = append(tableData, row)
 		}
-		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
+		pterm.DefaultTable.
+			WithHasHeader().
+			WithHeaderRowSeparator("-").
+			WithBoxed().
+			WithData(tableData).
+			Render()
 	}
 	arpStats := arpResults.ARPScanStats
 	fmt.Println("\nScan Duration:      ", arpStats.ScanDuration.Truncate(time.Millisecond))

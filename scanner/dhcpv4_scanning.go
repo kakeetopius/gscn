@@ -1,12 +1,16 @@
 package scanner
 
 import (
+	"cmp"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
 	"net/netip"
 	"runtime"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/google/gopacket"
@@ -36,8 +40,8 @@ type DHCPv4ScannerOpts struct {
 }
 
 type DHCPv4ScannerResults struct {
-	Servers []DHCPv4Server        `json:"servers"`
-	Stats   DHCPv4ServerScanStats `json:"stats"`
+	Servers []DHCPv4Server  `json:"servers"`
+	Stats   DHCPv4ScanStats `json:"stats"`
 
 	printHostNames bool `json:"-"`
 	printVendors   bool `json:"-"`
@@ -48,9 +52,21 @@ type DHCPv4Server struct {
 	MACAddress netutil.MAC `json:"mac"`
 	HostName   string      `json:"hostname"`
 	Vendor     string      `json:"vendor"`
+
+	DHCPv4ServerOptions `json:"options"`
 }
 
-type DHCPv4ServerScanStats struct {
+type DHCPv4ServerOptions struct {
+	OfferedIP  netip.Addr    `json:"offered_ip"`
+	SubnetMask netip.Addr    `json:"subnet_mask"`
+	BroadCast  netip.Addr    `json:"broadcast"`
+	Routers    []netip.Addr  `json:"routers"`
+	DNSServers []netip.Addr  `json:"dns_servers"`
+	DomainName string        `json:"domain_name"`
+	LeaseTime  time.Duration `json:"lease_time"`
+}
+
+type DHCPv4ScanStats struct {
 	PacketsSent     int           `json:"packets_sent"`
 	PacketsReceived int           `json:"packets_received"`
 	ScanDuration    time.Duration `json:"scan_duration"`
@@ -84,7 +100,7 @@ func (s *DHCPv4Scanner) Scan(ctx context.Context) (ScanResults, error) {
 	defer packetSender.Close()
 	s.packetSender = packetSender
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "udp and (port 68 or port 67)", 1024, s.Interfaces...)
+	packetReceiver, err := packet.NewPacketReceiver(ctx, "udp and (port 68 or port 67)", 32, s.Interfaces...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +108,7 @@ func (s *DHCPv4Scanner) Scan(ctx context.Context) (ScanResults, error) {
 	s.packetReceiver = packetReceiver
 
 	start := time.Now()
-	err = s.runDhcpServerScanning(ctx)
+	err = s.runDhcpv4ServerScanning(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +126,23 @@ func (r DHCPv4ScannerResults) Print() {
 }
 
 func (r DHCPv4ScannerResults) String() string {
-	return ""
+	stringBuilder := strings.Builder{}
+
+	funcMap := template.FuncMap{
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"join": joinAddrs,
+	}
+	tmpl := template.Must(
+		template.
+			New("dhcpv4_scan").
+			Funcs(funcMap).
+			Parse(DHCPScanResultsTemplate),
+	)
+
+	tmpl.Execute(&stringBuilder, r)
+	return stringBuilder.String()
 }
 
 func (s *DHCPv4Scanner) addResultInfo() error {
@@ -120,7 +152,7 @@ func (s *DHCPv4Scanner) addResultInfo() error {
 
 	var bar *pterm.ProgressbarPrinter
 	var err error
-	if s.WithHostNames {
+	if s.WithHostNames && numServers > 0 {
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
 		bar, err = pterm.DefaultProgressbar.WithTotal(numServers).Start()
@@ -145,7 +177,7 @@ func (s *DHCPv4Scanner) addResultInfo() error {
 	return nil
 }
 
-func (s *DHCPv4Scanner) runDhcpServerScanning(ctx context.Context) (err error) {
+func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error) {
 	if len(s.Interfaces) == 0 {
 		ifaces, err := s.ifaceProvider.Interfaces()
 		if err != nil {
@@ -206,17 +238,29 @@ func (s *DHCPv4Scanner) scanDhcpServersOnInterface(iface *netutil.Interface) err
 	}
 	udp.SetNetworkLayerForChecksum(ip4)
 
-	macAddrLen := 6
-	const dhcpBroadcastFlag uint16 = 0x8000
+	const macAddrLen = 6
+	const dhcpFlags uint16 = 0x8000 // 1000...upto 15 0s -> only the first bit is set to tell the server to broadcast the response.
 	dhcp := &layers.DHCPv4{
 		Operation:    layers.DHCPOpRequest,
 		HardwareType: layers.LinkTypeEthernet,
 		HardwareLen:  uint8(macAddrLen),
 		Xid:          rand.Uint32(),
 		ClientHWAddr: iface.HardwareAddr,
-		Flags:        dhcpBroadcastFlag,
+		Flags:        dhcpFlags,
 		Options: layers.DHCPOptions{
+			// dhcp option 53 which specifies dhcp message type ie dhcpdiscover message
 			layers.NewDHCPOption(layers.DHCPOptMessageType, []byte{byte(layers.DHCPMsgTypeDiscover)}),
+			// dhcp option 61 which is client id (client mac address) and the first byte should be the hardware type
+			layers.NewDHCPOption(layers.DHCPOptClientID, append([]byte{byte(layers.LinkTypeEthernet)}, iface.HardwareAddr...)),
+			// dhcp option 55 which specifies the paramters we want the server to give us.
+			layers.NewDHCPOption(layers.DHCPOptParamsRequest, []byte{
+				byte(layers.DHCPOptSubnetMask),
+				byte(layers.DHCPOptRouter),
+				byte(layers.DHCPOptDNS),
+				byte(layers.DHCPOptDomainName),
+				byte(layers.DHCPOptBroadcastAddr),
+				byte(layers.DHCPOptLeaseTime),
+			}),
 			layers.NewDHCPOption(layers.DHCPOptEnd, []byte{byte(layers.DHCPMsgTypeDiscover)}),
 		},
 	}
@@ -247,6 +291,7 @@ func (s *DHCPv4Scanner) getDHCPScanResults(ctx context.Context, startSendChan ch
 	packetChan := s.packetReceiver.Packets()
 
 	results := make([]DHCPv4Server, 0, 5)
+	receivedFrom := make(map[netip.Addr]struct{})
 
 	defer func() {
 		s.results.Servers = results
@@ -254,6 +299,8 @@ func (s *DHCPv4Scanner) getDHCPScanResults(ctx context.Context, startSendChan ch
 	}()
 
 	startSendChan <- struct{}{}
+
+outer:
 	for {
 		select {
 		case <-ctx.Done():
@@ -262,6 +309,21 @@ func (s *DHCPv4Scanner) getDHCPScanResults(ctx context.Context, startSendChan ch
 			if !ok {
 				return
 			}
+
+			ipLayer := packet.Layer(layers.LayerTypeIPv4)
+			if ipLayer == nil {
+				continue
+			}
+			ipPacket := ipLayer.(*layers.IPv4)
+			addr, ok := netip.AddrFromSlice(ipPacket.SrcIP)
+			if !ok {
+				continue
+			}
+
+			if _, alreadyRecieved := receivedFrom[addr]; alreadyRecieved {
+				continue
+			}
+			receivedFrom[addr] = struct{}{}
 
 			ethLayer := packet.Layer(layers.LayerTypeEthernet)
 			if ethLayer == nil {
@@ -280,20 +342,55 @@ func (s *DHCPv4Scanner) getDHCPScanResults(ctx context.Context, startSendChan ch
 			}
 			s.results.Stats.PacketsReceived++
 
-			var ip netip.Addr
+			dhcpServer := DHCPv4Server{
+				MACAddress: netutil.MAC(ethPacket.SrcMAC),
+			}
+			ip, ok := netip.AddrFromSlice(dhcpPacket.YourClientIP)
+			if ok {
+				dhcpServer.OfferedIP = ip
+			}
+
 			for _, opts := range dhcpPacket.Options {
-				if opts.Type == layers.DHCPOptServerID {
+				switch opts.Type {
+				case layers.DHCPOptMessageType:
+					msgType := opts.Data[0]
+					if msgType != byte(layers.DHCPMsgTypeOffer) {
+						continue outer
+					}
+				case layers.DHCPOptServerID:
 					addr, ok := netip.AddrFromSlice(opts.Data)
 					if ok {
-						ip = addr
+						dhcpServer.IP = addr
 					}
+				case layers.DHCPOptSubnetMask:
+					addr, ok := netip.AddrFromSlice(opts.Data)
+					if ok {
+						dhcpServer.SubnetMask = addr
+					}
+				case layers.DHCPOptBroadcastAddr:
+					addr, ok := netip.AddrFromSlice(opts.Data)
+					if ok {
+						dhcpServer.BroadCast = addr
+					}
+				case layers.DHCPOptRouter:
+					addrs, err := decodeAddrSlice(opts.Data)
+					if err == nil {
+						dhcpServer.Routers = addrs
+					}
+				case layers.DHCPOptDNS:
+					addrs, err := decodeAddrSlice(opts.Data)
+					if err == nil {
+						dhcpServer.DNSServers = addrs
+					}
+				case layers.DHCPOptLeaseTime:
+					leaseTime := durationFromSlice(opts.Data)
+					dhcpServer.LeaseTime = leaseTime
+				case layers.DHCPOptDomainName:
+					dhcpServer.DomainName = string(opts.Data)
 				}
 			}
 
-			results = append(results, DHCPv4Server{
-				IP:         ip,
-				MACAddress: netutil.MAC(ethPacket.SrcMAC),
-			})
+			results = append(results, dhcpServer)
 		}
 	}
 }
@@ -303,38 +400,96 @@ func displayDHCPServerResults(dhcpResults *DHCPv4ScannerResults, withHostNames b
 		fmt.Println()
 		pterm.Info.Println("No DHCPv4 Servers found")
 	} else {
-		fmt.Println()
-		var tableData [][]string
-		tableData = pterm.TableData{{"IP Address", "Mac Address"}}
-		if withVendors {
-			tableData[0] = append(tableData[0], "Vendor")
-		}
-		if withHostNames {
-			tableData[0] = append(tableData[0], "HostNames")
-		}
+		for i, result := range dhcpResults.Servers {
+			fmt.Println()
 
-		for _, result := range dhcpResults.Servers {
-			row := []string{result.IP.String(), result.MACAddress.String()}
+			tableData := pterm.TableData{
+				{fmt.Sprintf("Server %d", i+1)},
+				{"IP Address", result.IP.String()},
+				{"MAC Address", result.MACAddress.String()},
+			}
+
 			if withVendors {
-				vendor := result.Vendor
-				if vendor == "" {
-					vendor = "(unknown)"
-				}
-				row = append(row, vendor)
+				vendor := cmp.Or(result.Vendor, "(unknown)")
+				tableData = append(tableData, []string{"Vendor", vendor})
 			}
+
 			if withHostNames {
-				hostName := result.HostName
-				if hostName == "" {
-					hostName = "(unknown)"
-				}
-				row = append(row, hostName)
+				hostName := cmp.Or(result.HostName, "(unknown)")
+				tableData = append(tableData, []string{"Hostname", hostName})
 			}
-			tableData = append(tableData, row)
+
+			opts := result.DHCPv4ServerOptions
+
+			if opts.OfferedIP.IsValid() {
+				tableData = append(tableData, []string{"Offered IP", opts.OfferedIP.String()})
+			}
+			if opts.SubnetMask.IsValid() {
+				tableData = append(tableData, []string{"Subnet Mask", opts.SubnetMask.String()})
+			}
+			if opts.BroadCast.IsValid() {
+				tableData = append(tableData, []string{"BroadCast", opts.BroadCast.String()})
+			}
+			tableData = append(
+				tableData,
+				[]string{"Routers", joinAddrs(opts.Routers)},
+				[]string{"DNS Servers", joinAddrs(opts.DNSServers)},
+				[]string{"Domain Name", cmp.Or(opts.DomainName, "(unknown)")},
+				[]string{"Lease Time", opts.LeaseTime.String()},
+			)
+
+			pterm.DefaultTable.
+				WithHasHeader().
+				WithHeaderRowSeparator("-").
+				WithBoxed().
+				WithData(tableData).
+				Render()
 		}
-		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("-").WithBoxed().WithData(tableData).Render()
 	}
+
 	fmt.Println("\nScan Duration:      ", dhcpResults.Stats.ScanDuration.Truncate(time.Millisecond))
 	fmt.Println("Packets Sent:       ", dhcpResults.Stats.PacketsSent)
 	fmt.Println("Packets Received:   ", dhcpResults.Stats.PacketsReceived)
-	fmt.Println("Hosts Found:        ", len(dhcpResults.Servers))
+	fmt.Println("Servers Found:      ", len(dhcpResults.Servers))
+}
+
+func joinAddrs(addrs []netip.Addr) string {
+	result := make([]string, len(addrs))
+	for i, addr := range addrs {
+		result[i] = addr.String()
+	}
+
+	return strings.Join(result, ", ")
+}
+
+func decodeAddrSlice(b []byte) ([]netip.Addr, error) {
+	if len(b)%4 != 0 {
+		return nil, fmt.Errorf("invalid ip address slice")
+	}
+
+	const ip4AddrLen = 4
+
+	numAddrs := len(b) / ip4AddrLen
+	addrs := make([]netip.Addr, 0, numAddrs)
+
+	lower := 0
+	upper := ip4AddrLen
+	for range numAddrs {
+		addrSlice := b[lower:upper]
+
+		addr, ok := netip.AddrFromSlice(addrSlice)
+		if ok {
+			addrs = append(addrs, addr)
+		}
+
+		lower = upper
+		upper += ip4AddrLen
+	}
+
+	return addrs, nil
+}
+
+func durationFromSlice(b []byte) time.Duration {
+	duration := binary.BigEndian.Uint32(b)
+	return time.Duration(duration) * time.Second
 }

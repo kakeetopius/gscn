@@ -397,12 +397,11 @@ func (s *TCPSynScanner) synScanTCPPort(jobs chan PortScanJob, packetSender packe
 		}
 
 		tcp := &layers.TCP{
-			SrcPort:    layers.TCPPort(randomEphemeralPort()),
-			DstPort:    layers.TCPPort(portNum),
-			Seq:        rand.Uint32(),
-			SYN:        true,
-			Window:     1024,
-			DataOffset: 5,
+			SrcPort: layers.TCPPort(randomEphemeralPort()),
+			DstPort: layers.TCPPort(portNum),
+			Seq:     rand.Uint32(),
+			SYN:     true,
+			Window:  65535,
 		}
 
 		var ip gopacket.SerializableLayer
