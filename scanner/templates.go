@@ -116,3 +116,33 @@ Stats
 -----
 Scan Duration: {{ .ScanDuration }}
 `
+
+var DHCPScanResultsTemplate = `
+DHCPv4 Scan Results
+===================
+
+{{- range $i, $server := .Servers }}
+Server {{ add $i 1 }}
+--------
+IP Address:     {{ $server.IP }}
+MAC Address:    {{ $server.MACAddress }}
+Hostname:       {{ $server.HostName }}
+Vendor:         {{ $server.Vendor }}
+
+DHCP Options
+------------
+Offered IP:     {{ $server.OfferedIP }}
+Subnet Mask:    {{ $server.SubnetMask }}
+Broadcast:      {{ $server.BroadCast }}
+Routers:        {{ join $server.Routers }}
+DNS Servers:    {{ join $server.DNSServers }}
+Domain Name:    {{ $server.DomainName }}
+Lease Time:     {{ $server.LeaseTime }}
+
+{{- end }}
+Stats
+-----
+Packets Sent:     {{ .Stats.PacketsSent }}
+Packets Received: {{ .Stats.PacketsReceived }}
+Scan Duration:    {{ .Stats.ScanDuration }}
+`

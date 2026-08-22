@@ -467,7 +467,12 @@ func displayNDPResults(ndpResults *NDPScanResults, withVendorInfo bool, withHost
 			}
 			tableData = append(tableData, row)
 		}
-		pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("*").WithBoxed().WithData(tableData).Render()
+		pterm.DefaultTable.
+			WithHasHeader().
+			WithHeaderRowSeparator("-").
+			WithBoxed().
+			WithData(tableData).
+			Render()
 	}
 
 	ndpStats := ndpResults.NDPScanStats
