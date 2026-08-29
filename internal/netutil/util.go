@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/endobit/oui"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
+	"github.com/gopacket/gopacket/layers"
+	"github.com/gopacket/gopacket/pcap"
 )
 
 type AddressFamily uint16

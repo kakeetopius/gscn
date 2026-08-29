@@ -4,7 +4,7 @@ package packet
 import (
 	"io"
 
-	"github.com/google/gopacket"
+	"github.com/gopacket/gopacket"
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
 

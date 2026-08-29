@@ -6,7 +6,7 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/caarlos0/go-version v0.2.2
 	github.com/endobit/oui v0.7.0
-	github.com/google/gopacket v1.1.19
+	github.com/gopacket/gopacket v1.7.1
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/mdlayher/wifi v0.8.0
 	github.com/prometheus-community/pro-bing v0.9.1
