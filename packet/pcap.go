@@ -112,7 +112,7 @@ type PcapPacketReceiver struct {
 	cancelFunc context.CancelFunc
 	filter     string
 	ifaces     map[int]receivingInterface
-	packetChan chan gopacket.Packet
+	packetChan chan Packet
 	receiverWg sync.WaitGroup
 	closed     bool
 }
@@ -129,7 +129,7 @@ func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, 
 		cancelFunc: cancel,
 		filter:     filter,
 		ifaces:     make(map[int]receivingInterface),
-		packetChan: make(chan gopacket.Packet, channelCapacity),
+		packetChan: make(chan Packet, channelCapacity),
 	}
 
 	for _, iface := range receivingInterfaces {
@@ -186,7 +186,7 @@ func (pr *PcapPacketReceiver) Close() error {
 	return nil
 }
 
-func (pr *PcapPacketReceiver) Packets() <-chan gopacket.Packet {
+func (pr *PcapPacketReceiver) Packets() <-chan Packet {
 	return pr.packetChan
 }
 
@@ -216,7 +216,10 @@ func (pr *PcapPacketReceiver) capturePacketsOnInterface(iface receivingInterface
 		select {
 		case <-pr.ctx.Done():
 			return
-		case pr.packetChan <- packet:
+		case pr.packetChan <- Packet{
+			Packet: packet,
+			Iface:  iface.Name,
+		}:
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/netip"
 	"strings"
 	"time"
@@ -95,7 +96,7 @@ func zeroMac() netutil.MAC {
 	return netutil.MAC{0, 0, 0, 0, 0, 0}
 }
 
-func getAllIfaceNames(ifaces []netutil.Interface) string {
+func joinIfaceNames(ifaces []netutil.Interface) string {
 	sb := strings.Builder{}
 	switch len(ifaces) {
 	case 0:
@@ -171,4 +172,32 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 	fmt.Printf("Total Hosts Scanned: %v\n", totalHosts)
 	fmt.Printf("Hosts that are Up:   %v\n", totalUp)
 	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
+}
+
+func solicitedNodeMacAddress(targetIP netip.Addr) net.HardwareAddr {
+	// Format is 33:33:33:xx:xx:xx where xx:xx:xx is last 24 bits of the IPv6 Address
+	addr := targetIP.As16()
+	last24Bits := addr[13:16]
+
+	return net.HardwareAddr{
+		0x33, 0x33, 0x33,
+		last24Bits[0],
+		last24Bits[1],
+		last24Bits[2],
+	}
+}
+
+func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
+	// Format is ff02::1:ffXX:xxxx where xx:xxxx is the last 24 bits of the IPv6 Address
+	addr := targetIP.As16()
+	last24Bits := addr[13:16]
+
+	solIP := make(net.IP, 16)
+	solIP[0] = 0xff
+	solIP[1] = 0x02
+	solIP[11] = 0x01
+	solIP[12] = 0xff
+
+	copy(solIP[13:16], last24Bits)
+	return solIP
 }

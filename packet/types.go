@@ -11,6 +11,12 @@ import (
 // PacketSenderType identifies the implementation used to transmit packets.
 type PacketSenderType int
 
+type Packet struct {
+	gopacket.Packet
+	// The name of the interface where the packet was received
+	Iface string
+}
+
 const (
 	// PacketSenderTypePcap sends packets using libpcap.
 	PacketSenderTypePcap PacketSenderType = iota
@@ -33,7 +39,7 @@ type PacketSender interface {
 }
 
 type PacketReceiver interface {
-	Packets() <-chan gopacket.Packet
+	Packets() <-chan Packet
 
 	io.Closer
 }

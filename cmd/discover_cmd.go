@@ -88,12 +88,26 @@ func discoverArpCmd() *cobra.Command {
 }
 
 func discoverNDPCmd() *cobra.Command {
-	var opts scanner.NDPScanOptions
+	ndpScan := cobra.Command{
+		Use:   "ndp",
+		Short: "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
+	}
+	ndpScan.AddCommand(
+		discoverNDPNeighborsCmd(),
+		discoverNDPRouters(),
+	)
+
+	return &ndpScan
+}
+
+func discoverNDPNeighborsCmd() *cobra.Command {
+	var opts scanner.NDPNeighborScanOptions
 	var iface string
 
 	ndpScan := cobra.Command{
-		Use:   "ndp <targets>",
-		Short: "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
+		Use:     "neighbors <targets>",
+		Aliases: []string{"neigh", "n"},
+		Short:   "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
@@ -140,6 +154,56 @@ func discoverNDPCmd() *cobra.Command {
 	ndpScan.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
 
 	ndpScan.MarkFlagRequired("iface")
+
+	return &ndpScan
+}
+
+func discoverNDPRouters() *cobra.Command {
+	var opts scanner.NDPRouterScannerOpts
+	var ifaces []string
+
+	ndpScan := cobra.Command{
+		Use:     "routers",
+		Aliases: []string{"n"},
+		Short:   "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
+			opts.Verbose = true
+
+			ifaces, err := getDiscoverInterfaces(ifaces)
+			if err != nil {
+				return err
+			}
+			if len(ifaces) != 0 {
+				opts.Interfaces = ifaces
+			}
+
+			ndpScanner, err := scanner.NewNDPRouterScanner(opts)
+			if err != nil {
+				return err
+			}
+			return scanner.DoScan(context.Background(), ndpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Config:            appConfig,
+			})
+		},
+	}
+
+	ndpScan.Flags().SortFlags = false
+
+	ndpScan.Flags().StringSliceVarP(&ifaces, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
+	ndpScan.Flags().UintVarP(&opts.ProbeCount, "count", "c", 4, "The number of ICMPv6 Neighbour Solicitation Packets to send for each host")
+	ndpScan.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any ICMPv6 Neighbour Solicitation packets rather passively listen for Neighbor Advertisements from the given targets.")
+	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
+	ndpScan.Flags().BoolVarP(&opts.AddHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses discovered on the network to get their host names")
+	ndpScan.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
 
 	return &ndpScan
 }
