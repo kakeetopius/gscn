@@ -115,7 +115,7 @@ func (s *DHCPv4Scanner) Scan(ctx context.Context) (ScanResults, error) {
 	}
 	s.results.Stats.ScanDuration = time.Since(start)
 
-	err = s.addResultInfo()
+	err = s.processResults()
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (r DHCPv4ScannerResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *DHCPv4Scanner) addResultInfo() error {
+func (s *DHCPv4Scanner) processResults() error {
 	numServers := len(s.results.Servers)
 	s.results.printHostNames = s.WithHostNames
 	s.results.printVendors = s.WithVendorInfo

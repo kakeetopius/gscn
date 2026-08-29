@@ -86,11 +86,20 @@ func (s *PingScanner) Scan(ctx context.Context) (ScanResults, error) {
 	if err != nil {
 		return nil, err
 	}
-	endtime := time.Now()
 
-	s.scanResults.ScanTime = endtime.Sub(startTime)
+	s.scanResults.ScanTime = time.Since(startTime)
 	s.scanResults.printUpOnly = s.PrintOnlyUp
 
+	s.processResults()
+
+	if !s.ResultMapOnly {
+		s.scanResults.HostResults = resultMapToSlice(s.resultMap, s.SortResults)
+	}
+
+	return &s.scanResults, err
+}
+
+func (s *PingScanner) processResults() {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Success("Resolving Done")
@@ -100,17 +109,11 @@ func (s *PingScanner) Scan(ctx context.Context) (ScanResults, error) {
 			if results.HostName != "" {
 				continue
 			}
-
 			name := netutil.ReverseLookup(ctx, host.String())
 			results.HostName = name
 			s.resultMap[host] = results
 		}
 	}
-	if !s.ResultMapOnly {
-		s.scanResults.HostResults = resultMapToSlice(s.resultMap, s.SortResults)
-	}
-
-	return &s.scanResults, err
 }
 
 func (s *PingScanner) ResultMap() PingScanResultsMap {
@@ -149,7 +152,7 @@ func resultMapToSlice(m PingScanResultsMap, sort bool) []PingHostResult {
 }
 
 func (r *PingScanResults) Print() {
-	printPingScanResults(r, r.printUpOnly)
+	r.display()
 }
 
 func (r PingScanResults) String() string {
@@ -273,14 +276,14 @@ func (s *PingScanner) getPingScanResults(ctx context.Context, workerResultsChan 
 	}
 }
 
-func printPingScanResults(results *PingScanResults, printUpOnly bool) {
-	stats := results.PingStats
+func (r PingScanResults) display() {
+	stats := r.PingStats
 
 	var tableData [][]string
 	tableData = pterm.TableData{{"Host", "State", "Sent", "Recvd", "Average RTT"}}
 	totalHosts := stats.TotalHosts
-	for _, result := range results.HostResults {
-		if result.HostState == HostStateDown && printUpOnly {
+	for _, result := range r.HostResults {
+		if result.HostState == HostStateDown && r.printUpOnly {
 			continue
 		}
 

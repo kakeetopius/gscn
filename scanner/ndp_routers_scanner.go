@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -70,11 +71,10 @@ func (s *NDPRouterScanner) Scan(ctx context.Context) (ScanResults, error) {
 	if err != nil {
 		return nil, err
 	}
-	stop := time.Now()
 
-	s.results.ScanDuration = stop.Sub(start)
+	s.results.ScanDuration = time.Since(start)
 
-	err = s.addResultInfo()
+	err = s.processResults()
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (s *NDPRouterScanner) Scan(ctx context.Context) (ScanResults, error) {
 	return &s.results, nil
 }
 
-func (s *NDPRouterScanner) addResultInfo() error {
+func (s *NDPRouterScanner) processResults() error {
 	s.results.printHostNames = s.AddHostNames
 	s.results.printVendors = s.WithVendorInfo
 
@@ -91,7 +91,7 @@ func (s *NDPRouterScanner) addResultInfo() error {
 
 	var bar *pterm.ProgressbarPrinter
 	var err error
-	if s.AddHostNames {
+	if s.AddHostNames && numHosts > 0 {
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
 		bar, err = pterm.DefaultProgressbar.WithTotal(numHosts).Start()
@@ -133,7 +133,7 @@ func (r *NDPRouterScannerResults) String() string {
 }
 
 func (s *NDPRouterScanner) runNDP(ctx context.Context) error {
-	if s.Interfaces == nil {
+	if len(s.Interfaces) == 0 {
 		ifaces, err := s.ifaceProvider.Interfaces()
 		if err != nil {
 			return err
@@ -161,7 +161,7 @@ func (s *NDPRouterScanner) runNDP(ctx context.Context) error {
 	defer packetSender.Close()
 	s.packetSender = packetSender
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 134", 1024, s.Interfaces...)
+	packetReceiver, err := packet.NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 134", 1024, s.Interfaces...) // 134 is type code for Router Advertisements
 	if err != nil {
 		return err
 	}
@@ -319,39 +319,34 @@ func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSen
 }
 
 func (r NDPRouterScannerResults) display() {
-	if len(r.HostResults) == 0 {
-		fmt.Println()
-		pterm.Info.Println("No hosts found")
-	} else {
-		fmt.Println()
-		var tableData [][]string
-		tableData = pterm.TableData{{"IP Address", "Mac Address", "Iface"}}
+	fmt.Println()
+	var tableData [][]string
+	tableData = pterm.TableData{{"IP Address", "Mac Address", "Iface"}}
+	if r.printVendors {
+		tableData[0] = append(tableData[0], "Vendor")
+	}
+	if r.printHostNames {
+		tableData[0] = append(tableData[0], "HostNames")
+	}
+
+	for _, result := range r.HostResults {
+		row := []string{result.IPAddr.String(), result.MacAddr.String(), result.Iface}
+
 		if r.printVendors {
-			tableData[0] = append(tableData[0], "Vendor")
+			vendor := cmp.Or(result.Vendor, "(unknown)")
+			row = append(row, vendor)
 		}
 		if r.printHostNames {
-			tableData[0] = append(tableData[0], "HostNames")
+			hostName := cmp.Or(result.HostName, "(unknown)")
+			row = append(row, hostName)
 		}
+		tableData = append(tableData, row)
+	}
 
-		for _, result := range r.HostResults {
-			row := []string{result.IPAddr.String(), result.MacAddr.String(), result.Iface}
-
-			if r.printVendors {
-				vendor := result.Vendor
-				if vendor == "" {
-					vendor = "(unknown)"
-				}
-				row = append(row, vendor)
-			}
-			if r.printHostNames {
-				hostName := result.HostName
-				if hostName == "" {
-					hostName = "(unknown)"
-				}
-				row = append(row, hostName)
-			}
-			tableData = append(tableData, row)
-		}
+	if len(r.HostResults) == 0 {
+		fmt.Println()
+		pterm.Info.Println("No IPv6 routers found")
+	} else {
 		pterm.DefaultTable.
 			WithHasHeader().
 			WithHeaderRowSeparator("-").
@@ -360,10 +355,8 @@ func (r NDPRouterScannerResults) display() {
 			Render()
 	}
 
-	ndpStats := r.NDPScanStats
-
-	fmt.Println("\nScan Duration:     ", ndpStats.ScanDuration.Truncate(time.Millisecond))
-	fmt.Println("Packets Sent:      ", ndpStats.PacketsSent)
-	fmt.Println("Packets Received:  ", ndpStats.PacketsReceived)
+	fmt.Println("\nScan Duration:     ", r.ScanDuration.Truncate(time.Millisecond))
+	fmt.Println("Packets Sent:      ", r.PacketsSent)
+	fmt.Println("Packets Received:  ", r.PacketsReceived)
 	fmt.Println("Hosts Found:       ", len(r.HostResults))
 }
