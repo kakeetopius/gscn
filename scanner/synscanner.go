@@ -129,7 +129,7 @@ func (r *TCPSynScanResults) String() string {
 	stringBuilder := strings.Builder{}
 
 	hostTmpl := template.Must(template.New("host_result").Parse(HostResultTemplate))
-	tmpl := template.Must(hostTmpl.New("tcp_full_scan").Parse(TCPSynScanResultsTemplate))
+	tmpl := template.Must(hostTmpl.New("tcp_syn_scan").Parse(TCPSynScanResultsTemplate))
 
 	tmpl.Execute(&stringBuilder, r)
 	return stringBuilder.String()

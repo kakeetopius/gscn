@@ -1,6 +1,7 @@
 package netutil
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -75,6 +76,19 @@ func (i Interface) IP4Addrs() []netip.Prefix {
 // IP6Addrs returns all IPv6 addresses of the interface as netip.Prefix.
 func (i Interface) IP6Addrs() []netip.Prefix {
 	return i.ip6Addresses
+}
+
+var ErrNoLinkLocalAddrress = errors.New("no ipv6 link local addresses found on the interface")
+
+// LinkLocalAddress returns the first IPv6 link local address on the interface.
+func (i Interface) LinkLocalAddress() (netip.Addr, error) {
+	for _, addr := range i.ip6Addresses {
+		if addr.Addr().IsLinkLocalUnicast() {
+			return addr.Addr(), nil
+		}
+	}
+
+	return netip.Addr{}, ErrNoLinkLocalAddrress
 }
 
 func (i *Interface) AppendPrefix(addrs ...netip.Prefix) {
