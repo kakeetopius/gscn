@@ -28,6 +28,7 @@ func DiscoverCmd() *cobra.Command {
 		discoverArpCmd(),
 		discoverNDPCmd(),
 		discoverDHCPv4Cmd(),
+		discoverDHCPv6Cmd(),
 	)
 
 	return &discoverCmd
@@ -107,7 +108,7 @@ func discoverNDPNeighborsCmd() *cobra.Command {
 	ndpScan := cobra.Command{
 		Use:     "neighbors <targets>",
 		Aliases: []string{"neigh", "n"},
-		Short:   "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
+		Short:   "Discover IPv6 neighbours on the local network using the ICMPv6 Neighbour Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
@@ -164,8 +165,8 @@ func discoverNDPRouters() *cobra.Command {
 
 	ndpScan := cobra.Command{
 		Use:     "routers",
-		Aliases: []string{"n"},
-		Short:   "Discover hosts on the local network using the ICMPv6 Neighbour Discovery Protocol.",
+		Aliases: []string{"r"},
+		Short:   "Discover IPv6 enabled routers on the local network using the ICMPv6 Neighbour Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
@@ -213,8 +214,9 @@ func discoverDHCPv4Cmd() *cobra.Command {
 	var ifaceStrings []string
 
 	dhcpCmd := cobra.Command{
-		Use:   "dhcp",
-		Short: "Discover dhcpv4 servers on the connected networks.",
+		Use:     "dhcp",
+		Aliases: []string{"dhcp4"},
+		Short:   "Discover DHCPv4 servers on the connected networks.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
@@ -245,10 +247,56 @@ func discoverDHCPv4Cmd() *cobra.Command {
 
 	dhcpCmd.Flags().SortFlags = false
 
-	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find dhcp servers from. If omitted, all interfaces are used.")
-	dhcpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any DHCPDiscover packets rather passively listen for DHCPOffers on the network.")
+	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find dhcp servers from. If omitted, all interfaces are scanned.")
+	dhcpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any DHCP Discover packets rather passively listen for DHCP Offers on the network.")
 	dhcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
 	dhcpCmd.Flags().BoolVarP(&opts.WithHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses of the dhcpv4 servers discovered on the network")
+	dhcpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
+
+	return &dhcpCmd
+}
+
+func discoverDHCPv6Cmd() *cobra.Command {
+	var opts scanner.DHCPv6ScannerOpts
+	var ifaceStrings []string
+
+	dhcpCmd := cobra.Command{
+		Use:   "dhcp6",
+		Short: "Discover DHCPv6 servers on the connected networks.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
+			ifaces, err := getDiscoverInterfaces(ifaceStrings)
+			if err != nil {
+				return err
+			}
+			opts.Interfaces = ifaces
+			opts.Verbose = true
+
+			arpScanner, err := scanner.NewDHCPv6ServerScanner(opts)
+			if err != nil {
+				return err
+			}
+
+			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Config:            appConfig,
+			})
+		},
+	}
+
+	dhcpCmd.Flags().SortFlags = false
+
+	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find dhcp servers from. If omitted, all interfaces are scanned.")
+	dhcpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any DHCPv6 Solicit packets rather passively listen for DHCPv6 Advertise Packets on the network.")
+	dhcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
+	dhcpCmd.Flags().BoolVarP(&opts.WithHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses of the dhcpv6 servers discovered on the network")
 	dhcpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
 
 	return &dhcpCmd

@@ -403,7 +403,7 @@ func (s *NDPNeighborScanner) getNeighborsWithNetlink() error {
 func (r NDPScanResults) display() {
 	fmt.Println()
 	var tableData [][]string
-	tableData = pterm.TableData{{"IP Address", "Mac Address", "Iface"}}
+	tableData = pterm.TableData{{"IP Address", "Mac Address", "Interface"}}
 	if r.printVendors {
 		tableData[0] = append(tableData[0], "Vendor")
 	}

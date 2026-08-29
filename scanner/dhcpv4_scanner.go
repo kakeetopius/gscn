@@ -3,7 +3,6 @@ package scanner
 import (
 	"cmp"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -123,7 +122,7 @@ func (s *DHCPv4Scanner) Scan(ctx context.Context) (ScanResults, error) {
 }
 
 func (r DHCPv4ScannerResults) Print() {
-	displayDHCPServerResults(&r, r.printHostNames, r.printVendors)
+	r.display()
 }
 
 func (r DHCPv4ScannerResults) String() string {
@@ -133,7 +132,7 @@ func (r DHCPv4ScannerResults) String() string {
 		"add": func(a, b int) int {
 			return a + b
 		},
-		"join": joinAddrs,
+		"joinAddrs": joinAddrs,
 	}
 	tmpl := template.Must(
 		template.
@@ -353,43 +352,43 @@ outer:
 				dhcpServer.OfferedIP = ip
 			}
 
-			for _, opts := range dhcpPacket.Options {
-				switch opts.Type {
+			for _, opt := range dhcpPacket.Options {
+				switch opt.Type {
 				case layers.DHCPOptMessageType:
-					msgType := opts.Data[0]
+					msgType := opt.Data[0]
 					if msgType != byte(layers.DHCPMsgTypeOffer) {
 						continue outer
 					}
 				case layers.DHCPOptServerID:
-					addr, ok := netip.AddrFromSlice(opts.Data)
+					addr, ok := netip.AddrFromSlice(opt.Data)
 					if ok {
 						dhcpServer.IP = addr
 					}
 				case layers.DHCPOptSubnetMask:
-					addr, ok := netip.AddrFromSlice(opts.Data)
+					addr, ok := netip.AddrFromSlice(opt.Data)
 					if ok {
 						dhcpServer.SubnetMask = addr
 					}
 				case layers.DHCPOptBroadcastAddr:
-					addr, ok := netip.AddrFromSlice(opts.Data)
+					addr, ok := netip.AddrFromSlice(opt.Data)
 					if ok {
 						dhcpServer.BroadCast = addr
 					}
 				case layers.DHCPOptRouter:
-					addrs, err := decodeAddrSlice(opts.Data)
+					addrs, err := decodeIPSliceFromBytes(opt.Data, ip4AddrLen)
 					if err == nil {
 						dhcpServer.Routers = addrs
 					}
 				case layers.DHCPOptDNS:
-					addrs, err := decodeAddrSlice(opts.Data)
+					addrs, err := decodeIPSliceFromBytes(opt.Data, ip4AddrLen)
 					if err == nil {
 						dhcpServer.DNSServers = addrs
 					}
 				case layers.DHCPOptLeaseTime:
-					leaseTime := durationFromSlice(opts.Data)
+					leaseTime := durationFromBytes(opt.Data)
 					dhcpServer.LeaseTime = leaseTime
 				case layers.DHCPOptDomainName:
-					dhcpServer.DomainName = string(opts.Data)
+					dhcpServer.DomainName = string(opt.Data)
 				}
 			}
 
@@ -398,62 +397,67 @@ outer:
 	}
 }
 
-func displayDHCPServerResults(dhcpResults *DHCPv4ScannerResults, withHostNames bool, withVendors bool) {
-	if len(dhcpResults.Servers) == 0 {
+func (r DHCPv4ScannerResults) display() {
+	if len(r.Servers) == 0 {
 		fmt.Println()
 		pterm.Info.Println("No DHCPv4 Servers found")
-	} else {
-		for i, result := range dhcpResults.Servers {
-			fmt.Println()
-
-			tableData := pterm.TableData{
-				{fmt.Sprintf("Server %d", i+1)},
-				{"IP Address", result.IP.String()},
-				{"MAC Address", result.MACAddress.String()},
-			}
-
-			if withVendors {
-				vendor := cmp.Or(result.Vendor, "(unknown)")
-				tableData = append(tableData, []string{"Vendor", vendor})
-			}
-
-			if withHostNames {
-				hostName := cmp.Or(result.HostName, "(unknown)")
-				tableData = append(tableData, []string{"Hostname", hostName})
-			}
-
-			opts := result.DHCPv4ServerOptions
-
-			if opts.OfferedIP.IsValid() {
-				tableData = append(tableData, []string{"Offered IP", opts.OfferedIP.String()})
-			}
-			if opts.SubnetMask.IsValid() {
-				tableData = append(tableData, []string{"Subnet Mask", opts.SubnetMask.String()})
-			}
-			if opts.BroadCast.IsValid() {
-				tableData = append(tableData, []string{"BroadCast", opts.BroadCast.String()})
-			}
-			tableData = append(
-				tableData,
-				[]string{"Routers", joinAddrs(opts.Routers)},
-				[]string{"DNS Servers", joinAddrs(opts.DNSServers)},
-				[]string{"Domain Name", cmp.Or(opts.DomainName, "(unknown)")},
-				[]string{"Lease Time", opts.LeaseTime.String()},
-			)
-
-			pterm.DefaultTable.
-				WithHasHeader().
-				WithHeaderRowSeparator("-").
-				WithBoxed().
-				WithData(tableData).
-				Render()
-		}
 	}
 
-	fmt.Println("\nScan Duration:      ", dhcpResults.Stats.ScanDuration.Truncate(time.Millisecond))
-	fmt.Println("Packets Sent:       ", dhcpResults.Stats.PacketsSent)
-	fmt.Println("Packets Received:   ", dhcpResults.Stats.PacketsReceived)
-	fmt.Println("Servers Found:      ", len(dhcpResults.Servers))
+	for i, result := range r.Servers {
+		fmt.Println()
+
+		tableData := pterm.TableData{
+			{fmt.Sprintf("Server %d", i+1)},
+			{"IP Address", result.IP.String()},
+			{"MAC Address", result.MACAddress.String()},
+			{"Interface", result.Iface},
+		}
+
+		if r.printVendors {
+			vendor := cmp.Or(result.Vendor, "(unknown)")
+			tableData = append(tableData, []string{"Vendor", vendor})
+		}
+
+		if r.printHostNames {
+			hostName := cmp.Or(result.HostName, "(unknown)")
+			tableData = append(tableData, []string{"Hostname", hostName})
+		}
+
+		opts := result.DHCPv4ServerOptions
+
+		if opts.OfferedIP.IsValid() {
+			tableData = append(tableData, []string{"Offered IP", opts.OfferedIP.String()})
+		}
+		if opts.SubnetMask.IsValid() {
+			tableData = append(tableData, []string{"Subnet Mask", opts.SubnetMask.String()})
+		}
+		if opts.BroadCast.IsValid() {
+			tableData = append(tableData, []string{"BroadCast", opts.BroadCast.String()})
+		}
+		if len(opts.Routers) != 0 {
+			tableData = append(tableData, []string{"Router(s)", joinAddrs(opts.Routers)})
+		}
+		if len(opts.DNSServers) != 0 {
+			tableData = append(tableData, []string{"DNS Server(s)", joinAddrs(opts.DNSServers)})
+		}
+		if opts.DomainName != "" {
+			tableData = append(tableData, []string{"Domain Name", opts.DomainName})
+		}
+
+		tableData = append(tableData, []string{"Lease Time", opts.LeaseTime.String()})
+		pterm.DefaultTable.
+			WithHasHeader().
+			WithHeaderRowSeparator("-").
+			WithBoxed().
+			WithData(tableData).
+			Render()
+
+	}
+
+	fmt.Println("\nScan Duration:      ", r.Stats.ScanDuration.Truncate(time.Millisecond))
+	fmt.Println("Packets Sent:       ", r.Stats.PacketsSent)
+	fmt.Println("Packets Received:   ", r.Stats.PacketsReceived)
+	fmt.Println("Servers Found:      ", len(r.Servers))
 }
 
 func joinAddrs(addrs []netip.Addr) string {
@@ -463,36 +467,4 @@ func joinAddrs(addrs []netip.Addr) string {
 	}
 
 	return strings.Join(result, ", ")
-}
-
-func decodeAddrSlice(b []byte) ([]netip.Addr, error) {
-	if len(b)%4 != 0 {
-		return nil, fmt.Errorf("invalid ip address slice")
-	}
-
-	const ip4AddrLen = 4
-
-	numAddrs := len(b) / ip4AddrLen
-	addrs := make([]netip.Addr, 0, numAddrs)
-
-	lower := 0
-	upper := ip4AddrLen
-	for range numAddrs {
-		addrSlice := b[lower:upper]
-
-		addr, ok := netip.AddrFromSlice(addrSlice)
-		if ok {
-			addrs = append(addrs, addr)
-		}
-
-		lower = upper
-		upper += ip4AddrLen
-	}
-
-	return addrs, nil
-}
-
-func durationFromSlice(b []byte) time.Duration {
-	duration := binary.BigEndian.Uint32(b)
-	return time.Duration(duration) * time.Second
 }

@@ -134,10 +134,41 @@ DHCP Options
 Offered IP:     {{ $server.OfferedIP }}
 Subnet Mask:    {{ $server.SubnetMask }}
 Broadcast:      {{ $server.BroadCast }}
-Routers:        {{ join $server.Routers }}
-DNS Servers:    {{ join $server.DNSServers }}
+Routers:        {{ joinAddrs $server.Routers }}
+DNS Servers:    {{ joinAddrs $server.DNSServers }}
 Domain Name:    {{ $server.DomainName }}
 Lease Time:     {{ $server.LeaseTime }}
+
+{{- end }}
+Stats
+-----
+Packets Sent:     {{ .Stats.PacketsSent }}
+Packets Received: {{ .Stats.PacketsReceived }}
+Scan Duration:    {{ .Stats.ScanDuration }}
+`
+
+var DHCPv6ScanResultsTemplate = `
+DHCPv6 Scan Results
+===================
+
+{{- range $i, $server := .Servers }}
+Server {{ add $i 1 }}
+--------
+IP Address:     {{ $server.IP }}
+MAC Address:    {{ $server.MACAddress }}
+Hostname:       {{ $server.HostName }}
+Vendor:         {{ $server.Vendor }}
+Interface:      {{ $server.Iface }}
+
+DHCP Options
+------------
+Offered Address:     {{ $server.IANA.Address }}
+Renewal Time:        {{ $server.IANA.RenewalTime }}
+Rebind Time:         {{ $server.IANA.RebindTime }}
+Preferred Lifetime:  {{ $server.IANA.PreferredLifetime }}
+Valid Lifetime:      {{ $server.IANA.ValidLifetime }}
+DNS Servers:         {{ joinAddrs $server.DNSRecursiveServers }}
+Domain Search List:  {{ join $server.DomainSearchList }}
 
 {{- end }}
 Stats

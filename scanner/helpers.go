@@ -1,8 +1,11 @@
 package scanner
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net"
 	"net/netip"
@@ -11,6 +14,11 @@ import (
 
 	"github.com/kakeetopius/gscn/internal/netutil"
 	"github.com/pterm/pterm"
+)
+
+const (
+	ip4AddrLen = 4
+	ip6AddrLen = 16
 )
 
 func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[netip.Addr]string, hoststates PingScanResultsMap, protocol string) HostResults {
@@ -175,15 +183,16 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 }
 
 func solicitedNodeMacAddress(targetIP netip.Addr) net.HardwareAddr {
-	// Format is 33:33:33:xx:xx:xx where xx:xx:xx is last 24 bits of the IPv6 Address
+	// Format is 33:33:xx:xx:xx:xx where xx:xx:xx:xx is last 32 bits of the IPv6 Address
 	addr := targetIP.As16()
-	last24Bits := addr[13:16]
+	last32Bits := addr[12:]
 
 	return net.HardwareAddr{
-		0x33, 0x33, 0x33,
-		last24Bits[0],
-		last24Bits[1],
-		last24Bits[2],
+		0x33, 0x33,
+		last32Bits[0],
+		last32Bits[1],
+		last32Bits[2],
+		last32Bits[3],
 	}
 }
 
@@ -214,4 +223,78 @@ func ip4broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
 	broadCast := ipUint | mask
 
 	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
+}
+
+func decodeIPSliceFromBytes(b []byte, addrLen int) ([]netip.Addr, error) {
+	if len(b)%addrLen != 0 {
+		return nil, fmt.Errorf("invalid ip slice")
+	}
+
+	numAddrs := len(b) / addrLen
+	addrs := make([]netip.Addr, 0, numAddrs)
+
+	lower := 0
+	upper := addrLen
+	for range numAddrs {
+		addrSlice := b[lower:upper]
+
+		addr, ok := netip.AddrFromSlice(addrSlice)
+		if ok {
+			addrs = append(addrs, addr)
+		}
+
+		lower = upper
+		upper += addrLen
+	}
+
+	return addrs, nil
+}
+
+func durationFromBytes(b []byte) time.Duration {
+	if len(b) < 4 {
+		return 0
+	}
+	duration := binary.BigEndian.Uint32(b)
+	return time.Duration(duration) * time.Second
+}
+
+func domainNamesFromBytes(b []byte) []string {
+	// domain names in their raw form are in the form
+	// 03 'w' 'w' 'w' 06 'g' 'o' 'o' 'g' 'l' 'e' 03 'c' 'o' 'm' 00
+	// where each word (like www) is prefixed with its length
+	// An null terminator (00) is added at the end after every domain name
+
+	// the function assumes the domain names don't have any pointers
+
+	domains := []string{}
+	r := bytes.NewReader(b)
+
+	for r.Len() > 0 {
+		domain := strings.Builder{}
+
+		for {
+			nameLenByte, err := r.ReadByte() // read the length of the word
+			if err != nil {
+				return domains
+			}
+			nameLen := int(nameLenByte)
+			if nameLen == 0 {
+				// 0 means we have reached the end of this domain name
+				break
+			}
+			nameBuf := make([]byte, nameLen)
+
+			_, err = io.ReadFull(r, nameBuf) // read the entire word into the buffer
+			if err != nil {
+				return domains
+			}
+
+			domain.Write(nameBuf)
+			domain.WriteRune('.')
+		}
+
+		domains = append(domains, domain.String())
+	}
+
+	return domains
 }
