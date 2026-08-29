@@ -8,7 +8,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"github.com/google/gopacket/pcap"
+	"github.com/gopacket/gopacket/pcap"
 )
 
 // When sending packets on windows, pcap is used instead of the raw sockets that are available on linux only.
