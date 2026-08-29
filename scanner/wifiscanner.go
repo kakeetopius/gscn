@@ -43,8 +43,7 @@ func (s *WiFiScanner) Scan(ctx context.Context) (ScanResults, error) {
 	if err != nil {
 		return nil, err
 	}
-	stop := time.Now()
-	s.results.ScanDuration = stop.Sub(start)
+	s.results.ScanDuration = time.Since(start)
 	return &s.results, nil
 }
 

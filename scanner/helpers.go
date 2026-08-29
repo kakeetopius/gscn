@@ -201,3 +201,17 @@ func solicitedNodeIPAddress(targetIP netip.Addr) net.IP {
 	copy(solIP[13:16], last24Bits)
 	return solIP
 }
+
+func ip4broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
+	networkAddr := networkPrefix.Masked().Addr()
+	hostBitLen := 32 - networkPrefix.Bits()
+
+	ip := networkAddr.As4()
+
+	ipUint := uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
+	mask := uint32((1 << hostBitLen) - 1)
+
+	broadCast := ipUint | mask
+
+	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
+}

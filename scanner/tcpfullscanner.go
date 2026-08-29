@@ -70,18 +70,17 @@ func (s *TCPFullScanner) Scan(ctx context.Context) (ScanResults, error) {
 	if err != nil {
 		return nil, err
 	}
-	stopTime := time.Now()
 
-	s.results.Stats.ScanTime = stopTime.Sub(startTime)
+	s.results.Stats.ScanTime = time.Since(startTime)
 	s.results.Stats.TotalNumOfHosts = len(s.results.Results)
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
 
-	s.addResultsInfo()
+	s.processResults()
 	return &s.results, nil
 }
 
-func (s *TCPFullScanner) addResultsInfo() {
+func (s *TCPFullScanner) processResults() {
 	if s.AddUnknownHostNames {
 		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
 		defer spinner.Success("Resolving done")

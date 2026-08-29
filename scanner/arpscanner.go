@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -97,15 +98,13 @@ func (s *ARPScanner) Scan(ctx context.Context) (ScanResults, error) {
 	} else {
 		err = s.runArp(ctx)
 	}
-	stop := time.Now()
-
 	if err != nil {
 		return nil, err
 	}
 
-	s.results.ScanDuration = stop.Sub(start)
+	s.results.ScanDuration = time.Since(start)
 
-	err = s.addResultInfo()
+	err = s.processResults()
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +112,7 @@ func (s *ARPScanner) Scan(ctx context.Context) (ScanResults, error) {
 	return &s.results, nil
 }
 
-func (s *ARPScanner) addResultInfo() error {
+func (s *ARPScanner) processResults() error {
 	results := s.results
 	numHosts := len(results.HostResults)
 	results.printHostNames = s.AddUnknownHostNames
@@ -121,7 +120,7 @@ func (s *ARPScanner) addResultInfo() error {
 
 	var bar *pterm.ProgressbarPrinter
 	var err error
-	if s.AddUnknownHostNames {
+	if s.AddUnknownHostNames && numHosts > 0 {
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
 		bar, err = pterm.DefaultProgressbar.WithTotal(numHosts).Start()
@@ -153,7 +152,7 @@ func (s *ARPScanner) addResultInfo() error {
 }
 
 func (r *ARPScanResults) Print() {
-	displayARPResults(r, r.printHostNames, r.printVendors)
+	r.display()
 }
 
 func (r *ARPScanResults) String() string {
@@ -241,7 +240,7 @@ func (s *ARPScanner) sendARPProbes() error {
 		ipToScan := targetNet.Masked().Addr() // first IP in range
 
 		networkAddr := ipToScan
-		broadCast := broadCastAddr(targetNet)
+		broadCast := ip4broadCastAddr(targetNet)
 
 		route, err := s.router.Lookup(ipToScan)
 		if err != nil {
@@ -412,53 +411,34 @@ func (s *ARPScanner) getARPReplies(ctx context.Context, startSendChan chan<- str
 	}
 }
 
-func broadCastAddr(networkPrefix netip.Prefix) netip.Addr {
-	networkAddr := networkPrefix.Masked().Addr()
-	hostBitLen := 32 - networkPrefix.Bits()
+func (r ARPScanResults) display() {
+	fmt.Println()
+	var tableData [][]string
+	tableData = pterm.TableData{{"IP Address", "Mac Address"}}
+	if r.printVendors {
+		tableData[0] = append(tableData[0], "Vendor")
+	}
+	if r.printHostNames {
+		tableData[0] = append(tableData[0], "HostNames")
+	}
 
-	ip := networkAddr.As4()
+	for _, result := range r.HostResults {
+		row := []string{result.IPAddr.String(), result.MacAddr.String()}
+		if r.printVendors {
+			vendor := cmp.Or(result.Vendor, "(unknown)")
+			row = append(row, vendor)
+		}
+		if r.printHostNames {
+			hostName := cmp.Or(result.HostName, "(unknown)")
+			row = append(row, hostName)
+		}
+		tableData = append(tableData, row)
+	}
 
-	ipUint := uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
-	mask := uint32((1 << hostBitLen) - 1)
-
-	broadCast := ipUint | mask
-
-	return netip.AddrFrom4([4]byte{byte(broadCast >> 24), byte(broadCast >> 16), byte(broadCast >> 8), byte(broadCast)})
-}
-
-func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendors bool) {
-	if len(arpResults.HostResults) == 0 {
+	if len(r.HostResults) == 0 {
 		fmt.Println()
-		pterm.Info.Println("No hosts found")
+		pterm.Info.Println("No IPv4 hosts found")
 	} else {
-		fmt.Println()
-		var tableData [][]string
-		tableData = pterm.TableData{{"IP Address", "Mac Address"}}
-		if withVendors {
-			tableData[0] = append(tableData[0], "Vendor")
-		}
-		if withHostNames {
-			tableData[0] = append(tableData[0], "HostNames")
-		}
-
-		for _, result := range arpResults.HostResults {
-			row := []string{result.IPAddr.String(), result.MacAddr.String()}
-			if withVendors {
-				vendor := result.Vendor
-				if vendor == "" {
-					vendor = "(unknown)"
-				}
-				row = append(row, vendor)
-			}
-			if withHostNames {
-				hostName := result.HostName
-				if hostName == "" {
-					hostName = "(unknown)"
-				}
-				row = append(row, hostName)
-			}
-			tableData = append(tableData, row)
-		}
 		pterm.DefaultTable.
 			WithHasHeader().
 			WithHeaderRowSeparator("-").
@@ -466,9 +446,9 @@ func displayARPResults(arpResults *ARPScanResults, withHostNames bool, withVendo
 			WithData(tableData).
 			Render()
 	}
-	arpStats := arpResults.ARPScanStats
-	fmt.Println("\nScan Duration:      ", arpStats.ScanDuration.Truncate(time.Millisecond))
-	fmt.Println("Packets Sent:       ", arpStats.PacketsSent)
-	fmt.Println("Packets Received:   ", arpStats.PacketsReceived)
-	fmt.Println("Hosts Found:        ", len(arpResults.HostResults))
+
+	fmt.Println("\nScan Duration:      ", r.ScanDuration.Truncate(time.Millisecond))
+	fmt.Println("Packets Sent:       ", r.PacketsSent)
+	fmt.Println("Packets Received:   ", r.PacketsReceived)
+	fmt.Println("Hosts Found:        ", len(r.HostResults))
 }
