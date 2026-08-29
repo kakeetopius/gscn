@@ -19,10 +19,10 @@ Scan Duration:    {{ .ScanDuration }}
 var NDPScanResultsTemplate = `
 NDP Scan Results
 ================
-{{ printf "%-40s %-20s %-30s %s" "IP ADDRESS" "MAC ADDRESS" "HOSTNAME" "VENDOR" }}
-{{ printf "%-40s %-20s %-30s %s" "----------" "-----------" "--------" "------" }}
+{{ printf "%-40s %-20s %-30s %-10s %s" "IP ADDRESS" "MAC ADDRESS" "IFACE" "HOSTNAME"  "VENDOR" }}
+{{ printf "%-40s %-20s %-30s %-10s %s" "----------" "-----------" "--------" "------" "------" }}
 {{- range .HostResults }}
-{{ printf "%-40s %-20s %-30s %s" .IPAddr .MacAddr .HostName .Vendor }}
+{{ printf "%-40s %-20s %-30s %-10s %s" .IPAddr .MacAddr .Iface .HostName .Vendor }}
 {{- end }}
 
 Stats

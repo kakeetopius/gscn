@@ -222,7 +222,7 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 
 func (s *ARPScanner) sendARPProbes() error {
 	if len(s.Interfaces) != 0 {
-		s.logger.Info("Probing host(s) on interface(s): " + getAllIfaceNames(s.Interfaces))
+		s.logger.Info("Probing host(s) on interface(s): " + joinIfaceNames(s.Interfaces))
 	}
 
 	numHosts := netutil.HostsInIP4Network(s.Targets)

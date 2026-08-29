@@ -52,6 +52,7 @@ type DHCPv4Server struct {
 	MACAddress netutil.MAC `json:"mac"`
 	HostName   string      `json:"hostname"`
 	Vendor     string      `json:"vendor"`
+	Iface      string      `json:"iface"`
 
 	DHCPv4ServerOptions `json:"options"`
 }
@@ -207,6 +208,7 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 		}
 		s.packetSender.Wait()
 	}
+	s.logger.Info("Scanning for dhcpv4 servers on interface(s): " + joinIfaceNames(s.Interfaces))
 	s.logger.WaitTimeout(s.ResponseTimeout, "response")
 	s.packetReceiver.Close()
 
@@ -344,6 +346,7 @@ outer:
 
 			dhcpServer := DHCPv4Server{
 				MACAddress: netutil.MAC(ethPacket.SrcMAC),
+				Iface:      packet.Iface,
 			}
 			ip, ok := netip.AddrFromSlice(dhcpPacket.YourClientIP)
 			if ok {
