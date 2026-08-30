@@ -61,7 +61,7 @@ type NDPHostResult struct {
 	HostName string      `json:"hostname"`
 	Vendor   string      `json:"vendor"`
 	Iface    string      `json:"iface"`
-	IsRouter bool
+	IsRouter bool        `json:"is_router"`
 }
 
 type NDPScanStats struct {

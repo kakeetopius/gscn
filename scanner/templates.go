@@ -177,3 +177,36 @@ Packets Sent:     {{ .Stats.PacketsSent }}
 Packets Received: {{ .Stats.PacketsReceived }}
 Scan Duration:    {{ .Stats.ScanDuration }}
 `
+
+var NDPRoutersTemplate = `
+{{- range $i, $router := .RouterResults }}
+Router {{ add $i 1 }}
+--------
+IP Address:			  {{ $router.IPAddr }}
+MAC Address:          {{ $router.MacAddr }}
+Hostname:             {{ $router.HostName }}
+Vendor:               {{ $router.Vendor }}
+Interface:            {{ $router.Iface }}
+Managed (M):          {{ $router.Managed }}
+Other Config (O):     {{ $router.OtherConfig }}
+Advertised Prefixes:  {{ len $router.PrefixInfo }}
+
+{{- range $j, $prefix := $router.PrefixInfo }}
+Prefix {{ add $j 1 }}
+--------
+Prefix:                {{ $prefix.Prefix }}
+On-Link (L):           {{ $prefix.OnLink }}
+Autonomous (A):        {{ $prefix.SLAACEnabled }}
+Valid Lifetime:        {{ $prefix.ValidLifetime }}
+Preferred Lifetime:    {{ $prefix.PreferredLifetime }}
+
+{{- end }}
+{{- end }}
+
+Stats
+-----
+Routers Found:     {{ len .RouterResults }}
+Packets Sent:      {{ .NDPScanStats.PacketsSent }}
+Packets Received:  {{ .NDPScanStats.PacketsReceived }}
+Scan Duration:     {{ .NDPScanStats.ScanDuration }}
+`

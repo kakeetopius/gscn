@@ -4,10 +4,10 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"net"
 	"net/netip"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -22,7 +22,7 @@ import (
 
 type NDPRouterScanner struct {
 	NDPRouterScannerOpts
-	results        NDPScanResults
+	results        NDPRouterScannerResults
 	logger         log.Logger
 	ifaceProvider  netutil.NetInterfaceProvider
 	packetSender   packet.PacketSender
@@ -41,11 +41,30 @@ type NDPRouterScannerOpts struct {
 }
 
 type NDPRouterScannerResults struct {
-	HostResults  []NDPHostResult `json:"results"`
-	NDPScanStats `json:"stats"`
+	RouterResults []NDPRouter `json:"routers"`
+	NDPScanStats  `json:"stats"`
 
 	printHostNames bool `json:"-"`
 	printVendors   bool `json:"-"`
+}
+
+type NDPRouter struct {
+	IPAddr      netip.Addr              `json:"ip"`
+	MacAddr     netutil.MAC             `json:"mac"`
+	HostName    string                  `json:"hostname"`
+	Vendor      string                  `json:"vendor"`
+	Iface       string                  `json:"iface"`
+	Managed     bool                    `json:"managed"`
+	OtherConfig bool                    `json:"other_config"`
+	PrefixInfo  []IPv6PrefixInformation `json:"prefix_info"`
+}
+
+type IPv6PrefixInformation struct {
+	Prefix            netip.Prefix  `json:"prefix"`
+	OnLink            bool          `json:"on_link"`
+	SLAACEnabled      bool          `json:"slaac_enabled"`
+	ValidLifetime     time.Duration `json:"valid_lifetime"`
+	PreferredLifetime time.Duration `json:"preferred_lifetime"`
 }
 
 func NewNDPRouterScanner(opts NDPRouterScannerOpts) (*NDPRouterScanner, error) {
@@ -56,7 +75,6 @@ func NewNDPRouterScanner(opts NDPRouterScannerOpts) (*NDPRouterScanner, error) {
 
 	return &NDPRouterScanner{
 		NDPRouterScannerOpts: opts,
-		results:              NDPScanResults{},
 		logger:               log.NewLogger(opts.Verbose),
 		ifaceProvider:        ifaceProvider,
 	}, nil
@@ -87,7 +105,7 @@ func (s *NDPRouterScanner) processResults() error {
 	s.results.printVendors = s.WithVendorInfo
 
 	resultSet := s.results
-	numHosts := len(resultSet.HostResults)
+	numHosts := len(resultSet.RouterResults)
 
 	var bar *pterm.ProgressbarPrinter
 	var err error
@@ -103,17 +121,17 @@ func (s *NDPRouterScanner) processResults() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
 	defer cancel()
-	for i := range resultSet.HostResults {
+	for i := range resultSet.RouterResults {
 		if s.WithVendorInfo {
-			resultSet.HostResults[i].Vendor = netutil.MACVendor(resultSet.HostResults[i].MacAddr.String())
+			resultSet.RouterResults[i].Vendor = netutil.MACVendor(resultSet.RouterResults[i].MacAddr.String())
 		}
 		if s.AddHostNames {
-			resultSet.HostResults[i].HostName = netutil.ReverseLookup(ctx, resultSet.HostResults[i].IPAddr.String())
+			resultSet.RouterResults[i].HostName = netutil.ReverseLookup(ctx, resultSet.RouterResults[i].IPAddr.String())
 			bar.Increment()
 		}
 	}
 
-	slices.SortFunc(resultSet.HostResults, func(a, b NDPHostResult) int {
+	slices.SortFunc(resultSet.RouterResults, func(a, b NDPRouter) int {
 		return a.IPAddr.Compare(b.IPAddr)
 	})
 	return nil
@@ -126,7 +144,18 @@ func (r *NDPRouterScannerResults) Print() {
 func (r *NDPRouterScannerResults) String() string {
 	stringBuilder := strings.Builder{}
 
-	tmpl := template.Must(template.New("ndp_scan_results").Parse(NDPScanResultsTemplate))
+	funcMap := template.FuncMap{
+		"add": func(a, b int) int {
+			return a + b
+		},
+	}
+	tmpl := template.Must(
+		template.
+			New("ndp_router_scan").
+			Funcs(funcMap).
+			Parse(NDPRoutersTemplate),
+	)
+
 	tmpl.Execute(&stringBuilder, r)
 
 	return stringBuilder.String()
@@ -263,13 +292,13 @@ func sendRSPacket(packetSender packet.PacketSender, iface *netutil.Interface, sr
 func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSendChan chan<- struct{}, receiverDone chan<- struct{}) {
 	packetChan := s.packetReceiver.Packets()
 
-	hostResults := make([]NDPHostResult, 0, 15)
+	hostResults := make([]NDPRouter, 0, 15)
 
 	startSendChan <- struct{}{}
 
 	receivedFrom := make(map[netip.Addr]struct{}) // to keep track of which IPs we have got replies from
 	defer func() {
-		s.results.HostResults = hostResults
+		s.results.RouterResults = hostResults
 		receiverDone <- struct{}{}
 	}()
 
@@ -286,11 +315,14 @@ func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSen
 				continue
 			}
 			ip6layer := packet.Layer(layers.LayerTypeIPv6)
-			ip6packet, ok := ip6layer.(*layers.IPv6)
-			if !ok {
+			ip6packet := ip6layer.(*layers.IPv6)
+			srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
+
+			eth := packet.Layer(layers.LayerTypeEthernet)
+			if eth == nil {
 				continue
 			}
-			srcIP := netip.AddrFrom16([16]byte(ip6packet.SrcIP))
+			ethPacket := eth.(*layers.Ethernet)
 
 			_, alreadyReceived := receivedFrom[srcIP]
 			if alreadyReceived {
@@ -298,20 +330,30 @@ func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSen
 			}
 			s.results.PacketsReceived++
 
-			icmpPacket, _ := icmpLayer.(*layers.ICMPv6RouterAdvertisement)
-			var hwAddr net.HardwareAddr
+			icmpPacket, ok := icmpLayer.(*layers.ICMPv6RouterAdvertisement)
+			if !ok {
+				continue
+			}
+			result := NDPRouter{
+				IPAddr:      srcIP,
+				MacAddr:     netutil.MAC(ethPacket.SrcMAC),
+				Iface:       packet.Iface,
+				Managed:     icmpPacket.Flags&0x80 != 0,
+				OtherConfig: icmpPacket.Flags&0x40 != 0,
+			}
+
 			for _, icmpOption := range icmpPacket.Options {
-				if icmpOption.Type == layers.ICMPv6OptSourceAddress {
-					hwAddr = net.HardwareAddr(icmpOption.Data)
-					break
+				switch icmpOption.Type {
+				case layers.ICMPv6OptSourceAddress:
+					result.MacAddr = netutil.MAC(icmpOption.Data)
+				case layers.ICMPv6OptPrefixInfo:
+					prefixInfo, err := parseIPv6PrefixInfo(icmpOption.Data)
+					if err == nil {
+						result.PrefixInfo = append(result.PrefixInfo, prefixInfo)
+					}
 				}
 			}
 
-			result := NDPHostResult{
-				IPAddr:  srcIP,
-				MacAddr: netutil.MAC(hwAddr),
-				Iface:   packet.Iface,
-			}
 			hostResults = append(hostResults, result)
 			receivedFrom[srcIP] = struct{}{}
 		}
@@ -319,36 +361,50 @@ func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSen
 }
 
 func (r NDPRouterScannerResults) display() {
-	fmt.Println()
-	var tableData [][]string
-	tableData = pterm.TableData{{"IP Address", "Mac Address", "Interface"}}
-	if r.printVendors {
-		tableData[0] = append(tableData[0], "Vendor")
-	}
-	if r.printHostNames {
-		tableData[0] = append(tableData[0], "HostNames")
-	}
-
-	for _, result := range r.HostResults {
-		row := []string{result.IPAddr.String(), result.MacAddr.String(), result.Iface}
-
-		if r.printVendors {
-			vendor := cmp.Or(result.Vendor, "(unknown)")
-			row = append(row, vendor)
-		}
-		if r.printHostNames {
-			hostName := cmp.Or(result.HostName, "(unknown)")
-			row = append(row, hostName)
-		}
-		tableData = append(tableData, row)
-	}
-
-	if len(r.HostResults) == 0 {
+	if len(r.RouterResults) == 0 {
 		fmt.Println()
 		pterm.Info.Println("No IPv6 routers found")
-	} else {
+	}
+
+	for i, router := range r.RouterResults {
+		fmt.Println()
+		tableData := pterm.TableData{
+			{fmt.Sprintf("Router %d", i+1)},
+			{"IP Address", router.IPAddr.String()},
+			{"MAC Address", router.MacAddr.String()},
+			{"Interface", router.Iface},
+		}
+		if r.printVendors {
+			vendor := cmp.Or(router.Vendor, "(unknown)")
+			tableData = append(tableData, []string{"Vendor", vendor})
+		}
+		if r.printHostNames {
+			hostName := cmp.Or(router.HostName, "(unknown)")
+			tableData = append(tableData, []string{"Hostname", hostName})
+		}
+
+		tableData = append(tableData, []string{"Managed (M)", fmt.Sprintf("%v", router.Managed)})
+		tableData = append(tableData, []string{"Other Config (O)", fmt.Sprintf("%v", router.OtherConfig)})
+		tableData = append(tableData, []string{"Advertised Prefixes", strconv.Itoa(len(router.PrefixInfo))})
+
+		if len(router.PrefixInfo) > 0 {
+			for j, prefix := range router.PrefixInfo {
+				tableData = append(
+					tableData,
+					[]string{""},
+					[]string{pterm.FgLightCyan.Sprintf("Prefix %v", j+1)},
+					[]string{"Prefix", prefix.Prefix.String()},
+					[]string{"On Link", fmt.Sprintf("%v", prefix.OnLink)},
+					[]string{"SLAAC Enabled", fmt.Sprintf("%v", prefix.SLAACEnabled)},
+					[]string{"Valid Lifetime", fmt.Sprintf("%v", prefix.ValidLifetime.String())},
+					[]string{"Preferred Lifetime", fmt.Sprintf("%v", prefix.PreferredLifetime.String())},
+				)
+			}
+		}
+
 		pterm.DefaultTable.
 			WithHasHeader().
+			WithHeaderStyle(pterm.NewStyle(pterm.Bold, pterm.FgBlue)).
 			WithHeaderRowSeparator("-").
 			WithBoxed().
 			WithData(tableData).
@@ -358,5 +414,28 @@ func (r NDPRouterScannerResults) display() {
 	fmt.Println("\nScan Duration:     ", r.ScanDuration.Truncate(time.Millisecond))
 	fmt.Println("Packets Sent:      ", r.PacketsSent)
 	fmt.Println("Packets Received:  ", r.PacketsReceived)
-	fmt.Println("Hosts Found:       ", len(r.HostResults))
+	fmt.Println("Routers Found:       ", len(r.RouterResults))
+}
+
+func parseIPv6PrefixInfo(b []byte) (p IPv6PrefixInformation, err error) {
+	if len(b) < 30 {
+		return p, fmt.Errorf("ipv6 prefix info is not enough")
+	}
+	prefixLen := int(b[0])
+	flags := b[1]
+
+	p.ValidLifetime = durationFromBytes(b[2:6])
+	p.PreferredLifetime = durationFromBytes(b[6:10])
+	p.OnLink = flags&0x80 != 0
+	p.SLAACEnabled = flags&0x40 != 0
+
+	addrBytes := b[14:30]
+	addr, ok := netip.AddrFromSlice(addrBytes)
+	if !ok {
+		addr = netip.IPv6Unspecified()
+	}
+
+	p.Prefix = netip.PrefixFrom(addr, prefixLen)
+
+	return p, nil
 }
