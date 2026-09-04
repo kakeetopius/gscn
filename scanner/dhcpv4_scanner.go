@@ -23,7 +23,7 @@ import (
 type DHCPv4Scanner struct {
 	DHCPv4ScannerOpts
 	ifaceProvider  netutil.NetInterfaceProvider
-	packetReceiver *packet.PcapPacketReceiver
+	packetReceiver packet.PacketReceiver
 	packetSender   packet.PacketSender
 	results        DHCPv4ScannerResults
 	logger         log.Logger
@@ -198,7 +198,7 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
-			s.packetReceiver.AddReceivingInterface(iface)
+			s.packetReceiver.AddInterface(iface)
 			err := s.scanForDhcpServersOnInterface(&iface)
 			if err != nil {
 				return err

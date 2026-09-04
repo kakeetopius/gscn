@@ -29,7 +29,7 @@ type ARPScanner struct {
 	logger         log.Logger
 	ifaceProvider  netutil.NetInterfaceProvider
 	router         routing.Router
-	packetReceiver *packet.PcapPacketReceiver
+	packetReceiver packet.PacketReceiver
 	packetSender   packet.PacketSender
 }
 
@@ -247,7 +247,7 @@ func (s *ARPScanner) sendARPProbes() error {
 			return err
 		}
 
-		s.packetReceiver.AddReceivingInterface(route.Interface)
+		s.packetReceiver.AddInterface(route.Interface)
 
 		for targetNet.Contains(ipToScan) {
 			if (ipToScan == networkAddr || ipToScan == broadCast) && !targetNet.IsSingleIP() {

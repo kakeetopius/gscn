@@ -133,7 +133,7 @@ func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, 
 	}
 
 	for _, iface := range receivingInterfaces {
-		err := packetReceiver.AddReceivingInterface(iface)
+		err := packetReceiver.AddInterface(iface)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +142,7 @@ func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, 
 	return &packetReceiver, nil
 }
 
-func (pr *PcapPacketReceiver) AddReceivingInterface(iface netutil.Interface) error {
+func (pr *PcapPacketReceiver) AddInterface(iface netutil.Interface) error {
 	_, found := pr.ifaces[iface.Index]
 	if found {
 		return nil
