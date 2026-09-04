@@ -30,7 +30,7 @@ type NDPNeighborScanner struct {
 	ifaceProvider  netutil.NetInterfaceProvider
 	router         routing.Router
 	packetSender   packet.PacketSender
-	packetReceiver *packet.PcapPacketReceiver
+	packetReceiver packet.PacketReceiver
 }
 
 type NDPNeighborScanOptions struct {
@@ -231,7 +231,7 @@ func (s *NDPNeighborScanner) sendNSProbes() error {
 		if err != nil {
 			return err
 		}
-		s.packetReceiver.AddReceivingInterface(route.Interface)
+		s.packetReceiver.AddInterface(route.Interface)
 
 		for target.Contains(IPaddr) {
 			for range s.ProbeCount {

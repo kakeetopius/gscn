@@ -26,7 +26,7 @@ type NDPRouterScanner struct {
 	logger         log.Logger
 	ifaceProvider  netutil.NetInterfaceProvider
 	packetSender   packet.PacketSender
-	packetReceiver *packet.PcapPacketReceiver
+	packetReceiver packet.PacketReceiver
 }
 
 type NDPRouterScannerOpts struct {
@@ -49,14 +49,15 @@ type NDPRouterScannerResults struct {
 }
 
 type NDPRouter struct {
-	IPAddr      netip.Addr              `json:"ip"`
-	MacAddr     netutil.MAC             `json:"mac"`
-	HostName    string                  `json:"hostname"`
-	Vendor      string                  `json:"vendor"`
-	Iface       string                  `json:"iface"`
-	Managed     bool                    `json:"managed"`
-	OtherConfig bool                    `json:"other_config"`
-	PrefixInfo  []IPv6PrefixInformation `json:"prefix_info"`
+	IPAddr              netip.Addr              `json:"ip"`
+	MacAddr             netutil.MAC             `json:"mac"`
+	HostName            string                  `json:"hostname"`
+	Vendor              string                  `json:"vendor"`
+	Iface               string                  `json:"iface"`
+	Managed             bool                    `json:"managed"`
+	OtherConfig         bool                    `json:"other_config"`
+	PrefixInfo          []IPv6PrefixInformation `json:"prefix_info"`
+	RecursiveDNSServers RDNSS                   `json:"dns_servers"`
 }
 
 type IPv6PrefixInformation struct {
@@ -65,6 +66,11 @@ type IPv6PrefixInformation struct {
 	SLAACEnabled      bool          `json:"slaac_enabled"`
 	ValidLifetime     time.Duration `json:"valid_lifetime"`
 	PreferredLifetime time.Duration `json:"preferred_lifetime"`
+}
+
+type RDNSS struct {
+	Lifetime time.Duration `json:"lifetime"`
+	Servers  []netip.Addr  `json:"dns_server_addresses"`
 }
 
 func NewNDPRouterScanner(opts NDPRouterScannerOpts) (*NDPRouterScanner, error) {
@@ -256,7 +262,7 @@ func sendRSPacket(packetSender packet.PacketSender, iface *netutil.Interface, sr
 	}
 
 	icmp := &layers.ICMPv6{
-		TypeCode: layers.ICMPv6TypeRouterSolicitation << 8, // typecode should be in first 8 bits of the 16 bit field
+		TypeCode: layers.ICMPv6TypeRouterSolicitation << 8, // type should be in first 8 bits of the 16 bit field
 	}
 
 	rd := &layers.ICMPv6RouterSolicitation{
@@ -347,9 +353,14 @@ func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSen
 				case layers.ICMPv6OptSourceAddress:
 					result.MacAddr = netutil.MAC(icmpOption.Data)
 				case layers.ICMPv6OptPrefixInfo:
-					prefixInfo, err := parseIPv6PrefixInfo(icmpOption.Data)
+					prefixInfo, err := decodeIPv6PrefixInfo(icmpOption.Data)
 					if err == nil {
 						result.PrefixInfo = append(result.PrefixInfo, prefixInfo)
+					}
+				case layers.ICMPv6OptRecursiveDNSServer:
+					rdnss, err := decodeRecursiveDNSServersData(icmpOption.Data)
+					if err == nil {
+						result.RecursiveDNSServers = rdnss
 					}
 				}
 			}
@@ -387,6 +398,14 @@ func (r NDPRouterScannerResults) display() {
 		tableData = append(tableData, []string{"Other Config (O)", fmt.Sprintf("%v", router.OtherConfig)})
 		tableData = append(tableData, []string{"Advertised Prefixes", strconv.Itoa(len(router.PrefixInfo))})
 
+		if len(router.RecursiveDNSServers.Servers) > 0 {
+			tableData = append(
+				tableData,
+				[]string{"DNS Servers", joinAddrs(router.RecursiveDNSServers.Servers)},
+				[]string{"DNS Servers Lifetime", durationToString(router.RecursiveDNSServers.Lifetime)},
+			)
+		}
+
 		if len(router.PrefixInfo) > 0 {
 			for j, prefix := range router.PrefixInfo {
 				tableData = append(
@@ -396,8 +415,8 @@ func (r NDPRouterScannerResults) display() {
 					[]string{"Prefix", prefix.Prefix.String()},
 					[]string{"On Link", fmt.Sprintf("%v", prefix.OnLink)},
 					[]string{"SLAAC Enabled", fmt.Sprintf("%v", prefix.SLAACEnabled)},
-					[]string{"Valid Lifetime", fmt.Sprintf("%v", prefix.ValidLifetime.String())},
-					[]string{"Preferred Lifetime", fmt.Sprintf("%v", prefix.PreferredLifetime.String())},
+					[]string{"Valid Lifetime", durationToString(prefix.ValidLifetime)},
+					[]string{"Preferred Lifetime", durationToString(prefix.PreferredLifetime)},
 				)
 			}
 		}
@@ -417,7 +436,7 @@ func (r NDPRouterScannerResults) display() {
 	fmt.Println("Routers Found:       ", len(r.RouterResults))
 }
 
-func parseIPv6PrefixInfo(b []byte) (p IPv6PrefixInformation, err error) {
+func decodeIPv6PrefixInfo(b []byte) (p IPv6PrefixInformation, err error) {
 	if len(b) < 30 {
 		return p, fmt.Errorf("ipv6 prefix info is not enough")
 	}
@@ -438,4 +457,20 @@ func parseIPv6PrefixInfo(b []byte) (p IPv6PrefixInformation, err error) {
 	p.Prefix = netip.PrefixFrom(addr, prefixLen)
 
 	return p, nil
+}
+
+func decodeRecursiveDNSServersData(b []byte) (r RDNSS, err error) {
+	if len(b) < 22 {
+		// minimum including the reserved field(2 bytes) and the lifetime(4 bytes) and one ipv6 addr(16 bytes)
+		return r, fmt.Errorf("recursive dns servers data is invalid")
+	}
+	r.Lifetime = durationFromBytes(b[2:6])
+
+	servers, err := decodeIPSliceFromBytes(b[6:], ip6AddrLen)
+	if err != nil {
+		return r, err
+	}
+	r.Servers = servers
+
+	return r, nil
 }

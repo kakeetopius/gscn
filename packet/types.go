@@ -22,17 +22,27 @@ const (
 	PacketSenderTypeIPLayer
 )
 
+// PacketSender defines the interface for sending packets
 type PacketSender interface {
+	// Type returns the packet sender type.
 	Type() PacketSenderType
 
+	// SendPacket sends a packet through the specified interface.
 	SendPacket(packet []byte, iface *netutil.Interface) error
 
+	// Wait blocks until all queued packets have been sent.
+	// After it returns, no more packets can be sent.
 	Wait()
 
 	io.Closer
 }
 
+// PacketReceiver defines the interface for receiving network packets.
 type PacketReceiver interface {
+	// AddInterface registers a network interface for packet capture.
+	AddInterface(netutil.Interface) error
+
+	// Packets returns a read-only channel for receiving captured packets.
 	Packets() <-chan Packet
 
 	io.Closer
@@ -40,6 +50,6 @@ type PacketReceiver interface {
 
 type Packet struct {
 	gopacket.Packet
-	// The name of the interface where the packet was received
+	// Iface is the name of the interface where the packet was received
 	Iface string
 }

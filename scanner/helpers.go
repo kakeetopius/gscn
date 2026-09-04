@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/netip"
@@ -352,4 +353,19 @@ func domainNamesFromBytes(b []byte) []string {
 	}
 
 	return domains
+}
+
+func durationToString(d time.Duration) string {
+	if uint32(d/time.Second) == math.MaxUint32 {
+		// d / time.Second converts the duration back to the raw format sent over the wire.
+		// most protocols use seconds as the unit of measurement whereas the time.Duration type uses nanoseconds
+		// so dividing converts the nanoseconds back to seconds
+
+		// also for most protocols if the duration is the maximum unsigned int32, it means the duration/lifetime is infinity hence the
+		// returned string
+
+		return "Infinity"
+	}
+
+	return d.String()
 }

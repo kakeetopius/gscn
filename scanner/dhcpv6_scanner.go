@@ -25,7 +25,7 @@ import (
 type DHCPv6Scanner struct {
 	DHCPv6ScannerOpts
 	ifaceProvider  netutil.NetInterfaceProvider
-	packetReceiver *packet.PcapPacketReceiver
+	packetReceiver packet.PacketReceiver
 	packetSender   packet.PacketSender
 	results        DHCPv6ScannerResults
 	logger         log.Logger
@@ -61,7 +61,7 @@ type DHCPv6Server struct {
 type DHCPv6ServerOptions struct {
 	IANA                DHCPv6IANA   `json:"ia_na"`
 	DNSRecursiveServers []netip.Addr `json:"dns_servers"`
-	DomainSearchList    []string     `json:"domain_names"`
+	DomainSearchList    []string     `json:"domain_search_list"`
 }
 
 type DHCPv6ScanStats struct {
@@ -207,7 +207,7 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
-			s.packetReceiver.AddReceivingInterface(iface)
+			s.packetReceiver.AddInterface(iface)
 			err := s.scanForDhcp6ServersOnInterface(&iface)
 			if err != nil {
 				return err
@@ -423,10 +423,10 @@ func (r DHCPv6ScannerResults) display() {
 		}
 		tableData = append(
 			tableData,
-			[]string{"Preferred Lifetime", server.IANA.PreferredLifetime.String()},
-			[]string{"Valid Lifetime", server.IANA.ValidLifetime.String()},
-			[]string{"Renewal Time", server.IANA.RenewalTime.String()},
-			[]string{"Rebind Time", server.IANA.RebindTime.String()},
+			[]string{"Preferred Lifetime", durationToString(server.IANA.PreferredLifetime)},
+			[]string{"Valid Lifetime", durationToString(server.IANA.ValidLifetime)},
+			[]string{"Renewal Time", durationToString(server.IANA.RenewalTime)},
+			[]string{"Rebind Time", durationToString(server.IANA.RebindTime)},
 		)
 
 		pterm.DefaultTable.
