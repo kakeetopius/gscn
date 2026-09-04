@@ -5,6 +5,8 @@
 - SSDP
 - DHCPv6
 - MDNS
-- OSPF 
+- OSPF
 
 # Scanning Protocols
+
+- Banner grabbing

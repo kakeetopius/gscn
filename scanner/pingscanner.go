@@ -92,10 +92,6 @@ func (s *PingScanner) Scan(ctx context.Context) (ScanResults, error) {
 
 	s.processResults()
 
-	if !s.ResultMapOnly {
-		s.scanResults.HostResults = resultMapToSlice(s.resultMap, s.SortResults)
-	}
-
 	return &s.scanResults, err
 }
 
@@ -113,6 +109,10 @@ func (s *PingScanner) processResults() {
 			results.HostName = name
 			s.resultMap[host] = results
 		}
+	}
+
+	if !s.ResultMapOnly {
+		s.scanResults.HostResults = resultMapToSlice(s.resultMap, s.SortResults)
 	}
 }
 
@@ -288,12 +288,14 @@ func (r PingScanResults) display() {
 		}
 
 		hostIdentity := result.IP.String()
+
 		if result.HostState == HostStateDown && totalHosts > 256 {
 			continue // do not add hosts that are down if scanned hosts are above 10
 		}
 		if result.HostName != "" {
 			hostIdentity = fmt.Sprintf("%v (%v)", hostIdentity, result.HostName)
 		}
+
 		hostStateStyle := pterm.FgDefault
 		switch result.HostState {
 		case HostStateUp:
@@ -301,6 +303,7 @@ func (r PingScanResults) display() {
 		case HostStateDown:
 			hostStateStyle = pterm.FgRed
 		}
+
 		tableData = append(tableData, []string{
 			hostIdentity,
 			hostStateStyle.Sprint(result.HostState),
@@ -310,7 +313,12 @@ func (r PingScanResults) display() {
 		})
 	}
 	if len(tableData) > 1 {
-		pterm.DefaultTable.WithHasHeader().WithBoxed().WithHeaderRowSeparator("-").WithData(tableData).Render()
+		pterm.DefaultTable.
+			WithHasHeader().
+			WithBoxed().
+			WithHeaderRowSeparator("-").
+			WithData(tableData).
+			Render()
 	}
 	fmt.Println("\nScan Duration:        ", stats.ScanTime.Truncate(time.Millisecond))
 	fmt.Println("Total Hosts Scanned:  ", totalHosts)

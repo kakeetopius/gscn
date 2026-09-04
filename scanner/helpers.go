@@ -21,7 +21,13 @@ const (
 	ip6AddrLen = 16
 )
 
-func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[netip.Addr]string, hoststates PingScanResultsMap, protocol string) HostResults {
+func getResultSet(
+	targets []netip.Prefix,
+	ports []PortNumber,
+	hostnames map[netip.Addr]string,
+	hoststates PingScanResultsMap,
+	protocol string,
+) HostResults {
 	results := make(HostResults, len(targets))
 	for _, target := range targets {
 		netAddr := target.Masked()
@@ -75,7 +81,13 @@ func getResultSet(targets []netip.Prefix, ports []PortNumber, hostnames map[neti
 	return results
 }
 
-func pingHosts(ctx context.Context, targets []netip.Prefix, pingTimeout time.Duration, workers int, pingCount int) (PingScanResultsMap, error) {
+func pingHosts(
+	ctx context.Context,
+	targets []netip.Prefix,
+	pingTimeout time.Duration,
+	workers int,
+	pingCount int,
+) (PingScanResultsMap, error) {
 	pinger := NewPingScanner(PingScanOptions{
 		Targets:       targets,
 		PingTimeout:   pingTimeout,
@@ -122,7 +134,13 @@ func joinIfaceNames(ifaces []netutil.Interface) string {
 	return sb.String()
 }
 
-func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Duration, printUpOnly bool, printOpenOnly bool) {
+func printScanResultsMap(
+	results map[netip.Addr]HostResult,
+	scanTime time.Duration,
+	printUpOnly bool,
+	printOpenOnly bool,
+	printBanners bool,
+) {
 	var tableData [][]string
 	totalHosts := len(results)
 	totalUp := 0
@@ -133,6 +151,9 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 		}
 
 		tableData = pterm.TableData{{"Port", "State", "Service"}}
+		if printBanners {
+			tableData[0] = append(tableData[0], "Banner")
+		}
 		name := ""
 		if hostResults.HostName != "" {
 			name = fmt.Sprintf("(%v)", hostResults.HostName)
@@ -153,7 +174,24 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 			if port.State == PortStateClosed && totalPortsScanned > 10 {
 				continue // do not add closed ports to table if scanned ports are above 10
 			}
-			tableData = append(tableData, []string{fmt.Sprintf("%v/%v", port.Protocol, port.Number), port.State.String(), port.Name})
+
+			portStateStyle := pterm.FgDefault
+			switch hostResults.HostState {
+			case HostStateUp:
+				portStateStyle = pterm.FgLightGreen
+			case HostStateDown:
+				portStateStyle = pterm.FgLightRed
+			}
+
+			row := []string{
+				fmt.Sprintf("%v/%v", port.Protocol, port.Number),
+				portStateStyle.Sprint(port.State.String()),
+				port.Name,
+			}
+			if printBanners {
+				row = append(row, wrapString(port.Banner, 100))
+			}
+			tableData = append(tableData, row)
 		}
 
 		hostStateStyle := pterm.FgDefault
@@ -165,9 +203,16 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 		}
 		fmt.Printf("Host State: %s\n", hostStateStyle.Sprint(hostResults.HostState))
 		fmt.Println("Average RTT: ", hostResults.AverageRTT.Truncate(time.Microsecond))
+
 		if len(tableData) > 1 && hostResults.HostState == HostStateUp {
-			pterm.DefaultTable.WithHasHeader().WithBoxed().WithData(tableData).Render()
+			pterm.DefaultTable.
+				WithHasHeader().
+				WithHeaderRowSeparator("-").
+				WithBoxed().
+				WithData(tableData).
+				Render()
 		}
+
 		fmt.Println("Ports Scanned: ", totalPortsScanned)
 		fmt.Println("Open Ports:    ", hostResults.OpenPorts)
 		fmt.Println("Closed Ports:  ", hostResults.ClosedPorts)
@@ -180,6 +225,16 @@ func printScanResultsMap(results map[netip.Addr]HostResult, scanTime time.Durati
 	fmt.Printf("Total Hosts Scanned: %v\n", totalHosts)
 	fmt.Printf("Hosts that are Up:   %v\n", totalUp)
 	fmt.Printf("Hosts that are down: %v\n\n", totalHosts-totalUp)
+}
+
+func wrapString(s string, width int) string {
+	wrappedStr := strings.Builder{}
+	for len(s) > width {
+		fmt.Fprintf(&wrappedStr, "%s\n", s[:width])
+		s = s[width:]
+	}
+	fmt.Fprintf(&wrappedStr, "%s", s)
+	return wrappedStr.String()
 }
 
 func solicitedNodeMacAddress(targetIP netip.Addr) net.HardwareAddr {

@@ -199,7 +199,7 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
 			s.packetReceiver.AddReceivingInterface(iface)
-			err := s.scanDhcpServersOnInterface(&iface)
+			err := s.scanForDhcpServersOnInterface(&iface)
 			if err != nil {
 				return err
 			}
@@ -207,7 +207,7 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 		}
 		s.packetSender.Wait()
 	}
-	s.logger.Info("Scanning for dhcpv4 servers on interface(s): " + joinIfaceNames(s.Interfaces))
+	s.logger.Info("Scanning for DHCPv4 servers on interface(s): " + joinIfaceNames(s.Interfaces))
 	s.logger.WaitTimeout(s.ResponseTimeout, "response")
 	s.packetReceiver.Close()
 
@@ -217,7 +217,7 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 	return nil
 }
 
-func (s *DHCPv4Scanner) scanDhcpServersOnInterface(iface *netutil.Interface) error {
+func (s *DHCPv4Scanner) scanForDhcpServersOnInterface(iface *netutil.Interface) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},

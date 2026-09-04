@@ -99,7 +99,7 @@ func (s *UDPScanner) processResults() {
 }
 
 func (r *UDPScanResults) Print() {
-	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly)
+	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly, false)
 }
 
 func (r *UDPScanResults) String() string {
@@ -133,8 +133,8 @@ func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 	s.hostStates = pingResults
 	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "udp")
 
-	jobs := make(chan PortScanJob, numWorkers)
-	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
+	jobs := make(chan portScanJob, numWorkers)
+	workerResultsChan := make(chan portScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
 		wg.Add(1)
@@ -150,7 +150,7 @@ func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 	masterDone := make(chan struct{})
 	go s.getUDPScanResults(ctx, workerResultsChan, masterDone)
 
-	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
+	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.HostNames, s.ResponseTimeout)
 
 	close(jobs) // wait for all the workers to finish
 	wg.Wait()
@@ -164,7 +164,7 @@ func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 	return nil
 }
 
-func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
+func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan portScanJob, resultsChan chan<- portScanWorkerResult) {
 	defer func() {
 		wg.Done()
 	}()
@@ -177,7 +177,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 		} else {
 			proto = "udp6"
 		}
-		result := PortScanWorkerResult{
+		result := portScanWorkerResult{
 			HostIP: target.Addr(),
 			Port: Port{
 				State:  PortStateClosed,
@@ -222,7 +222,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan PortScanJob,
 	}
 }
 
-func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult, masterDone chan<- struct{}) {
+func (s *UDPScanner) getUDPScanResults(ctx context.Context, workerResultsChan chan portScanWorkerResult, masterDone chan<- struct{}) {
 	// To Be Run By Main Worker
 	defer func() {
 		masterDone <- struct{}{}
