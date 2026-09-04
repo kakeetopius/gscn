@@ -181,6 +181,9 @@ func (s *NDPRouterScanner) runNDP(ctx context.Context) error {
 		}
 	}
 
+	if len(s.Interfaces) == 0 {
+		return fmt.Errorf("no network interfaces provided")
+	}
 	startSending := make(chan struct{})
 
 	var packetSender packet.PacketSender

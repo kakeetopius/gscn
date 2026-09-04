@@ -200,11 +200,16 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 		}
 	}
 
+	if len(s.Interfaces) == 0 {
+		return fmt.Errorf("no network interfaces provided")
+	}
+
 	startSending := make(chan struct{})
 	receiverDone := make(chan struct{})
 	go s.getDHCPScanResults(ctx, startSending, receiverDone)
 	<-startSending // wait for receiving routine to finish setup
 
+	s.logger.Info("Scanning for dhcpv6 on interface(s): " + joinIfaceNames(s.Interfaces))
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
 			s.packetReceiver.AddInterface(iface)
@@ -216,7 +221,6 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 		}
 		s.packetSender.Wait()
 	}
-	s.logger.Info("Scanning for dhcpv6 on interface(s): " + joinIfaceNames(s.Interfaces))
 	s.logger.WaitTimeout(s.ResponseTimeout, "response")
 	s.packetReceiver.Close()
 

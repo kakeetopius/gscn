@@ -2,10 +2,11 @@
 
 - CDP
 - LLDP
-- SSDP
 - DHCPv6
+- STP
+- OSPFv2 and v3
+- SSDP
 - MDNS
-- OSPF
 
 # Scanning Protocols
 

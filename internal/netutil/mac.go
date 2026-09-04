@@ -23,3 +23,9 @@ func (m MAC) IsZero() bool {
 func (m MAC) IsBroadCast() bool {
 	return slices.Equal(m, MAC{0xff, 0xff, 0xff, 0xff, 0xff, 0xff})
 }
+
+func (m MAC) To6() [6]byte {
+	var mac [6]byte
+	copy(mac[:], m)
+	return mac
+}

@@ -88,6 +88,27 @@ func IPNetToPrefix(ipnet *net.IPNet) (netip.Prefix, error) {
 	return netip.PrefixFrom(addr, ones), nil
 }
 
+func IPSliceToAddrSlice(ips []net.IP) []netip.Addr {
+	addrs := make([]netip.Addr, 0, len(ips))
+
+	for _, ip := range ips {
+		addrs = append(addrs, IPToAddr(ip))
+	}
+
+	return addrs
+}
+
+func IPToAddr(ip net.IP) netip.Addr {
+	if v4 := ip.To4(); v4 != nil {
+		var b [4]byte
+		copy(b[:], v4)
+		return netip.AddrFrom4(b)
+	}
+
+	addr, _ := netip.AddrFromSlice(ip)
+	return addr
+}
+
 // AddrToPrefix converts a net.Addr to a netip.Prefix.
 // It returns an error if the address is not an *net.IPNet or if conversion fails.
 func AddrToPrefix(addr net.Addr) (netip.Prefix, error) {
@@ -108,6 +129,19 @@ func AddrSliceToPrefixSlice(ifaceAddrs []net.Addr) ([]netip.Prefix, error) {
 			return nil, fmt.Errorf("invalid IPNet")
 		}
 		prefix, err := IPNetToPrefix(ipnet)
+		if err != nil {
+			return nil, err
+		}
+		prefixes = append(prefixes, prefix)
+	}
+
+	return prefixes, nil
+}
+
+func IPNetSliceToPrefixSlice(ipnets []net.IPNet) ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(ipnets))
+	for _, addr := range ipnets {
+		prefix, err := IPNetToPrefix(&addr)
 		if err != nil {
 			return nil, err
 		}
