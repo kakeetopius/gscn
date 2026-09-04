@@ -210,3 +210,33 @@ Packets Sent:      {{ .NDPScanStats.PacketsSent }}
 Packets Received:  {{ .NDPScanStats.PacketsReceived }}
 Scan Duration:     {{ .NDPScanStats.ScanDuration }}
 `
+
+var CDPHostsTemplate = `
+{{- range $i, $host := .Hosts }}
+Host {{ add $i 1 }}
+--------
+MAC Address:          {{ $host.MAC }}
+CDP Version:          {{ $host.CDPVersion }}
+Device ID:            {{ $host.DeviceID }}
+Addresses:            {{ joinAddrs $host.Addresses }}
+Port ID:              {{ $host.PortID }}
+Platform:             {{ $host.Platform }}
+Software Version:     {{ $host.SoftwareVersion }}
+IP Prefixes:          {{ joinPrefixes $host.IPPrefixes }}
+VTP Domain:           {{ $host.VTPDomain }}
+Native VLAN:          {{ $host.NativeVLAN }}
+Full Duplex:          {{ $host.FullDuplex }}
+MTU:                  {{ $host.MTU }}
+System Name:          {{ $host.SysName }}
+System OID:           {{ $host.SysOID }}
+Management IPs:       {{ joinAddrs $host.ManagementIPs }}
+Capabilities:         {{ $host.Capabilites }}
+
+{{- end }}
+
+Stats
+-----
+Hosts Found:          {{ .NumHosts }}
+Packets Received:     {{ .PacketsReceived }}
+Scan Duration:        {{ .ScanDuration }}
+`

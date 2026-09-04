@@ -191,11 +191,16 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 		}
 	}
 
+	if len(s.Interfaces) == 0 {
+		return fmt.Errorf("no network interfaces provided")
+	}
+
 	startSending := make(chan struct{})
 	receiverDone := make(chan struct{})
 	go s.getDHCPScanResults(ctx, startSending, receiverDone)
 	<-startSending // wait for receiving routine to finish setup
 
+	s.logger.Info("Scanning for DHCPv4 servers on interface(s): " + joinIfaceNames(s.Interfaces))
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
 			s.packetReceiver.AddInterface(iface)
@@ -207,7 +212,6 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 		}
 		s.packetSender.Wait()
 	}
-	s.logger.Info("Scanning for DHCPv4 servers on interface(s): " + joinIfaceNames(s.Interfaces))
 	s.logger.WaitTimeout(s.ResponseTimeout, "response")
 	s.packetReceiver.Close()
 
@@ -458,13 +462,4 @@ func (r DHCPv4ScannerResults) display() {
 	fmt.Println("Packets Sent:       ", r.Stats.PacketsSent)
 	fmt.Println("Packets Received:   ", r.Stats.PacketsReceived)
 	fmt.Println("Servers Found:      ", len(r.Servers))
-}
-
-func joinAddrs(addrs []netip.Addr) string {
-	result := make([]string, len(addrs))
-	for i, addr := range addrs {
-		result[i] = addr.String()
-	}
-
-	return strings.Join(result, ", ")
 }

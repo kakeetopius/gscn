@@ -190,7 +190,7 @@ func printScanResultsMap(
 				port.Name,
 			}
 			if printBanners {
-				row = append(row, wrapString(port.Banner, 100))
+				row = append(row, port.Banner)
 			}
 			tableData = append(tableData, row)
 		}
@@ -230,6 +230,7 @@ func printScanResultsMap(
 
 func wrapString(s string, width int) string {
 	wrappedStr := strings.Builder{}
+	s = strings.ReplaceAll(s, "\n", " ")
 	for len(s) > width {
 		fmt.Fprintf(&wrappedStr, "%s\n", s[:width])
 		s = s[width:]
@@ -368,4 +369,23 @@ func durationToString(d time.Duration) string {
 	}
 
 	return d.String()
+}
+
+func joinAddrs(addrs []netip.Addr) string {
+	result := make([]string, len(addrs))
+	for i, addr := range addrs {
+		result[i] = addr.String()
+	}
+
+	return strings.Join(result, ", ")
+}
+
+func joinPrefixes(prefixes []netip.Prefix) string {
+	result := make([]string, len(prefixes))
+
+	for i, prefix := range prefixes {
+		result[i] = prefix.String()
+	}
+
+	return strings.Join(result, ", ")
 }

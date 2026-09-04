@@ -29,6 +29,7 @@ func DiscoverCmd() *cobra.Command {
 		discoverNDPCmd(),
 		discoverDHCPv4Cmd(),
 		discoverDHCPv6Cmd(),
+		discoverCDPCmd(),
 	)
 
 	return &discoverCmd
@@ -77,7 +78,7 @@ func discoverArpCmd() *cobra.Command {
 
 	arpCmd.Flags().SortFlags = false
 
-	arpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the all the subnets the interface is in are scanned.")
+	arpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "Network interface(s) to find neighbouring hosts from. If used without a target, all the subnets the interface is in are scanned.")
 	arpCmd.Flags().UintVarP(&opts.ProbeCount, "count", "c", 4, "The number of ARP requests to send for each host")
 	arpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any ARP packets rather passively listen for ARP replies from the given targets.")
 	arpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
@@ -146,7 +147,7 @@ func discoverNDPNeighborsCmd() *cobra.Command {
 
 	ndpScan.Flags().SortFlags = false
 
-	ndpScan.Flags().StringVarP(&iface, "iface", "i", "", "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
+	ndpScan.Flags().StringVarP(&iface, "iface", "i", "", "Network interface(s) to find neighbouring hosts from. If used without a target, all the subnets the interface is in are scanned.")
 	ndpScan.Flags().UintVarP(&opts.ProbeCount, "count", "c", 4, "The number of ICMPv6 Neighbour Solicitation Packets to send for each host")
 	ndpScan.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any ICMPv6 Neighbour Solicitation packets rather passively listen for Neighbor Advertisements from the given targets.")
 	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
@@ -199,7 +200,7 @@ func discoverNDPRouters() *cobra.Command {
 
 	ndpScan.Flags().SortFlags = false
 
-	ndpScan.Flags().StringSliceVarP(&ifaces, "iface", "i", nil, "A network interface to find neighbouring hosts from. When used without a target the entire subnets the interface is in are scanned.")
+	ndpScan.Flags().StringSliceVarP(&ifaces, "iface", "i", nil, "Network interface(s) to discover IPv6 routers from. If omitted, all interfaces are scanned.")
 	ndpScan.Flags().UintVarP(&opts.ProbeCount, "count", "c", 4, "The number of ICMPv6 Neighbour Solicitation Packets to send for each host")
 	ndpScan.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any ICMPv6 Neighbour Solicitation packets rather passively listen for Neighbor Advertisements from the given targets.")
 	ndpScan.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 1*time.Second, "Amount of time in seconds to wait for responses.")
@@ -247,7 +248,7 @@ func discoverDHCPv4Cmd() *cobra.Command {
 
 	dhcpCmd.Flags().SortFlags = false
 
-	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find dhcp servers from. If omitted, all interfaces are scanned.")
+	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "Network interface(s) to find dhcp servers from. If omitted, all interfaces are scanned.")
 	dhcpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any DHCP Discover packets rather passively listen for DHCP Offers on the network.")
 	dhcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
 	dhcpCmd.Flags().BoolVarP(&opts.WithHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses of the dhcpv4 servers discovered on the network")
@@ -293,13 +294,56 @@ func discoverDHCPv6Cmd() *cobra.Command {
 
 	dhcpCmd.Flags().SortFlags = false
 
-	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "A network interface to find dhcp servers from. If omitted, all interfaces are scanned.")
+	dhcpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "Network interface(s) to find dhcpv6 servers from. If omitted, all interfaces are scanned.")
 	dhcpCmd.Flags().BoolVarP(&opts.Passive, "passive", "p", false, "Do not send any DHCPv6 Solicit packets rather passively listen for DHCPv6 Advertise Packets on the network.")
 	dhcpCmd.Flags().DurationVarP(&opts.ResponseTimeout, "response-timeout", "t", 2*time.Second, "Amount of time in seconds to wait for responses.")
 	dhcpCmd.Flags().BoolVarP(&opts.WithHostNames, "hostnames", "H", false, "Carry out a reverse lookup of the IP addresses of the dhcpv6 servers discovered on the network")
 	dhcpCmd.Flags().BoolVar(&opts.WithVendorInfo, "vendors", true, "Add mac address based vendor information to the results.")
 
 	return &dhcpCmd
+}
+
+func discoverCDPCmd() *cobra.Command {
+	var opts scanner.CDPScannerOptions
+	var ifaceStrings []string
+
+	cdpCmd := cobra.Command{
+		Use:   "cdp <targets>",
+		Short: "Discover devices on the network advertising with the Cisco Discovery Protocol.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			appConfig, err := config.Load(cfgFile)
+			if err != nil {
+				return err
+			}
+
+			ifaces, err := getDiscoverInterfaces(ifaceStrings)
+			if err != nil {
+				return err
+			}
+			opts.Interfaces = ifaces
+			opts.Verbose = true
+
+			arpScanner, err := scanner.NewCDPScanner(opts)
+			if err != nil {
+				return err
+			}
+
+			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
+				ResultsOutputFile: outputFile,
+				PrintJSON:         outputJSON,
+				PrintJSONPretty:   jsonPretty,
+				Notify:            sendNotification,
+				Config:            appConfig,
+			})
+		},
+	}
+
+	cdpCmd.Flags().SortFlags = false
+
+	cdpCmd.Flags().StringSliceVarP(&ifaceStrings, "iface", "i", nil, "Network interface(s) to find CDP neighbours from. If omitted, all network interfaces are scanned.")
+	cdpCmd.Flags().DurationVarP(&opts.WaitTimeout, "response-timeout", "t", 60*time.Second, "Amount of time in seconds to wait for CDP packets.")
+
+	return &cdpCmd
 }
 
 func getDiscoverTargets(targetStrs []string) ([]netip.Prefix, error) {

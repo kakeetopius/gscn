@@ -256,6 +256,7 @@ func scanTCPPort(
 
 			banner, err := prober(conn, job)
 			if err != nil {
+				fmt.Println(err)
 				return
 			}
 			result.Banner = banner

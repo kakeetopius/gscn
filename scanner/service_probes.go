@@ -52,7 +52,13 @@ func probeHTTP(url string) (string, error) {
 		if _, found := wantedHeaders[k]; !found {
 			continue
 		}
-		fmt.Fprintf(&sb, "%s: %s\n", k, strings.Join(v, ","))
+		header := fmt.Sprintf(
+			"%s: %s",
+			k,
+			wrapString(strings.Join(v, ","), 50),
+		)
+
+		fmt.Fprintf(&sb, "%s\n", header)
 	}
 
 	return sb.String(), nil
