@@ -73,6 +73,8 @@ type Port struct {
 	Protocol string `json:"protocol"`
 	// State describes the current state of the port.
 	State PortState `json:"state"`
+
+	Banner string `json:"banner"`
 }
 
 func (p PortState) String() string {

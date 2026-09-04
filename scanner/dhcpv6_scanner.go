@@ -208,7 +208,7 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
 			s.packetReceiver.AddReceivingInterface(iface)
-			err := s.scanDhcpServersOnInterface(&iface)
+			err := s.scanForDhcp6ServersOnInterface(&iface)
 			if err != nil {
 				return err
 			}
@@ -226,7 +226,7 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 	return nil
 }
 
-func (s *DHCPv6Scanner) scanDhcpServersOnInterface(iface *netutil.Interface) error {
+func (s *DHCPv6Scanner) scanForDhcp6ServersOnInterface(iface *netutil.Interface) error {
 	srcIP, err := iface.LinkLocalAddress()
 	if err != nil {
 		if errors.Is(err, netutil.ErrNoLinkLocalAddrress) {
@@ -235,7 +235,7 @@ func (s *DHCPv6Scanner) scanDhcpServersOnInterface(iface *netutil.Interface) err
 			return err
 		}
 	}
-	dstIP := netip.MustParseAddr("ff02::1:2") // all dhcp servers and relay agents multicast address
+	dstIP := netip.MustParseAddr("ff02::1:2") // all dhcpv6 servers and relay agents multicast address
 
 	eth := &layers.Ethernet{
 		SrcMAC:       iface.HardwareAddr,

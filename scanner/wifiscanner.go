@@ -168,5 +168,10 @@ func displayWifiScanResults(results *WiFiScanResults) {
 		tableData = append(tableData, []string{ssid, bssid, status, freq, channel, signal, stations})
 	}
 
-	pterm.DefaultTable.WithHasHeader().WithHeaderRowSeparator("-").WithBoxed().WithData(tableData).Render()
+	pterm.DefaultTable.
+		WithHasHeader().
+		WithHeaderRowSeparator("-").
+		WithBoxed().
+		WithData(tableData).
+		Render()
 }

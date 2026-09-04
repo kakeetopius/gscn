@@ -122,7 +122,7 @@ func (s *TCPSynScanner) processResults() {
 }
 
 func (r *TCPSynScanResults) Print() {
-	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly)
+	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly, false)
 }
 
 func (r *TCPSynScanResults) String() string {
@@ -204,7 +204,7 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	masterDone := make(chan struct{})
 	go s.getTCPSynScanResults(ctx, packetReceiver, masterDone)
 
-	jobs := make(chan PortScanJob, s.Workers)
+	jobs := make(chan portScanJob, s.Workers)
 	g, ctx := errgroup.WithContext(ctx)
 	for range s.Workers {
 		g.Go(func() error {
@@ -212,7 +212,7 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 		})
 	}
 
-	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
+	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.HostNames, s.ResponseTimeout)
 
 	close(jobs)
 	err = g.Wait() // wait for all to workers to finish
@@ -326,7 +326,7 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 	}
 }
 
-func (s *TCPSynScanner) synScanTCPPort(jobs chan PortScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) error {
+func (s *TCPSynScanner) synScanTCPPort(jobs chan portScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) error {
 	// to be run by workers
 
 	packetBufOpts := gopacket.SerializeOptions{
