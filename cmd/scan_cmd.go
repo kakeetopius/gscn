@@ -87,6 +87,7 @@ func tcpFullScanCmd() *cobra.Command {
 	tcpCmd.Flags().DurationVar(&opts.PingTimeout, "ping-timeout", 500*time.Millisecond, "Amount of time to wait for ping replies when doing scans.")
 
 	tcpCmd.Flags().BoolVar(&opts.SkipPingScan, "skip-ping", false, "Skip pinging hosts before scanning ports. All hosts are treated as up.")
+	tcpCmd.Flags().BoolVarP(&opts.Banners, "banners", "b", false, "Try to get banners from the services running on open ports.")
 
 	tcpCmd.Flags().BoolVar(&opts.PrintOpenOnly, "open", false, "Only show open and possibly filtered ports.")
 	tcpCmd.Flags().BoolVar(&opts.PrintUpOnly, "up", false, "Show results for only up hosts.")

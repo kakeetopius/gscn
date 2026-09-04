@@ -33,6 +33,7 @@ type TCPFullScanOptions struct {
 	AddUnknownHostNames bool
 	PingTimeout         time.Duration
 	SkipPingScan        bool
+	Banners             bool
 
 	PrintUpOnly   bool
 	PrintOpenOnly bool
@@ -44,6 +45,7 @@ type TCPFullScanResults struct {
 
 	printUpOnly   bool `json:"-"`
 	printOpenOnly bool `json:"-"`
+	printBanners  bool `json:"-"`
 }
 
 type TCPFullScanStats struct {
@@ -74,6 +76,7 @@ func (s *TCPFullScanner) Scan(ctx context.Context) (ScanResults, error) {
 	s.results.Stats.ScanTime = time.Since(startTime)
 	s.results.Stats.TotalNumOfHosts = len(s.results.Results)
 	s.results.printOpenOnly = s.PrintOpenOnly
+	s.results.printBanners = s.Banners
 	s.results.printUpOnly = s.PrintUpOnly
 
 	s.processResults()
@@ -99,7 +102,7 @@ func (s *TCPFullScanner) processResults() {
 }
 
 func (r *TCPFullScanResults) Print() {
-	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly)
+	printScanResultsMap(r.Results, r.Stats.ScanTime, r.printUpOnly, r.printOpenOnly, r.printBanners)
 }
 
 func (r *TCPFullScanResults) String() string {
@@ -134,13 +137,13 @@ func (s *TCPFullScanner) runTCPFullScan(ctx context.Context) error {
 	}
 	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
 
-	jobs := make(chan PortScanJob, numWorkers)
-	workerResultsChan := make(chan PortScanWorkerResult, numWorkers)
+	jobs := make(chan portScanJob, numWorkers)
+	workerResultsChan := make(chan portScanWorkerResult, numWorkers)
 	wg := &sync.WaitGroup{}
 
 	for range numWorkers {
 		wg.Add(1)
-		go scanTCPPort(wg, jobs, workerResultsChan)
+		go scanTCPPort(wg, jobs, workerResultsChan, s.Banners)
 	}
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
@@ -152,7 +155,7 @@ func (s *TCPFullScanner) runTCPFullScan(ctx context.Context) error {
 	masterDone := make(chan struct{})
 	go s.getTCPFullScanResults(ctx, workerResultsChan, masterDone)
 
-	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.ResponseTimeout)
+	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.HostNames, s.ResponseTimeout)
 
 	close(jobs)
 	wg.Wait() // wait for all to workers to finish
@@ -166,7 +169,7 @@ func (s *TCPFullScanner) runTCPFullScan(ctx context.Context) error {
 	return nil
 }
 
-func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResultsChan chan PortScanWorkerResult, masterDone chan<- struct{}) {
+func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResultsChan chan portScanWorkerResult, masterDone chan<- struct{}) {
 	// To Be Run By Main Worker (aggregator)
 	defer func() {
 		masterDone <- struct{}{}
@@ -188,6 +191,7 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 			if result.Port.State == PortStateOpen {
 				portIndex := hostResult.portIndex[result.Port.Number]
 				hostResult.Ports[portIndex].State = PortStateOpen
+				hostResult.Ports[portIndex].Banner = result.Banner
 
 				hostResult.HostState = HostStateUp // sometimes ping scan failed but port scan succeeds so if port is open then host is up.
 				hostResult.OpenPorts++
@@ -199,7 +203,12 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 	}
 }
 
-func scanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- PortScanWorkerResult) {
+func scanTCPPort(
+	wg *sync.WaitGroup,
+	jobs chan portScanJob,
+	resultsChan chan<- portScanWorkerResult,
+	try2GetBanners bool,
+) {
 	defer func() {
 		wg.Done()
 	}()
@@ -215,19 +224,45 @@ func scanTCPPort(wg *sync.WaitGroup, jobs chan PortScanJob, resultsChan chan<- P
 		dialer := net.Dialer{
 			Timeout: job.scanTimeout,
 		}
-		_, err := dialer.Dial(proto, target.String())
 
-		result := PortScanWorkerResult{
-			HostIP: target.Addr(),
-			Port: Port{
-				State:  PortStateClosed,
-				Number: PortNumber(target.Port()),
-			},
-		}
-		if err == nil {
+		func() {
+			port := target.Port()
+			result := portScanWorkerResult{
+				HostIP: target.Addr(),
+				Port: Port{
+					State:  PortStateClosed,
+					Number: PortNumber(port),
+				},
+			}
+			defer func() {
+				resultsChan <- result
+			}()
+
+			conn, err := dialer.Dial(proto, target.String())
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+
 			result.Port.State = PortStateOpen
-		}
+			if !try2GetBanners {
+				return
+			}
 
-		resultsChan <- result
+			prober, found := Probers[PortNumber(port)]
+			if !found {
+				return
+			}
+
+			banner, err := prober(conn, job)
+			if err != nil {
+				return
+			}
+			result.Banner = banner
+
+			fmt.Printf("Probing Port %v\n", port)
+			fmt.Println(result.Banner)
+		}()
+
 	}
 }

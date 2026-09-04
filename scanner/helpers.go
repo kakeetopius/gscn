@@ -176,10 +176,10 @@ func printScanResultsMap(
 			}
 
 			portStateStyle := pterm.FgDefault
-			switch hostResults.HostState {
-			case HostStateUp:
+			switch port.State {
+			case PortStateOpen:
 				portStateStyle = pterm.FgLightGreen
-			case HostStateDown:
+			case PortStateClosed:
 				portStateStyle = pterm.FgLightRed
 			}
 
