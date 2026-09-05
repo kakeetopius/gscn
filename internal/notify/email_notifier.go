@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/wneessen/go-mail"
@@ -17,7 +18,7 @@ type EmailNotifier struct {
 // It retrieves email configuration (sender, receiver, credentials) from the notifier's config,
 // constructs an email message, and sends it via Gmail's SMTP server.
 // Returns an error if email construction, client creation, or sending fails.
-func (n EmailNotifier) SendMessage(message string) error {
+func (n EmailNotifier) SendMessage(ctx context.Context, message string) error {
 	messageObj := mail.NewMsg()
 	username := n.SenderName
 	if username == "" {
@@ -55,7 +56,7 @@ func (n EmailNotifier) SendMessage(message string) error {
 		return fmt.Errorf("failed to create mail client %v", confErr)
 	}
 
-	if err := client.DialAndSend(messageObj); err != nil {
+	if err := client.DialAndSendWithContext(ctx, messageObj); err != nil {
 		return fmt.Errorf("failed to send mail: %v", err)
 	}
 

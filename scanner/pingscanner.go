@@ -90,29 +90,43 @@ func (s *PingScanner) Scan(ctx context.Context) (ScanResults, error) {
 	s.scanResults.ScanTime = time.Since(startTime)
 	s.scanResults.printUpOnly = s.PrintOnlyUp
 
-	s.processResults()
+	s.processResults(ctx)
 
 	return &s.scanResults, err
 }
 
-func (s *PingScanner) processResults() {
-	if s.AddUnknownHostNames {
-		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Success("Resolving Done")
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		for host, results := range s.resultMap {
-			if results.HostName != "" {
-				continue
-			}
-			name := netutil.ReverseLookup(ctx, host.String())
-			results.HostName = name
-			s.resultMap[host] = results
-		}
-	}
-
+func (s *PingScanner) processResults(ctx context.Context) {
 	if !s.ResultMapOnly {
 		s.scanResults.HostResults = resultMapToSlice(s.resultMap, s.SortResults)
+	}
+
+	if ctx.Err() != nil { // we have already been cancelled
+		return
+	}
+
+	if s.AddUnknownHostNames {
+		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
+		defer func() {
+			if ctx.Err() != nil {
+				spinner.Fail("Resolving Cancelled.")
+			} else {
+				spinner.Success("Resolving done")
+			}
+		}()
+
+		newCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		for host, result := range s.resultMap {
+			if ctx.Err() != nil {
+				return
+			}
+			if result.HostName != "" {
+				continue
+			}
+			name := netutil.ReverseLookup(newCtx, host.String())
+			result.HostName = name
+			s.resultMap[host] = result
+		}
 	}
 }
 
@@ -172,6 +186,17 @@ func (s *PingScanner) runPing(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if ctx.Err() != nil {
+			spinner.Fail("Pinging Cancelled")
+			return
+		}
+		if err != nil {
+			spinner.Fail("Pinging Failed")
+			return
+		}
+		spinner.Success("Pinging Done")
+	}()
 
 	jobs := make(chan PingScanJob, s.Workers)
 	workerResultsChan := make(chan PingHostResult, s.Workers)
@@ -179,7 +204,7 @@ func (s *PingScanner) runPing(ctx context.Context) error {
 	// start workers
 	for range s.Workers {
 		wg.Add(1)
-		go pingHost(s, wg, jobs, workerResultsChan)
+		go s.pingHost(ctx, wg, jobs, workerResultsChan)
 	}
 
 	masterDone := make(chan struct{})
@@ -189,6 +214,12 @@ func (s *PingScanner) runPing(ctx context.Context) error {
 	for _, target := range s.Targets {
 		IPaddr := target.Masked().Addr() // first IP in range
 		for target.Contains(IPaddr) {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+			}
+
 			jobs <- PingScanJob{
 				Target:    IPaddr,
 				PingCount: s.PingCount,
@@ -203,11 +234,10 @@ func (s *PingScanner) runPing(ctx context.Context) error {
 	close(workerResultsChan)
 	<-masterDone // wait for master to finish
 
-	spinner.Success("Pinging done")
 	return nil
 }
 
-func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingHostResult) {
+func (s *PingScanner) pingHost(ctx context.Context, wg *sync.WaitGroup, jobs chan PingScanJob, resultChan chan PingHostResult) {
 	// To be run by workers
 	setprivileged := true
 
@@ -218,19 +248,24 @@ func pingHost(scanner *PingScanner, wg *sync.WaitGroup, jobs chan PingScanJob, r
 	}
 
 	for job := range jobs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		pinger := probing.New(job.Target.String())
 		pinger.SetPrivileged(setprivileged)
 
 		pinger.Count = job.PingCount
-		pingTimeout := scanner.PingTimeout
+		pingTimeout := s.PingTimeout
 		if pingTimeout == 0*time.Second {
-			pingTimeout = time.Second * time.Duration(scanner.PingCount)
+			pingTimeout = time.Second * time.Duration(s.PingCount)
 		}
 		pinger.Timeout = pingTimeout
 
 		pingResult := PingHostResult{
 			HostState: HostStateDown,
-			HostName:  scanner.HostNames[job.Target],
+			HostName:  s.HostNames[job.Target],
 			IP:        job.Target,
 		}
 		err := pinger.Run()

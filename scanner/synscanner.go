@@ -99,25 +99,40 @@ func (s *TCPSynScanner) Scan(ctx context.Context) (ScanResults, error) {
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
 
-	s.processResults()
+	s.processResults(ctx)
 	return &s.results, nil
 }
 
-func (s *TCPSynScanner) processResults() {
-	if s.AddUnknownHostNames {
-		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Success("Resolving done")
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
+func (s *TCPSynScanner) processResults(ctx context.Context) {
+	if ctx.Err() != nil { // we have already been cancelled
+		return
+	}
+	if !s.AddUnknownHostNames {
+		return
+	}
 
-		for host, results := range s.results.Results {
-			if results.HostName != "" {
-				continue
-			}
-			name := netutil.ReverseLookup(ctx, host.String())
-			results.HostName = name
-			s.results.Results[host] = results
+	spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
+	newCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	defer func() {
+		if ctx.Err() != nil {
+			spinner.Fail("Resolving Cancelled.")
+		} else {
+			spinner.Success("Resolving done")
 		}
+	}()
+
+	for host, results := range s.results.Results {
+		if ctx.Err() != nil {
+			return
+		}
+		if results.HostName != "" {
+			continue
+		}
+		name := netutil.ReverseLookup(newCtx, host.String())
+		results.HostName = name
+		s.results.Results[host] = results
 	}
 }
 
@@ -154,6 +169,9 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 			return pingErr
 		}
 		s.hostStates = pingResults
+		if ctx.Err() != nil { // we have already been cancelled
+			return nil
+		}
 	}
 	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
 
@@ -161,13 +179,6 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			spinner.Fail("Scan Failed")
-		} else {
-			spinner.Success("Scanning Done")
-		}
-	}()
 
 	allIfaces, err := s.ifaceProvider.Interfaces()
 	if err != nil {
@@ -205,14 +216,18 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	go s.getTCPSynScanResults(ctx, packetReceiver, masterDone)
 
 	jobs := make(chan portScanJob, s.Workers)
-	g, ctx := errgroup.WithContext(ctx)
+	g, newCtx := errgroup.WithContext(ctx)
 	for range s.Workers {
 		g.Go(func() error {
-			return s.synScanTCPPort(jobs, packetSender, localhostPacketSender)
+			return s.synScanTCPPort(newCtx, jobs, packetSender, localhostPacketSender)
 		})
 	}
 
 	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.HostNames, s.ResponseTimeout)
+	if ctx.Err() != nil {
+		spinner.Fail("Scan Cancelled")
+		return
+	}
 
 	close(jobs)
 	err = g.Wait() // wait for all to workers to finish
@@ -221,8 +236,14 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	}
 
 	packetSender.Wait() // wait for the packet sender to send all packets
+	if ctx.Err() != nil {
+		spinner.Fail("Scan Cancelled")
+		return nil
+	}
 
-	<-time.After(s.ResponseTimeout) // wait for the response timeout
+	spinner.Success("Scanning Done")
+
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response") // wait for the response timeout
 	packetReceiver.Close()
 
 	<-masterDone // wait for master to finish processing what is already enqueued by the packet receiver
@@ -326,7 +347,12 @@ func (s *TCPSynScanner) getTCPSynScanResults(ctx context.Context, packetReceiver
 	}
 }
 
-func (s *TCPSynScanner) synScanTCPPort(jobs chan portScanJob, packetSender packet.PacketSender, localhostPacketSender packet.PacketSender) error {
+func (s *TCPSynScanner) synScanTCPPort(
+	ctx context.Context,
+	jobs chan portScanJob,
+	packetSender packet.PacketSender,
+	localhostPacketSender packet.PacketSender,
+) error {
 	// to be run by workers
 
 	packetBufOpts := gopacket.SerializeOptions{
@@ -334,6 +360,11 @@ func (s *TCPSynScanner) synScanTCPPort(jobs chan portScanJob, packetSender packe
 		ComputeChecksums: true,
 	}
 	for job := range jobs {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
 		packetBuf := gopacket.NewSerializeBuffer()
 
 		portNum := job.target.Port()
