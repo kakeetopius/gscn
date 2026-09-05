@@ -2,6 +2,7 @@
 package notify
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -11,7 +12,7 @@ import (
 // Notifier defines the interface for sending notification messages.
 type Notifier interface {
 	// SendMessage sends a notification message and returns an error if it fails.
-	SendMessage(message string) error
+	SendMessage(ctx context.Context, message string) error
 }
 
 // NotifierFromConfig returns a Notifier instance based on the name given in the config
@@ -45,7 +46,7 @@ func NotifierFromConfig(config *viper.Viper) (Notifier, error) {
 	return nil, fmt.Errorf("notifier %v not supported", notifierName)
 }
 
-func SendMessageWithNotifier(msg fmt.Stringer, notifier Notifier) (err error) {
+func SendMessageWithNotifier(ctx context.Context, msg fmt.Stringer, notifier Notifier) (err error) {
 	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
 	if err != nil {
 		return err
@@ -59,6 +60,6 @@ func SendMessageWithNotifier(msg fmt.Stringer, notifier Notifier) (err error) {
 		}
 	}()
 
-	err = notifier.SendMessage(msg.String())
+	err = notifier.SendMessage(ctx, msg.String())
 	return
 }

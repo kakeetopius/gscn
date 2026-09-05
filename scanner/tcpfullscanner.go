@@ -79,25 +79,39 @@ func (s *TCPFullScanner) Scan(ctx context.Context) (ScanResults, error) {
 	s.results.printBanners = s.Banners
 	s.results.printUpOnly = s.PrintUpOnly
 
-	s.processResults()
+	s.processResults(ctx)
 	return &s.results, nil
 }
 
-func (s *TCPFullScanner) processResults() {
-	if s.AddUnknownHostNames {
-		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Success("Resolving done")
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
+func (s *TCPFullScanner) processResults(ctx context.Context) {
+	if ctx.Err() != nil { // we have already been cancelled
+		return
+	}
+	if !s.AddUnknownHostNames {
+		return
+	}
+	spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
+	newCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 
-		for host, results := range s.results.Results {
-			if results.HostName != "" {
-				continue
-			}
-			name := netutil.ReverseLookup(ctx, host.String())
-			results.HostName = name
-			s.results.Results[host] = results
+	defer func() {
+		if ctx.Err() != nil {
+			spinner.Fail("Resolving Cancelled.")
+		} else {
+			spinner.Success("Resolving done")
 		}
+	}()
+
+	for host, results := range s.results.Results {
+		if ctx.Err() != nil {
+			return
+		}
+		if results.HostName != "" {
+			continue
+		}
+		name := netutil.ReverseLookup(newCtx, host.String())
+		results.HostName = name
+		s.results.Results[host] = results
 	}
 }
 
@@ -134,6 +148,9 @@ func (s *TCPFullScanner) runTCPFullScan(ctx context.Context) error {
 			return err
 		}
 		s.hostStates = pingResults
+		if ctx.Err() != nil { // we have already been cancelled
+			return nil
+		}
 	}
 	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "tcp")
 
@@ -143,24 +160,33 @@ func (s *TCPFullScanner) runTCPFullScan(ctx context.Context) error {
 
 	for range numWorkers {
 		wg.Add(1)
-		go scanTCPPort(wg, jobs, workerResultsChan, s.Banners)
+		go scanTCPPort(ctx, wg, jobs, workerResultsChan, s.Banners)
 	}
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
 		return err
 	}
-	defer spinner.Success("Scanning Done")
 
 	masterDone := make(chan struct{})
 	go s.getTCPFullScanResults(ctx, workerResultsChan, masterDone)
 
 	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.HostNames, s.ResponseTimeout)
 
+	if ctx.Err() != nil {
+		spinner.Fail("Scan Cancelled")
+		return nil
+	}
+
 	close(jobs)
 	wg.Wait() // wait for all to workers to finish
+	if ctx.Err() != nil {
+		spinner.Fail("Scan Cancelled")
+		return nil
+	}
+	spinner.Success("Scanning Done")
 
-	<-time.After(s.ResponseTimeout) // wait for the specified response timeout
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response") // wait for the response timeout
 
 	close(workerResultsChan)
 	<-masterDone // wait for master to process all data in the workerResultsChan
@@ -204,6 +230,7 @@ func (s *TCPFullScanner) getTCPFullScanResults(ctx context.Context, workerResult
 }
 
 func scanTCPPort(
+	ctx context.Context,
 	wg *sync.WaitGroup,
 	jobs chan portScanJob,
 	resultsChan chan<- portScanWorkerResult,
@@ -214,6 +241,11 @@ func scanTCPPort(
 	}()
 
 	for job := range jobs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		proto := ""
 		target := job.target
 		if target.Addr().Is4() {
@@ -238,7 +270,7 @@ func scanTCPPort(
 				resultsChan <- result
 			}()
 
-			conn, err := dialer.Dial(proto, target.String())
+			conn, err := dialer.DialContext(ctx, proto, target.String())
 			if err != nil {
 				return
 			}

@@ -77,24 +77,40 @@ func (s *UDPScanner) Scan(ctx context.Context) (ScanResults, error) {
 	s.results.printOpenOnly = s.PrintOpenOnly
 	s.results.printUpOnly = s.PrintUpOnly
 
-	s.processResults()
+	s.processResults(ctx)
 	return &s.results, nil
 }
 
-func (s *UDPScanner) processResults() {
-	if s.AddUnknownHostNames {
-		spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
-		defer spinner.Success("Resolving Done")
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		for host, results := range s.results.Results {
-			if results.HostName != "" {
-				continue
-			}
-			name := netutil.ReverseLookup(ctx, host.String())
-			results.HostName = name
-			s.results.Results[host] = results
+func (s *UDPScanner) processResults(ctx context.Context) {
+	if ctx.Err() != nil { // we have already been cancelled
+		return
+	}
+	if !s.AddUnknownHostNames {
+		return
+	}
+
+	spinner, _ := pterm.DefaultSpinner.Start("Resolving Host Names....")
+	newCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	defer func() {
+		if ctx.Err() != nil {
+			spinner.Fail("Resolving Cancelled.")
+		} else {
+			spinner.Success("Resolving done")
 		}
+	}()
+
+	for host, results := range s.results.Results {
+		if ctx.Err() != nil {
+			return
+		}
+		if results.HostName != "" {
+			continue
+		}
+		name := netutil.ReverseLookup(newCtx, host.String())
+		results.HostName = name
+		s.results.Results[host] = results
 	}
 }
 
@@ -131,6 +147,10 @@ func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 		return err
 	}
 	s.hostStates = pingResults
+	if ctx.Err() != nil { // we have already been cancelled
+		return nil
+	}
+
 	s.results.Results = getResultSet(s.Targets, s.TargetPorts, s.HostNames, s.hostStates, "udp")
 
 	jobs := make(chan portScanJob, numWorkers)
@@ -138,24 +158,34 @@ func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 	wg := &sync.WaitGroup{}
 	for range numWorkers {
 		wg.Add(1)
-		go scanUDPPort(s, wg, jobs, workerResultsChan)
+		go s.scanUDPPort(ctx, wg, jobs, workerResultsChan)
 	}
 
 	spinner, err := pterm.DefaultSpinner.Start("Scanning hosts")
 	if err != nil {
 		return err
 	}
-	defer spinner.Success("Scanning Done")
 
 	masterDone := make(chan struct{})
 	go s.getUDPScanResults(ctx, workerResultsChan, masterDone)
 
 	sendPortScanningJobs(ctx, jobs, s.Targets, s.TargetPorts, s.HostNames, s.ResponseTimeout)
 
+	if ctx.Err() != nil {
+		spinner.Fail("Scan Cancelled")
+		return nil
+	}
+
 	close(jobs) // wait for all the workers to finish
 	wg.Wait()
+	if ctx.Err() != nil {
+		spinner.Fail("Scan Cancelled")
+		return nil
+	}
 
-	<-time.After(s.ResponseTimeout) // wait for the specified response timeout
+	spinner.Success("Scanning Done")
+
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response") // wait for the response timeout
 
 	close(workerResultsChan)
 	<-masterDone // wait for master to process all data in workerResultsChan
@@ -164,12 +194,22 @@ func (s *UDPScanner) runUDPScan(ctx context.Context) error {
 	return nil
 }
 
-func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan portScanJob, resultsChan chan<- portScanWorkerResult) {
+func (s *UDPScanner) scanUDPPort(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	jobs chan portScanJob,
+	resultsChan chan<- portScanWorkerResult,
+) {
 	defer func() {
 		wg.Done()
 	}()
 
 	for job := range jobs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		target := job.target
 		proto := ""
 		if target.Addr().Is4() {
@@ -184,7 +224,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan portScanJob,
 				Number: PortNumber(target.Port()),
 			},
 		}
-		if scanner.hostStates[target.Addr()].HostState == HostStateDown {
+		if s.hostStates[target.Addr()].HostState == HostStateDown {
 			resultsChan <- result
 			continue
 		}
@@ -192,7 +232,7 @@ func scanUDPPort(scanner *UDPScanner, wg *sync.WaitGroup, jobs chan portScanJob,
 		dialer := net.Dialer{
 			Timeout: job.scanTimeout,
 		}
-		conn, err := dialer.Dial(proto, target.String())
+		conn, err := dialer.DialContext(ctx, proto, target.String())
 		if err != nil {
 			resultsChan <- result
 			continue

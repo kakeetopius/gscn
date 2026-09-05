@@ -47,7 +47,10 @@ func (ps *PcapPacketSender) Type() PacketSenderType {
 
 func (ps *PcapPacketSender) Wait() {
 	close(ps.sendChannel)
-	<-ps.senderFinished
+	select {
+	case <-ps.senderFinished:
+	case <-ps.ctx.Done():
+	}
 }
 
 func (ps *PcapPacketSender) SendPacket(packetData []byte, iface *netutil.Interface) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/signal"
 
 	"github.com/kakeetopius/gscn/internal/notify"
 	"github.com/spf13/viper"
@@ -19,6 +20,9 @@ type ScanOptions struct {
 }
 
 func DoScan(ctx context.Context, scanner Scanner, opts ScanOptions) error {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+	defer cancel()
+
 	results, err := scanner.Scan(ctx)
 	if err != nil {
 		return err
@@ -58,12 +62,12 @@ func DoScan(ctx context.Context, scanner Scanner, opts ScanOptions) error {
 		}
 	}
 
-	if opts.Notify {
+	if opts.Notify && ctx.Err() == nil { // only send results if we haven't been cancelled
 		notifer, err := notify.NotifierFromConfig(opts.Config)
 		if err != nil {
 			return err
 		}
-		return notify.SendMessageWithNotifier(results, notifer)
+		return notify.SendMessageWithNotifier(ctx, results, notifer)
 	}
 
 	return nil

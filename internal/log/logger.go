@@ -2,6 +2,7 @@
 package log
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -69,12 +70,17 @@ func (l Logger) Errorf(msg string, params ...any) {
 	}
 }
 
-func (l Logger) WaitTimeout(duration time.Duration, timeoutReason string) {
+func (l Logger) WaitTimeout(ctx context.Context, duration time.Duration, timeoutReason string) {
 	spinner := &pterm.DefaultSpinner
 	if l.Debug {
 		spinner, _ = spinner.Start("Waiting for "+timeoutReason, " timeout")
 	}
-	<-time.After(duration)
+	select {
+	case <-time.After(duration):
+	case <-ctx.Done():
+		spinner.Fail("Cancelled")
+		return
+	}
 	if l.Debug {
 		spinner.Success("Timeout Reached.")
 	}

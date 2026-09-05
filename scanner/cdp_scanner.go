@@ -193,7 +193,8 @@ func (s *CDPScanner) scanForCDPHosts(ctx context.Context) (err error) {
 		s.packetReceiver.AddInterface(iface)
 	}
 
-	s.logger.WaitTimeout(s.WaitTimeout, "")
+	s.logger.WaitTimeout(ctx, s.WaitTimeout, "")
+
 	s.packetReceiver.Close()
 	<-receiverDone
 

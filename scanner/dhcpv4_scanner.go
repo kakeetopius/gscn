@@ -114,7 +114,7 @@ func (s *DHCPv4Scanner) Scan(ctx context.Context) (ScanResults, error) {
 	}
 	s.results.Stats.ScanDuration = time.Since(start)
 
-	err = s.processResults()
+	err = s.processResults(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,33 +145,38 @@ func (r DHCPv4ScannerResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *DHCPv4Scanner) processResults() error {
+func (s *DHCPv4Scanner) processResults(ctx context.Context) error {
 	numServers := len(s.results.Servers)
 	s.results.printHostNames = s.WithHostNames
 	s.results.printVendors = s.WithVendorInfo
 
-	var bar *pterm.ProgressbarPrinter
-	var err error
-	if s.WithHostNames && numServers > 0 {
-		fmt.Println()
-		s.logger.Info("Trying to resolve hostnames")
-		bar, err = pterm.DefaultProgressbar.WithTotal(numServers).Start()
-		if err != nil {
-			return err
-		}
-		defer bar.Stop()
+	if ctx.Err() != nil { // we have already been cancelled
+		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
+	if !s.WithHostNames || numServers < 0 {
+		return nil
+	}
+
+	var bar *pterm.ProgressbarPrinter
+	var err error
+
+	fmt.Println()
+	s.logger.Info("Trying to resolve hostnames")
+	bar, err = pterm.DefaultProgressbar.WithTotal(numServers).Start()
+	if err != nil {
+		return err
+	}
+	defer bar.Stop()
+
+	newCtx, cancel := context.WithTimeout(ctx, s.ResponseTimeout)
 	defer cancel()
 	for i := range s.results.Servers {
-		if s.WithVendorInfo {
-			s.results.Servers[i].Vendor = netutil.MACVendor(s.results.Servers[i].MACAddress.String())
+		if ctx.Err() != nil {
+			return nil
 		}
-		if s.WithHostNames {
-			s.results.Servers[i].HostName = netutil.ReverseLookup(ctx, s.results.Servers[i].IP.String())
-			bar.Increment()
-		}
+		s.results.Servers[i].HostName = netutil.ReverseLookup(newCtx, s.results.Servers[i].IP.String())
+		bar.Increment()
 	}
 
 	return nil
@@ -203,6 +208,9 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 	s.logger.Info("Scanning for DHCPv4 servers on interface(s): " + joinIfaceNames(s.Interfaces))
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
+			if ctx.Err() != nil {
+				return nil
+			}
 			s.packetReceiver.AddInterface(iface)
 			err := s.scanForDhcpServersOnInterface(&iface)
 			if err != nil {
@@ -212,7 +220,7 @@ func (s *DHCPv4Scanner) runDhcpv4ServerScanning(ctx context.Context) (err error)
 		}
 		s.packetSender.Wait()
 	}
-	s.logger.WaitTimeout(s.ResponseTimeout, "response")
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response")
 	s.packetReceiver.Close()
 
 	<-receiverDone // wait for receiving routine to finish
@@ -351,6 +359,8 @@ outer:
 				MACAddress: netutil.MAC(ethPacket.SrcMAC),
 				Iface:      packet.Iface,
 			}
+			dhcpServer.Vendor = netutil.MACVendor(dhcpServer.MACAddress.String())
+
 			ip, ok := netip.AddrFromSlice(dhcpPacket.YourClientIP)
 			if ok {
 				dhcpServer.OfferedIP = ip

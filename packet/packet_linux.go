@@ -69,7 +69,10 @@ func (ps *LinuxPacketSender) Type() PacketSenderType {
 
 func (ps *LinuxPacketSender) Wait() {
 	close(ps.sendChannel)
-	<-ps.senderFinished
+	select {
+	case <-ps.senderFinished:
+	case <-ps.ctx.Done():
+	}
 }
 
 func (ps *LinuxPacketSender) SendPacket(packetData []byte, iface *netutil.Interface) error {
@@ -173,7 +176,10 @@ func (ps *LinuxRawIPSender) SendPacket(packetData []byte, _ *netutil.Interface) 
 
 func (ps *LinuxRawIPSender) Wait() {
 	close(ps.sendChannel)
-	<-ps.senderFinished
+	select {
+	case <-ps.senderFinished:
+	case <-ps.ctx.Done():
+	}
 }
 
 func (ps *LinuxRawIPSender) Close() error {

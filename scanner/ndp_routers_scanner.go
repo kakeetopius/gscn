@@ -98,7 +98,7 @@ func (s *NDPRouterScanner) Scan(ctx context.Context) (ScanResults, error) {
 
 	s.results.ScanDuration = time.Since(start)
 
-	err = s.processResults()
+	err = s.processResults(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -106,16 +106,20 @@ func (s *NDPRouterScanner) Scan(ctx context.Context) (ScanResults, error) {
 	return &s.results, nil
 }
 
-func (s *NDPRouterScanner) processResults() error {
+func (s *NDPRouterScanner) processResults(ctx context.Context) error {
 	s.results.printHostNames = s.AddHostNames
 	s.results.printVendors = s.WithVendorInfo
+	if ctx.Err() != nil { // we have already been cancelled
+		return nil
+	}
 
 	resultSet := s.results
 	numHosts := len(resultSet.RouterResults)
 
-	var bar *pterm.ProgressbarPrinter
-	var err error
 	if s.AddHostNames && numHosts > 0 {
+		var bar *pterm.ProgressbarPrinter
+		var err error
+
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
 		bar, err = pterm.DefaultProgressbar.WithTotal(numHosts).Start()
@@ -123,16 +127,14 @@ func (s *NDPRouterScanner) processResults() error {
 			return err
 		}
 		defer bar.Stop()
-	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
-	defer cancel()
-	for i := range resultSet.RouterResults {
-		if s.WithVendorInfo {
-			resultSet.RouterResults[i].Vendor = netutil.MACVendor(resultSet.RouterResults[i].MacAddr.String())
-		}
-		if s.AddHostNames {
-			resultSet.RouterResults[i].HostName = netutil.ReverseLookup(ctx, resultSet.RouterResults[i].IPAddr.String())
+		newCtx, cancel := context.WithTimeout(ctx, s.ResponseTimeout)
+		defer cancel()
+		for i := range resultSet.RouterResults {
+			if ctx.Err() != nil {
+				return nil
+			}
+			resultSet.RouterResults[i].HostName = netutil.ReverseLookup(newCtx, resultSet.RouterResults[i].IPAddr.String())
 			bar.Increment()
 		}
 	}
@@ -212,14 +214,14 @@ func (s *NDPRouterScanner) runNDP(ctx context.Context) error {
 	<-startSending // wait for receiving routine to finish setup
 
 	if !s.Passive {
-		err := s.sendRSProbes()
+		err := s.sendRSProbes(ctx)
 		if err != nil {
 			return err
 		}
 		packetSender.Wait() // wait for packet sender to send all packets
 	}
 
-	s.logger.WaitTimeout(s.ResponseTimeout, "response")
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response")
 	packetReceiver.Close()
 
 	<-receiverDone // wait for receiving routine to finish
@@ -228,7 +230,7 @@ func (s *NDPRouterScanner) runNDP(ctx context.Context) error {
 	return nil
 }
 
-func (s *NDPRouterScanner) sendRSProbes() error {
+func (s *NDPRouterScanner) sendRSProbes(ctx context.Context) error {
 	s.logger.Info("Scanning for ipv6 routers on interface(s): " + joinIfaceNames(s.Interfaces))
 
 	for _, iface := range s.Interfaces {
@@ -237,6 +239,9 @@ func (s *NDPRouterScanner) sendRSProbes() error {
 			return err
 		}
 		for range s.ProbeCount {
+			if ctx.Err() != nil {
+				return nil
+			}
 			err := sendRSPacket(s.packetSender, &iface, ip6Addr.Addr())
 			if err != nil {
 				return err
@@ -367,6 +372,7 @@ func (s *NDPRouterScanner) getRouterAdvertisements(ctx context.Context, startSen
 					}
 				}
 			}
+			result.Vendor = netutil.MACVendor(result.MacAddr.String())
 
 			hostResults = append(hostResults, result)
 			receivedFrom[srcIP] = struct{}{}

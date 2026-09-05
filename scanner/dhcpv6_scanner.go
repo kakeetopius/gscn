@@ -120,7 +120,7 @@ func (s *DHCPv6Scanner) Scan(ctx context.Context) (ScanResults, error) {
 	}
 	s.results.Stats.ScanDuration = time.Since(start)
 
-	err = s.processResults()
+	err = s.processResults(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -154,33 +154,38 @@ func (r DHCPv6ScannerResults) String() string {
 	return stringBuilder.String()
 }
 
-func (s *DHCPv6Scanner) processResults() error {
+func (s *DHCPv6Scanner) processResults(ctx context.Context) error {
 	numServers := len(s.results.Servers)
 	s.results.printHostNames = s.WithHostNames
 	s.results.printVendors = s.WithVendorInfo
 
-	var bar *pterm.ProgressbarPrinter
-	var err error
-	if s.WithHostNames && numServers > 0 {
-		fmt.Println()
-		s.logger.Info("Trying to resolve hostnames")
-		bar, err = pterm.DefaultProgressbar.WithTotal(numServers).Start()
-		if err != nil {
-			return err
-		}
-		defer bar.Stop()
+	if ctx.Err() != nil { // we have already been cancelled
+		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
+	if !s.WithHostNames || numServers < 0 {
+		return nil
+	}
+
+	var bar *pterm.ProgressbarPrinter
+	var err error
+
+	fmt.Println()
+	s.logger.Info("Trying to resolve hostnames")
+	bar, err = pterm.DefaultProgressbar.WithTotal(numServers).Start()
+	if err != nil {
+		return err
+	}
+	defer bar.Stop()
+
+	newCtx, cancel := context.WithTimeout(ctx, s.ResponseTimeout)
 	defer cancel()
 	for i := range s.results.Servers {
-		if s.WithVendorInfo {
-			s.results.Servers[i].Vendor = netutil.MACVendor(s.results.Servers[i].MACAddress.String())
+		if ctx.Err() != nil {
+			return nil
 		}
-		if s.WithHostNames {
-			s.results.Servers[i].HostName = netutil.ReverseLookup(ctx, s.results.Servers[i].IP.String())
-			bar.Increment()
-		}
+		s.results.Servers[i].HostName = netutil.ReverseLookup(newCtx, s.results.Servers[i].IP.String())
+		bar.Increment()
 	}
 
 	return nil
@@ -212,6 +217,9 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 	s.logger.Info("Scanning for dhcpv6 on interface(s): " + joinIfaceNames(s.Interfaces))
 	if !s.Passive {
 		for _, iface := range s.Interfaces {
+			if ctx.Err() != nil {
+				return nil
+			}
 			s.packetReceiver.AddInterface(iface)
 			err := s.scanForDhcp6ServersOnInterface(&iface)
 			if err != nil {
@@ -221,7 +229,7 @@ func (s *DHCPv6Scanner) runDhcpv6ServerScanning(ctx context.Context) (err error)
 		}
 		s.packetSender.Wait()
 	}
-	s.logger.WaitTimeout(s.ResponseTimeout, "response")
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response")
 	s.packetReceiver.Close()
 
 	<-receiverDone // wait for receiving routine to finish
@@ -356,6 +364,7 @@ func (s *DHCPv6Scanner) getDHCPScanResults(ctx context.Context, startSendChan ch
 				Iface:      packet.Iface,
 				IP:         addr,
 			}
+			dhcpServer.Vendor = netutil.MACVendor(dhcpServer.MACAddress.String())
 
 			for _, opt := range dhcpPacket.Options {
 				switch opt.Code {

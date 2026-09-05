@@ -108,7 +108,7 @@ func (s *NDPNeighborScanner) Scan(ctx context.Context) (ScanResults, error) {
 
 	s.results.ScanDuration = time.Since(start)
 
-	err = s.processResults()
+	err = s.processResults(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -116,16 +116,20 @@ func (s *NDPNeighborScanner) Scan(ctx context.Context) (ScanResults, error) {
 	return &s.results, nil
 }
 
-func (s *NDPNeighborScanner) processResults() error {
+func (s *NDPNeighborScanner) processResults(ctx context.Context) error {
 	s.results.printHostNames = s.AddUnknownHostNames
 	s.results.printVendors = s.WithVendorInfo
+	if ctx.Err() != nil { // we have already been cancelled
+		return nil
+	}
 
 	resultSet := s.results
 	numHosts := len(resultSet.HostResults)
 
-	var bar *pterm.ProgressbarPrinter
-	var err error
 	if s.AddUnknownHostNames && numHosts > 0 {
+		var bar *pterm.ProgressbarPrinter
+		var err error
+
 		fmt.Println()
 		s.logger.Info("Trying to resolve hostnames")
 		bar, err = pterm.DefaultProgressbar.WithTotal(numHosts).Start()
@@ -133,16 +137,14 @@ func (s *NDPNeighborScanner) processResults() error {
 			return err
 		}
 		defer bar.Stop()
-	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.ResponseTimeout)
-	defer cancel()
-	for i := range resultSet.HostResults {
-		if s.WithVendorInfo {
-			resultSet.HostResults[i].Vendor = netutil.MACVendor(resultSet.HostResults[i].MacAddr.String())
-		}
-		if s.AddUnknownHostNames {
-			resultSet.HostResults[i].HostName = netutil.ReverseLookup(ctx, resultSet.HostResults[i].IPAddr.String())
+		newCtx, cancel := context.WithTimeout(ctx, s.ResponseTimeout)
+		defer cancel()
+		for i := range resultSet.HostResults {
+			if ctx.Err() != nil {
+				return nil
+			}
+			resultSet.HostResults[i].HostName = netutil.ReverseLookup(newCtx, resultSet.HostResults[i].IPAddr.String())
 			bar.Increment()
 		}
 	}
@@ -205,14 +207,14 @@ func (s *NDPNeighborScanner) runNDP(ctx context.Context) error {
 	<-startSending // wait for receiving routine to finish setup
 
 	if !s.Passive {
-		err := s.sendNSProbes()
+		err := s.sendNSProbes(ctx)
 		if err != nil {
 			return err
 		}
 		packetSender.Wait() // wait for packet sender to send all packets
 	}
 
-	s.logger.WaitTimeout(s.ResponseTimeout, "response")
+	s.logger.WaitTimeout(ctx, s.ResponseTimeout, "response")
 	packetReceiver.Close()
 
 	<-receiverDone // wait for receiving routine to finish
@@ -221,7 +223,7 @@ func (s *NDPNeighborScanner) runNDP(ctx context.Context) error {
 	return nil
 }
 
-func (s *NDPNeighborScanner) sendNSProbes() error {
+func (s *NDPNeighborScanner) sendNSProbes(ctx context.Context) error {
 	s.logger.Info("Probing host(s) on interface(s): " + s.Interface.Name)
 
 	for _, target := range s.Targets {
@@ -235,6 +237,9 @@ func (s *NDPNeighborScanner) sendNSProbes() error {
 
 		for target.Contains(IPaddr) {
 			for range s.ProbeCount {
+				if ctx.Err() != nil {
+					return nil
+				}
 				err := sendNSPacket(s.packetSender, &route.Interface, route.SrcAddr, IPaddr)
 				if err != nil {
 					return err
@@ -355,6 +360,7 @@ func (s *NDPNeighborScanner) getNeighbourAdvertisements(ctx context.Context, sta
 				Iface:    packet.Iface,
 				IsRouter: icmpPacket.Router(),
 			}
+			result.Vendor = netutil.MACVendor(result.MacAddr.String())
 			hostResults = append(hostResults, result)
 			receivedFrom[srcIP] = struct{}{}
 		}
@@ -408,7 +414,7 @@ func (r NDPScanResults) display() {
 		tableData[0] = append(tableData[0], "Vendor")
 	}
 	if r.printHostNames {
-		tableData[0] = append(tableData[0], "HostNames")
+		tableData[0] = append(tableData[0], "HostName")
 	}
 
 	for _, result := range r.HostResults {
