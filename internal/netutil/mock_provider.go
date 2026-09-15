@@ -245,5 +245,5 @@ func (m *MockNetInterfaceProvider) InterfaceByIndex(index int) (Interface, error
 			return mockInterfaces[i], nil
 		}
 	}
-	return Interface{}, fmt.Errorf("interface with index %q not found", index)
+	return Interface{}, fmt.Errorf("interface with index %v not found", index)
 }

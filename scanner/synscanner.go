@@ -397,9 +397,8 @@ func (s *TCPSynScanner) synScanTCPPort(
 				}
 			} else {
 				dstMac, err = s.macResolver.Resolve(route.NextHop)
-				var macErr resolving.ErrMacNotFound
 				if err != nil {
-					if !errors.As(err, &macErr) {
+					if _, ok := errors.AsType[resolving.ErrMacNotFound](err); !ok {
 						return err
 					}
 					// if we fail to get mac we just set to the broadcast.
