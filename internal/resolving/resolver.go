@@ -48,8 +48,7 @@ func (r *resolver) Resolve(addr netip.Addr) (netutil.MAC, error) {
 	} else {
 		mac, err = r.resolveMAC(addr)
 		if err != nil {
-			var errMac ErrMacNotFound
-			if errors.As(err, &errMac) {
+			if errMac, ok := errors.AsType[ErrMacNotFound](err); ok {
 				r.macNotFound[errMac.DstIP] = struct{}{}
 			}
 			return nil, err

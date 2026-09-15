@@ -37,7 +37,7 @@ func (r *realNetInterfaceProvider) InterfaceByName(name string) (Interface, erro
 		return r.interfaces[index], nil
 	}
 
-	return Interface{}, fmt.Errorf("interface %q not found", name)
+	return Interface{}, fmt.Errorf("interface %v not found", name)
 }
 
 func (r *realNetInterfaceProvider) InterfaceByIndex(ifIndex int) (Interface, error) {
@@ -45,7 +45,7 @@ func (r *realNetInterfaceProvider) InterfaceByIndex(ifIndex int) (Interface, err
 		return r.interfaces[index], nil
 	}
 
-	return Interface{}, fmt.Errorf("interface with index %q not found", ifIndex)
+	return Interface{}, fmt.Errorf("interface with index %v found", ifIndex)
 }
 
 type Interface struct {
