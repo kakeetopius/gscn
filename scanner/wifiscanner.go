@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
@@ -18,7 +19,7 @@ type WiFiScanner struct {
 
 type WiFiScannerOptions struct {
 	InterfaceName string
-	AutoInterface bool
+	RequiredSSIDs []string
 }
 
 type WiFiScanResults struct {
@@ -60,7 +61,7 @@ func (r *WiFiScanResults) String() string {
 	return stringBuilder.String()
 }
 
-func runWifiScan(ctx context.Context, scanner *WiFiScanner) error {
+func runWifiScan(ctx context.Context, scanner *WiFiScanner) (err error) {
 	client, err := wifi.New()
 	if err != nil {
 		return err
@@ -68,12 +69,10 @@ func runWifiScan(ctx context.Context, scanner *WiFiScanner) error {
 	defer client.Close()
 
 	var iface *wifi.Interface
-	if scanner.AutoInterface {
+	if scanner.InterfaceName == "" {
 		iface, err = firstWiFiInterface(client)
-	} else if scanner.InterfaceName != "" {
-		iface, err = wifiInterfaceByName(client, scanner.InterfaceName)
 	} else {
-		return fmt.Errorf("no wifi interface provided")
+		iface, err = wifiInterfaceByName(client, scanner.InterfaceName)
 	}
 	if err != nil {
 		return err
@@ -83,7 +82,13 @@ func runWifiScan(ctx context.Context, scanner *WiFiScanner) error {
 	if err != nil {
 		return err
 	}
-	defer spinner.Stop()
+	defer func() {
+		if err != nil {
+			spinner.Fail()
+		} else {
+			spinner.Success()
+		}
+	}()
 	err = client.Scan(ctx, iface)
 	if err != nil {
 		return err
@@ -92,6 +97,12 @@ func runWifiScan(ctx context.Context, scanner *WiFiScanner) error {
 	aps, err := client.AccessPoints(iface)
 	if err != nil {
 		return err
+	}
+
+	if len(scanner.RequiredSSIDs) != 0 {
+		aps = filter(aps, func(i *wifi.BSS) bool {
+			return slices.Contains(scanner.RequiredSSIDs, i.SSID)
+		})
 	}
 
 	scanner.results = WiFiScanResults{
