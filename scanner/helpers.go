@@ -389,3 +389,15 @@ func joinPrefixes(prefixes []netip.Prefix) string {
 
 	return strings.Join(result, ", ")
 }
+
+func filter[T any](slice []T, filterFunc func(i T) bool) []T {
+	newSlice := make([]T, 0)
+
+	for _, i := range slice {
+		if filterFunc(i) {
+			newSlice = append(newSlice, i)
+		}
+	}
+
+	return newSlice
+}
