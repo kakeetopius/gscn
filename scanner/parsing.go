@@ -290,8 +290,7 @@ func PortsFromString(s string) ([]PortNumber, error) {
 		seenStrings[portString] = struct{}{}
 	}
 
-	slices.Sort(ports)
-	return netutil.Unique(ports), nil
+	return ports, nil
 }
 
 func parsePortSpec(s string) ([]PortNumber, error) {
@@ -304,6 +303,12 @@ func parsePortSpec(s string) ([]PortNumber, error) {
 
 	if s == "common" {
 		ports = append(ports, CommonPorts...)
+	} else if s == "all" {
+		allPorts := make([]PortNumber, 0, 65535)
+		for i := 1; i < 65536; i++ {
+			allPorts = append(allPorts, PortNumber(i))
+		}
+		return allPorts, nil
 	} else if strings.ContainsRune(s, '-') {
 		// Port Range Provided eg 10-20
 		dashIndex := strings.LastIndex(s, "-")
@@ -354,5 +359,6 @@ func parsePortSpec(s string) ([]PortNumber, error) {
 		ports = append(ports, PortNumber(portNum))
 	}
 
-	return ports, nil
+	slices.Sort(ports)
+	return netutil.Unique(ports), nil
 }
