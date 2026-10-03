@@ -2,39 +2,58 @@ package routing
 
 import (
 	"net/netip"
-	"sync"
+	"slices"
 
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
-type generalRouter struct {
-	table         routingTable
+type router struct {
+	table         *RoutingTable
 	ifaceProvider netutil.NetInterfaceProvider
-	cache         map[netip.Addr]Route
-	cacheMu       sync.Mutex
 }
 
 func NewRouter(ifaceProvider netutil.NetInterfaceProvider) (Router, error) {
-	rt, err := getRoutingTable()
+	rt, err := getRoutingTable(ifaceProvider)
 	if err != nil {
 		return nil, err
 	}
-	return &generalRouter{
-		ifaceProvider: ifaceProvider,
+	return &router{
 		table:         rt,
-		cache:         make(map[netip.Addr]Route),
+		ifaceProvider: ifaceProvider,
 	}, nil
 }
 
-func (r *generalRouter) Lookup(dst netip.Addr) (Route, error) {
-	r.cacheMu.Lock()
-	defer r.cacheMu.Unlock()
-
-	if route, found := r.cache[dst]; found {
-		return route, nil
+func (r *router) Lookup(dst netip.Addr) (Route, error) {
+	best, err := r.getBestRouteTo(dst)
+	if err != nil {
+		return Route{}, err
 	}
-	var best *Route
 
+	if best.NextHop == netip.IPv4Unspecified() || best.NextHop == netip.IPv6Unspecified() {
+		// the route is for a directly connected network so the NextHop is dst itself.
+		best.NextHop = dst
+		best.DirectlyConnected = true
+	}
+
+	return best, nil
+}
+
+func (t *RoutingTable) insertRoute(r Route) {
+	if routes, found := t.Get(r.Network); found {
+		routes = append(routes, r)
+
+		slices.SortFunc(routes, func(a, b Route) int {
+			return int(a.Metric) - int(b.Metric)
+		})
+
+		t.Insert(r.Network, routes)
+		return
+	}
+
+	t.Insert(r.Network, Routes{r})
+}
+
+func (r *router) getBestRouteTo(dst netip.Addr) (Route, error) {
 	var expectedIfaceIndex *int
 	if dst.Zone() != "" {
 		iface, err := r.ifaceProvider.InterfaceByName(dst.Zone())
@@ -46,75 +65,42 @@ func (r *generalRouter) Lookup(dst netip.Addr) (Route, error) {
 		dst = dst.WithZone("") // strip the zone
 	}
 
-	for _, route := range r.table {
-		if !route.Network.Contains(dst) {
-			// If the destination address is not within this route's network.
-			continue
-		}
-
-		if best != nil {
-			if hasLongerPrefix(best.Network, route.Network) {
-				// if current best route is more specific than this route
-				continue
-			}
-			if haveEqualPrefix(route.Network, best.Network) && route.Metric >= best.Metric {
-				// Same prefix length, but this route has a higher or equal metric.
-				continue
-			}
-		}
-
-		if expectedIfaceIndex != nil && route.IfIndex != *expectedIfaceIndex {
-			// if the ipv6 zone (network interface) given differs from the current route's interface.
-			continue
-		}
-
-		iface, err := r.ifaceProvider.InterfaceByIndex(route.IfIndex)
-		if err != nil {
-			return Route{}, err
-		}
-		best = &Route{
-			Network:   route.Network,
-			NextHop:   route.Gateway,
-			Interface: iface,
-			Metric:    route.Metric,
-		}
-
-		if route.Gateway == netip.IPv4Unspecified() || route.Gateway == netip.IPv6Unspecified() {
-			// the route is for a directly connected network.
-			best.NextHop = dst
-			best.DirectlyConnected = true
-		}
-
-		srcAddr := route.PrefSrc
-		if srcAddr == nil {
-			src, err := best.Interface.AddrOnSameNetworkAs(best.NextHop)
-			if err != nil {
-				// Fall back to the first interface ip.
-				ifAddr, err := best.Interface.FirstAddr(netutil.AddressFamilyOf(dst))
-				if err != nil {
-					return Route{}, err
-				}
-				src = ifAddr.Addr()
-			}
-
-			srcAddr = &src
-		}
-
-		best.SrcAddr = *srcAddr
-	}
-
-	if best == nil {
+	routes, found := r.table.Lookup(dst)
+	if !found || len(routes) == 0 {
 		return Route{}, ErrRouteNotFound{DstIP: dst}
 	}
 
-	r.cache[dst] = *best
-	return *best, nil
+	if expectedIfaceIndex == nil {
+		return routes[0], nil // routes were sorted in ascending metric when inserting so first route has best metric
+	}
+
+	routesWithExpectedIface := make(Routes, 0)
+	for _, r := range routes {
+		if r.Interface.Index != *expectedIfaceIndex {
+			continue
+		}
+		routesWithExpectedIface = append(routesWithExpectedIface, r)
+	}
+
+	if len(routesWithExpectedIface) == 0 {
+		return Route{}, ErrRouteNotFound{DstIP: dst}
+	}
+
+	return minMetric(routesWithExpectedIface), nil
 }
 
-func hasLongerPrefix(a, b netip.Prefix) bool {
-	return a.Bits() > b.Bits()
-}
+func minMetric(routes Routes) Route {
+	if len(routes) == 0 {
+		return Route{}
+	}
 
-func haveEqualPrefix(a, b netip.Prefix) bool {
-	return a.Bits() == b.Bits()
+	min := routes[0]
+
+	for _, r := range routes {
+		if r.Metric < min.Metric {
+			min = r
+		}
+	}
+
+	return min
 }

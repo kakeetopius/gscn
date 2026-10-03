@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 
+	"github.com/gaissmai/bart"
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
@@ -35,25 +36,10 @@ type Route struct {
 	DirectlyConnected bool
 }
 
-// routingTable is a collection of routing table entries.
-type routingTable []routingTableEntry
+type Routes []Route
 
-// routingTableEntry represents a single entry in the system routing table.
-type routingTableEntry struct {
-	// Network is the destination network for this route.
-	Network netip.Prefix
-
-	// Gateway is the IP address of the next-hop gateway. For directly connected routes, it is the unspecified address (0.0.0.0 or ::).
-	Gateway netip.Addr
-
-	// IfIndex is the index of the outgoing network interface.
-	IfIndex int
-
-	// Metric is the route's cost. Lower values indicate more preferred routes when multiple routes have the same prefix length.
-	Metric uint32
-
-	// PrefSrc is  source ip to use for this packets going this route if available.
-	PrefSrc *netip.Addr
+type RoutingTable struct {
+	bart.Fast[Routes]
 }
 
 // ErrRouteNotFound indicates that no route exists for the specified destination IP address.

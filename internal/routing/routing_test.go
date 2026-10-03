@@ -10,65 +10,98 @@ import (
 )
 
 func TestGeneralRouterLookup(t *testing.T) {
-	r := generalRouter{
-		table: routingTable{
-			{
-				Network: netip.MustParsePrefix("0.0.0.0/0"),
-				Gateway: netip.MustParseAddr("192.168.1.1"),
-				IfIndex: 1, // eth0
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("172.16.0.0/12"),
-				Gateway: netip.IPv4Unspecified(),
-				IfIndex: 4, // wlan0
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("198.51.100.0/24"),
-				Gateway: netip.IPv4Unspecified(),
-				IfIndex: 15, // dummy0
-				Metric:  50,
-			},
-			{
-				Network: netip.MustParsePrefix("2001:db8:cafe::/64"),
-				Gateway: netip.IPv6Unspecified(),
-				IfIndex: 9, // Ethernet
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("fe80::/64"),
-				Gateway: netip.IPv6Unspecified(),
-				IfIndex: 9, // Ethernet
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("fe80::/64"),
-				Gateway: netip.IPv6Unspecified(),
-				IfIndex: 10, // Wi-Fi
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("fe80::/64"),
-				Gateway: netip.IPv6Unspecified(),
-				IfIndex: 1, // eth0
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("fe80::/64"),
-				Gateway: netip.IPv6Unspecified(),
-				IfIndex: 6, // veth3a2f1b
-				Metric:  100,
-			},
-			{
-				Network: netip.MustParsePrefix("fe80::/64"),
-				Gateway: netip.IPv6Unspecified(),
-				IfIndex: 9, // Ethernet
-				Metric:  100,
-			},
-		},
+	r := router{
+		table:         new(RoutingTable),
 		ifaceProvider: netutil.MockInterfaceProvider(),
-		cache:         make(map[netip.Addr]Route),
+	}
+
+	eth0, _ := netutil.MockInterfaceProvider().InterfaceByName("eth0")
+	wlan0, _ := netutil.MockInterfaceProvider().InterfaceByName("wlan0")
+	dummy0, _ := netutil.MockInterfaceProvider().InterfaceByName("dummy0")
+	Ethernet, _ := netutil.MockInterfaceProvider().InterfaceByName("Ethernet")
+	Wifi, _ := netutil.MockInterfaceProvider().InterfaceByName("Wi-Fi")
+
+	routes := Routes{
+		// Default route.
+		{
+			Network:   netip.MustParsePrefix("0.0.0.0/0"),
+			NextHop:   netip.MustParseAddr("192.168.1.1"),
+			Interface: eth0,
+			Metric:    100,
+		},
+
+		// Same prefix, different metric.
+		{
+			Network:   netip.MustParsePrefix("10.0.0.0/8"),
+			NextHop:   netip.MustParseAddr("192.168.1.1"),
+			Interface: eth0,
+			Metric:    100,
+		},
+		{
+			Network:   netip.MustParsePrefix("10.0.0.0/8"),
+			NextHop:   netip.MustParseAddr("172.16.0.1"),
+			Interface: wlan0,
+			Metric:    50,
+		},
+
+		// More-specific route should beat the /8 above,
+		// regardless of its higher metric.
+		{
+			Network:   netip.MustParsePrefix("10.1.0.0/16"),
+			NextHop:   netip.MustParseAddr("192.168.1.254"),
+			Interface: eth0,
+			Metric:    200,
+		},
+
+		// Directly connected IPv4 network.
+		{
+			Network:   netip.MustParsePrefix("172.16.0.0/12"),
+			NextHop:   netip.IPv4Unspecified(),
+			Interface: wlan0,
+			Metric:    100,
+		},
+
+		// Another directly connected IPv4 network.
+		{
+			Network:   netip.MustParsePrefix("198.51.100.0/24"),
+			NextHop:   netip.IPv4Unspecified(),
+			Interface: dummy0,
+			Metric:    100,
+		},
+
+		// IPv6 global route.
+		{
+			Network:   netip.MustParsePrefix("2001:db8:cafe::/64"),
+			NextHop:   netip.MustParseAddr("2001:db8:cafe::1"),
+			Interface: Ethernet,
+			Metric:    100,
+		},
+
+		// IPv6 directly connected network.
+		{
+			Network:   netip.MustParsePrefix("2001:db8:abcd::/64"),
+			NextHop:   netip.IPv6Unspecified(),
+			Interface: Ethernet,
+			Metric:    100,
+		},
+
+		// IPv6 link-local routes on different interfaces.
+		{
+			Network:   netip.MustParsePrefix("fe80::/64"),
+			NextHop:   netip.IPv6Unspecified(),
+			Interface: Ethernet,
+			Metric:    100,
+		},
+		{
+			Network:   netip.MustParsePrefix("fe80::/64"),
+			NextHop:   netip.IPv6Unspecified(),
+			Interface: Wifi,
+			Metric:    100,
+		},
+	}
+
+	for _, route := range routes {
+		r.table.insertRoute(route)
 	}
 
 	tests := []struct {
@@ -77,83 +110,114 @@ func TestGeneralRouterLookup(t *testing.T) {
 		wantNetwork netip.Prefix
 		wantNextHop netip.Addr
 		wantIface   string
-		wantSrcAddr netip.Addr
 		wantDirect  bool
 		wantErr     bool
 	}{
+		{
+			name:        "no matching route",
+			dst:         netip.MustParseAddr("192.0.2.1"),
+			wantErr:     false,
+			wantNetwork: netip.MustParsePrefix("0.0.0.0/0"),
+			wantNextHop: netip.MustParseAddr("192.168.1.1"),
+			wantIface:   "eth0",
+			wantDirect:  false,
+		},
 		{
 			name:        "default route",
 			dst:         netip.MustParseAddr("8.8.8.8"),
 			wantNetwork: netip.MustParsePrefix("0.0.0.0/0"),
 			wantNextHop: netip.MustParseAddr("192.168.1.1"),
 			wantIface:   "eth0",
-			wantSrcAddr: netip.MustParseAddr("192.168.1.10"),
 			wantDirect:  false,
 		},
 		{
-			name:        "directly connected wlan",
-			dst:         netip.MustParseAddr("172.16.1.25"),
-			wantNextHop: netip.MustParseAddr("172.16.1.25"),
-			wantNetwork: netip.MustParsePrefix("172.16.0.0/12"),
+			name:        "lower metric wins for equal prefix length",
+			dst:         netip.MustParseAddr("10.20.30.40"),
+			wantNetwork: netip.MustParsePrefix("10.0.0.0/8"),
+			wantNextHop: netip.MustParseAddr("172.16.0.1"),
 			wantIface:   "wlan0",
-			wantSrcAddr: netip.MustParseAddr("172.16.0.100"),
+			wantDirect:  false,
+		},
+		{
+			name:        "longest prefix wins over lower metric",
+			dst:         netip.MustParseAddr("10.1.2.3"),
+			wantNetwork: netip.MustParsePrefix("10.1.0.0/16"),
+			wantNextHop: netip.MustParseAddr("192.168.1.254"),
+			wantIface:   "eth0",
+			wantDirect:  false,
+		},
+		{
+			name:        "directly connected IPv4",
+			dst:         netip.MustParseAddr("172.16.10.20"),
+			wantNetwork: netip.MustParsePrefix("172.16.0.0/12"),
+			wantNextHop: netip.MustParseAddr("172.16.10.20"),
+			wantIface:   "wlan0",
 			wantDirect:  true,
 		},
 		{
-			name:        "directly connected dummy",
-			dst:         netip.MustParseAddr("198.51.100.99"),
-			wantNextHop: netip.MustParseAddr("198.51.100.99"),
+			name:        "directly connected IPv4 on dummy interface",
+			dst:         netip.MustParseAddr("198.51.100.42"),
 			wantNetwork: netip.MustParsePrefix("198.51.100.0/24"),
+			wantNextHop: netip.MustParseAddr("198.51.100.42"),
 			wantIface:   "dummy0",
-			wantSrcAddr: netip.MustParseAddr("198.51.100.1"),
 			wantDirect:  true,
 		},
 		{
-			name:        "ipv6 link-local without zone uses first matching route",
-			dst:         netip.MustParseAddr("fe80::1234"),
-			wantNextHop: netip.MustParseAddr("fe80::1234"),
-			wantNetwork: netip.MustParsePrefix("fe80::/64"),
+			name:        "IPv6 next hop",
+			dst:         netip.MustParseAddr("2001:db8:cafe::1234"),
+			wantNetwork: netip.MustParsePrefix("2001:db8:cafe::/64"),
+			wantNextHop: netip.MustParseAddr("2001:db8:cafe::1"),
 			wantIface:   "Ethernet",
-			wantSrcAddr: netip.MustParseAddr("fe80::c:29ff:feab:cdef"),
+			wantDirect:  false,
+		},
+		{
+			name:        "directly connected IPv6",
+			dst:         netip.MustParseAddr("2001:db8:abcd::1234"),
+			wantNetwork: netip.MustParsePrefix("2001:db8:abcd::/64"),
+			wantNextHop: netip.MustParseAddr("2001:db8:abcd::1234"),
+			wantIface:   "Ethernet",
 			wantDirect:  true,
 		},
 		{
-			name:        "ipv6 link-local with zone but no matching route for the interface",
-			dst:         netip.MustParseAddr("fe80::1234").WithZone("eth1"),
-			wantNextHop: netip.MustParseAddr("fe80::1234"),
+			name:        "IPv6 link-local without zone",
+			dst:         netip.MustParseAddr("fe80::1234"),
 			wantNetwork: netip.MustParsePrefix("fe80::/64"),
-			wantIface:   "eth1",
-			wantSrcAddr: netip.MustParseAddr("fe80::c:29ff:feab:cdef"),
+			wantNextHop: netip.MustParseAddr("fe80::1234"),
+			wantIface:   "Ethernet",
 			wantDirect:  true,
-			wantErr:     true,
 		},
 		{
-			name:        "ipv6 link-local with zone",
+			name:        "IPv6 link-local with zone",
 			dst:         netip.MustParseAddr("fe80::1234").WithZone("Wi-Fi"),
-			wantNextHop: netip.MustParseAddr("fe80::1234"),
 			wantNetwork: netip.MustParsePrefix("fe80::/64"),
+			wantNextHop: netip.MustParseAddr("fe80::1234").WithZone("Wi-Fi"),
 			wantIface:   "Wi-Fi",
-			wantSrcAddr: netip.MustParseAddr("fe80::c:29bc:fed8:2"),
 			wantDirect:  true,
+		},
+		{
+			name:       "IPv6 link-local with nonexistent zone",
+			dst:        netip.MustParseAddr("fe80::1234").WithZone("eth1"),
+			wantErr:    true,
+			wantDirect: true,
+			wantIface:  "eth1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			route, err := r.Lookup(tt.dst)
+
 			if tt.wantErr {
 				require.Error(t, err)
 				return
-			} else {
-				require.NoError(t, err)
 			}
 
-			assert.Equal(t, tt.wantNetwork, route.Network)
-			assert.Equal(t, tt.wantIface, route.Interface.Name)
-			assert.Equal(t, tt.wantSrcAddr.String(), route.SrcAddr.String())
-			assert.Equal(t, tt.wantDirect, route.DirectlyConnected)
+			require.NoError(t, err)
 
+			assert.Equal(t, tt.wantNetwork, route.Network)
 			assert.Equal(t, tt.wantNextHop, route.NextHop)
+			assert.Equal(t, tt.wantIface, route.Interface.Name)
+			assert.Equal(t, tt.wantDirect, route.DirectlyConnected)
 		})
 	}
 }
