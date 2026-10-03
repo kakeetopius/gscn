@@ -1,471 +1,258 @@
 # gscn
 
-A simple, cross-platform network scanner written in Go. `gscn` provides host discovery, TCP/UDP/SYN port scanning, ICMP ping scanning etc.
+A simple, cross-platform network scanner written in Go. `gscn` can do host discovery, port scanning, ping sweeps, and Wi-Fi scanning from a single CLI.
 
 ## Features
 
-- Fast, concurrent port scanning
-- IPv4 and IPv6 support
-- Host discovery using using various network discovery protocols like ARP (IPv4) and NDP (IPv6)
-- ICMP ping scanning
-- Reverse DNS hostname resolution
-- Send scan results via Discord or Email.
-- MAC address vendor lookup
+- Host discovery with **ARP** (IPv4) and **NDP** (IPv6), either actively or passively
+- Discovery of **IPv6 routers**, **DHCPv4/DHCPv6 servers**, and **CDP** neighbours (Cisco devices)
+- Fast, concurrent **TCP (connect and SYN)**, **UDP**, and **ICMP ping** scans
+- Service banner grabbing on open TCP ports. (Still a Work in Progress)
+- IPv4 and IPv6 support, with flexible target specification (IP, CIDR, ranges, domains)
+- Reverse DNS hostname resolution and MAC address vendor lookup
 - Wi-Fi network scanning (Linux)
-- JSON output
-- Flexible target specification (IP, CIDR, ranges, domains, and combinations)
+- JSON output, file output, and result notifications via Discord or Email
 
 ## Requirements
 
-- Go 1.18 or newer (for building from source)
+- Go 1.18 or newer (to build from source)
 - **Linux:** `libpcap` development headers (`libpcap-dev`, `libpcap-devel`, etc.)
 - **Windows:** [Npcap](https://npcap.com/#download)
 
 > [!IMPORTANT]
-> ARP, NDP, SYN, and ICMP-based scans require administrator/root privileges (or `CAP_NET_RAW` on Linux).
+> Anything that sends or captures raw packets (ARP, NDP, DHCP, CDP, SYN and ICMP scans) needs administrator/root privileges, or `CAP_NET_RAW` on Linux.
 
 ## Installation
 
-### Linux
+**Linux**
 
 ```sh
 git clone https://github.com/kakeetopius/gscn.git
 cd gscn
 go build -o gscn .
 
-# OR install to your PATH
+# or install to your PATH
 sudo make install
 ```
 
-### Windows
+**Windows**
 
-Install **Npcap**, then install `gscn` using Go:
+Install Npcap, then:
 
 ```sh
 go install github.com/kakeetopius/gscn@latest
 ```
 
-## Quick Start
+## Commands Overview
 
-Discover hosts on your local network:
+| Command                       | What it does                                      |
+| ----------------------------- | ------------------------------------------------- |
+| `gscn discover arp`           | Find IPv4 hosts with ARP                          |
+| `gscn discover ndp neighbors` | Find IPv6 hosts with Neighbour Discovery          |
+| `gscn discover ndp routers`   | Find IPv6 routers                                 |
+| `gscn discover dhcp`          | Find DHCPv4 servers                               |
+| `gscn discover dhcp6`         | Find DHCPv6 servers                               |
+| `gscn discover cdp`           | Find devices advertising Cisco Discovery Protocol |
+| `gscn scan tcp`               | TCP connect scan                                  |
+| `gscn scan syn`               | TCP SYN (half-open) scan                          |
+| `gscn scan udp`               | UDP scan                                          |
+| `gscn scan ping`              | ICMP ping sweep                                   |
+| `gscn wifi`                   | Scan nearby Wi-Fi networks (Linux only for now)   |
 
-```sh
-gscn discover arp -i eth0
-```
+Run `gscn <command> --help` for the full flag list of any command.
 
-Scan common TCP ports:
+## Targets
 
-```sh
-gscn scan tcp 192.168.1.0/24 -p 22,80,443
-```
-
-Ping an entire subnet:
-
-```sh
-gscn scan ping 192.168.1.0/24
-```
-
-## Target Specification
-
-Most commands accept one or more targets as positional arguments, separated by spaces.
+Commands that take targets accept one or more, separated by spaces.
 
 | Format                   | Example                                        |
 | ------------------------ | ---------------------------------------------- |
 | Single IPv4/IPv6 address | `10.1.1.1` `2001:acad::1`                      |
 | CIDR                     | `10.1.1.1/24` `2001:acad::1/64`                |
 | Range                    | `10.1.1.1-10` `2001:acad::1-10`                |
-| Domain                   | `example.com`                                  |
-| Mixed targets            | `10.1.1.1 example.com 10.4.4.4-10 10.3.3.3/24` |
+| Domain                   | `example.com` _(scan commands only)_           |
+| Mixed                    | `10.1.1.1 example.com 10.4.4.4-10 10.3.3.3/24` |
 
-<details>
-<summary><strong>Global Flags</strong></summary>
+`discover` commands accept IP addresses, CIDRs, and ranges only. Domains work with `scan`.
 
-These flags are available for every command.
+## Global Flags
 
-| Flag               | Description                                                      |
-| ------------------ | ---------------------------------------------------------------- |
-| `--config <file>`  | Use a custom configuration file instead of the default location. |
-| `--debug`          | Enable debug logging.                                            |
-| `-o, --out <file>` | Save scan results to a file.                                     |
-| `-j, --json`       | Print scan results as compact JSON.                              |
-| `-P, --pretty`     | Print scan results as pretty-formatted JSON.                     |
-| `--notify`         | Send scan results using the configured notifier.                 |
+Available on every command.
 
-### Examples
+| Flag               | Description                                 |
+| ------------------ | ------------------------------------------- |
+| `--config <file>`  | Use a custom configuration file.            |
+| `--debug`          | Enable debug logging.                       |
+| `-o, --out <file>` | Save scan results to a file.                |
+| `-j, --json`       | Print results as compact JSON.              |
+| `-P, --pretty`     | Print results as pretty-formatted JSON.     |
+| `--notify`         | Send results using the configured notifier. |
 
 ```sh
 gscn scan tcp 192.168.1.1 -p 80 --json
-
-gscn discover arp --notify
-
 gscn scan ping 192.168.1.0/24 -o results.txt
-
-# scan results printed in pretty JSON form.
-gscn scan tcp 10.0.0.0/24 -p 22,80 -jP
+gscn scan tcp 10.0.0.0/24 -p 22,80 -jP   # pretty JSON
 ```
 
-</details>
+## discover
 
-## Commands
+Find devices on the local network using link-layer discovery protocols.
 
-### **discover**
+### Flags shared by most discover commands
 
-Discover hosts on IPv4 and IPv6 networks using various network discovery protocols.
+| Flag                                | Description                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------- |
+| `-i, --iface <name>`                | Interface(s) to use. Repeat or comma-separate for several. Omit to use all. |
+| `-t, --response-timeout <duration>` | How long to wait for responses.                                             |
+| `-H, --hostnames`                   | Reverse-lookup hostnames                                                    |
+| `--vendors`                         | Add MAC address vendor info. On by default                                  |
 
-<details>
-<summary><strong>Show details</strong></summary>
+### arp
 
-#### 1. discover arp
-
-Discover IPv4 hosts using ARP.
+Discover IPv4 hosts with ARP.
 
 ```sh
 gscn discover arp [targets] [flags]
 ```
 
-Sends ARP requests to discover IPv4 hosts on the network.
-
-<details>
-<summary><strong>Examples</strong></summary>
-
 ```sh
-# Discover a single host
-gscn discover arp 10.1.1.1
-
-# Discover all hosts in a subnet
-gscn discover arp 10.1.1.1/24
-
-# Discover a range of hosts
-gscn discover arp 10.1.1.1-5
-
-# Scan the subnet(s) connected to an interface
-gscn discover arp -i eth0
-
-# Do a reverse look up to resolve hostnames
-gscn discover arp 10.1.1.1/24 --hostnames
-
-# Send results via the configured notifier
-gscn discover arp 10.1.1.1/24 --notify
+gscn discover arp 10.1.1.1/24            # a subnet
+gscn discover arp 10.1.1.1-5             # a range
+gscn discover arp -i eth0                # every subnet on an interface
+gscn discover arp -i eth0 --passive      # listen only, send nothing
+gscn discover arp -i eth0 --from-cache   # read the kernel neighbour table
 ```
 
-</details>
+### ndp neighbors
 
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                                | Description                                                                                                 |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `-i, --iface <name>`                | Network interface to scan from. When no target is provided, scans the subnet(s) connected to the interface. |
-| `-s, --source <ip>`                 | Source IPv4 address to use in ARP packets.                                                                  |
-| `-t, --response-timeout <duration>` | Time to wait for ARP replies.                                                                               |
-| `-H, --hostnames`                   | Resolve discovered IP addresses to hostnames.                                                               |
-| `--vendors`                         | Include MAC address vendor information. Enabled by default.                                                 |
-
-</details>
-
-#### 2. discover ndp
-
-Discover IPv6 hosts using the Neighbor Discovery Protocol.
+Discover IPv6 hosts with ICMPv6 Neighbour Discovery.
 
 ```sh
-gscn discover ndp [targets] [flags]
+gscn discover ndp neighbors <targets> -i <iface> [flags]
 ```
 
-Sends ICMPv6 Neighbor Solicitation packets or optionally reads entries from the kernel neighbor cache.
-
-<details>
-<summary><strong>Examples</strong></summary>
-
 ```sh
-# Discover a single IPv6 host
-gscn discover ndp 2001:acad::1
-
-# Discover an IPv6 subnet
-gscn discover ndp 2001:acad::1/64
-
-# Discover a range of IPv6 hosts
-gscn discover ndp 2001:acad::1-10
-
-# Scan the connected subnet
-gscn discover ndp -i eth0
-
-# Read from the kernel neighbor cache
-gscn discover ndp -i eth0 --from-cache
+gscn discover ndp neighbors -i eth0
+gscn discover ndp neighbors 2001:acad::1/64 -i eth0
+gscn discover ndp neighbors -i eth0 --from-cache  # don't send out any probes, rather read neighbor info from the kernel neighbor cache. (linux only)
 ```
 
-</details>
+### ndp routers
 
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                                | Description                                                                                              |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `-i, --iface <name>`                | Network interface to scan from. When no target is provided, scans the subnet connected to the interface. |
-| `-s, --source <ip>`                 | Source IPv6 address to use in Neighbor Solicitation packets.                                             |
-| `-t, --response-timeout <duration>` | Time to wait for Neighbor Advertisement replies.                                                         |
-| `-H, --hostnames`                   | Resolve discovered IP addresses to hostnames.                                                            |
-| `--from-cache`                      | Read from the kernel neighbor cache instead of sending packets.                                          |
-| `--vendors`                         | Include MAC address vendor information. Enabled by default.                                              |
-
-</details>
-
-</details>
-
-### **scan**
-
-Carry out different types of scans.
-
-<details>
-<summary><strong>Show details</strong></summary>
-
-#### 1. scan tcp
-
-Perform a full TCP connect scan.
+Discover IPv6-enabled routers on the local network.
 
 ```sh
-gscn scan tcp <targets> [flags]
+gscn discover ndp routers [flags]
 ```
 
-Attempts a complete TCP connection on each specified port.
+```sh
+gscn discover ndp routers                       # probe for Ipv6 enabled routers (using ICMPv6 Router Solicitations) on all interfaces
+gscn discover ndp routers -i eth0 --passive     # passively listen for Router Advertisements on eth0
+```
 
-<details>
-<summary><strong>Examples</strong></summary>
+### dhcp / dhcp6
+
+Discover DHCPv4 (`dhcp`) or DHCPv6 (`dhcp6`) servers on the connected networks. Useful for spotting rogue DHCP servers.
 
 ```sh
-# Scan a single host for the common ports like 22,80 etc
-gscn scan tcp 10.1.1.1
+gscn discover dhcp [flags]
+gscn discover dhcp6 [flags]
+```
 
-# Scan a subnet for the first 100 ports using 300 concurrent workers
-gscn scan tcp 10.1.1.1/24 -p 1-100 --workers 300
+```sh
+gscn discover dhcp                         # actively probe on all interfaces
+gscn discover dhcp -i eth0 --passive       # dont actively probe, just listen for DHCP Offers
+gscn discover dhcp6 -i eth0 -H             # try resolve server hostnames
+```
 
-# Scan mixed targets
-gscn scan tcp 10.1.1.1 gscn.com 10.4.4.4-10 -p 22,80,443
+### cdp
 
-# Scan an IPv6 host
+Listen for devices advertising the Cisco Discovery Protocol. CDP packets are sent periodically (roughly once a minute), so this command waits longer by default.
+
+```sh
+gscn discover cdp [-i <iface>] [-t <duration>]
+```
+
+```sh
+gscn discover cdp -i eth0
+gscn discover cdp -t 2m      # wait up to two minutes
+```
+
+## scan
+
+Scan hosts and ports on any network. Scans start with a ping sweep to find live hosts (can be skiped with `--skip-ping`).
+
+### Flags shared by tcp, syn, and udp
+
+| Flag                                | Description                                               |
+| ----------------------------------- | --------------------------------------------------------- |
+| `-p, --ports <ports>`               | Ports to scan: ranges, lists, or both (`1-100,443,8080`). |
+| `-H, --hostnames`                   | Reverse-lookup hostnames.                                 |
+| `-t, --response-timeout <duration>` | How long to wait for responses.                           |
+| `-w, --workers <n>`                 | Concurrent workers (max `500`).                           |
+| `--ping-count <n>`                  | ICMP Echo Requests sent during the ping sweep.            |
+| `--ping-timeout <duration>`         | How long to wait for ping replies.                        |
+| `--open`                            | Show only open ports.                                     |
+| `--up`                              | Show only reachable hosts.                                |
+
+### tcp
+
+Full TCP connect scan: completes a handshake on every port.
+
+```sh
+gscn scan tcp 10.1.1.1                                        # scans common ports
+gscn scan tcp 10.1.1.1 -p all                                 # all ports (1-65535)
+gscn scan tcp 10.1.1.1 -p common,90,69                        # common ports plus some others.
+gscn scan tcp 10.1.1.1/24 -p 1-100 --workers 200
+gscn scan tcp 10.1.1.1 example.com 10.4.4.4-10 -p 22,80,443
 gscn scan tcp 2001:acad::1 -p 80
-
-# Skip the ping sweep
 gscn scan tcp 10.1.1.1/24 -p 22,80 --skip-ping
-
-# Show only open ports on live hosts
-gscn scan tcp 10.1.1.1/24 -p 1-1000 --open --up --workers 200
-
-# Send results via the configured notifier
-gscn scan tcp 10.1.1.1/24 -p 1-100 --notify
+gscn scan tcp 10.1.1.1/24 -p 1-1000 --open --up -w 200
 ```
 
-</details>
+### syn
 
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                                | Description                                              |
-| ----------------------------------- | -------------------------------------------------------- |
-| `-p, --ports <ports>`               | Ports to scan. Supports ranges, lists, or combinations.  |
-| `-H, --hostnames`                   | Resolve hostnames.                                       |
-| `-t, --response-timeout <duration>` | TCP response timeout.                                    |
-| `-w, --workers <n>`                 | Number of concurrent workers.                            |
-| `--ping-count <n>`                  | Number of ICMP Echo Requests sent during the ping sweep. |
-| `--ping-timeout <duration>`         | Ping timeout.                                            |
-| `--skip-ping`                       | Skip the initial ping sweep.                             |
-| `--open`                            | Show only open ports.                                    |
-| `--up`                              | Show only reachable hosts.                               |
-
-</details>
-
-#### 2. scan syn
-
-Perform a TCP SYN (half-open) scan.
+Half-open SYN scan. Sends raw SYN packets and infers port state from the reply without completing the handshake. Needs root.
 
 ```sh
-gscn scan syn <targets> [flags]
-```
-
-Sends raw TCP SYN packets and infers port state from the response (SYN-ACK, or no response) without completing the TCP handshake. Requires root privileges (or `CAP_NET_RAW` on Linux).
-
-<details>
-<summary><strong>Examples</strong></summary>
-
-```sh
-# Scan a single host for the common ports like 22,80 etc
-gscn scan syn 10.1.1.1
-
-# Scan a subnet for the first 100 ports using 300 concurrent workers
 gscn scan syn 10.1.1.1/24 -p 1-100 --workers 300
-
-# Scan mixed targets
-gscn scan syn 10.1.1.1 gscn.com 10.4.4.4-10 -p 22,80,443
-
-# Scan an IPv6 host
 gscn scan syn 2001:acad::1 -p 80
-
-# Skip the ping sweep
-gscn scan syn 10.1.1.1/24 -p 22,80 --skip-ping
-
-# Show only open ports on live hosts
-gscn scan syn 10.1.1.1/24 -p 1-1000 --open --up --workers 200
-
-# Send results via the configured notifier
-gscn scan syn 10.1.1.1/24 -p 1-100 --notify
 ```
 
-</details>
+### udp
 
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                                | Description                                              |
-| ----------------------------------- | -------------------------------------------------------- |
-| `-p, --ports <ports>`               | Ports to scan. Supports ranges, lists, or combinations.  |
-| `-H, --hostnames`                   | Resolve hostnames.                                       |
-| `-t, --response-timeout <duration>` | SYN response timeout.                                    |
-| `-w, --workers <n>`                 | Number of concurrent workers.                            |
-| `--ping-count <n>`                  | Number of ICMP Echo Requests sent during the ping sweep. |
-| `--ping-timeout <duration>`         | Ping timeout.                                            |
-| `--skip-ping`                       | Skip the initial ping sweep.                             |
-| `--open`                            | Show only open ports.                                    |
-| `--up`                              | Show only reachable hosts.                               |
-
-</details>
-
-#### 3. scan udp
-
-Perform a UDP scan.
+UDP scan. Port state is inferred from ICMP Port Unreachable replies or the lack of any response.
 
 ```sh
-gscn scan udp <targets> [flags]
-```
-
-Infers UDP port state using ICMP Port Unreachable responses or the absence of a response.
-
-<details>
-<summary><strong>Examples</strong></summary>
-
-```sh
-# Scan common UDP ports
 gscn scan udp 10.1.1.1 -p 53,161
-
-# Scan IPv4 and IPv6 hosts
 gscn scan udp 10.1.1.1 2001:acad::1 -p 53
-
-# Scan a subnet
-gscn scan udp 10.1.1.1/24 -p 1-100
-
-# Increase response timeout
 gscn scan udp 10.1.1.1 -p 53,161 --response-timeout 5s
 ```
 
-</details>
+### ping
 
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                                | Description                                              |
-| ----------------------------------- | -------------------------------------------------------- |
-| `-p, --ports <ports>`               | Ports to scan.                                           |
-| `-H, --hostnames`                   | Resolve hostnames.                                       |
-| `-t, --response-timeout <duration>` | UDP response timeout.                                    |
-| `-w, --workers <n>`                 | Number of concurrent workers.                            |
-| `--ping-count <n>`                  | Number of ICMP Echo Requests sent during the ping sweep. |
-| `--ping-timeout <duration>`         | Ping timeout.                                            |
-| `--open`                            | Show only open or open\|filtered ports.                  |
-| `--up`                              | Show only reachable hosts.                               |
-
-</details>
-
-#### 4. scan ping
-
-Perform an ICMP ping sweep.
+ICMP ping sweep. Uses raw ICMP when running as root on Linux, and falls back to UDP-based probes otherwise.
 
 ```sh
-gscn scan ping <targets> [flags]
-```
-
-Uses raw ICMP packets when running with root privileges on Linux, otherwise, falls back to UDP-based probes.
-
-<details>
-<summary><strong>Examples</strong></summary>
-
-```sh
-# Ping a subnet
 gscn scan ping 10.1.1.1/24
-
-# Ping with 200 concurrent workers and show only live hosts
 gscn scan ping 10.1.1.1/24 --workers 200 --up
-
-# Ping mixed targets
-gscn scan ping 10.1.1.1 gscn.com
-
-# Ping an IPv6 host
+gscn scan ping 10.1.1.1 example.com
 gscn scan ping 2001:acad::1
-
-# Resolve hostnames
-gscn scan ping 10.1.1.1/24 --hostnames
-
-# Send results via the configured notifier
-gscn scan ping 10.1.1.1/24 --notify
 ```
 
-</details>
+## wifi
 
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                       | Description                           |
-| -------------------------- | ------------------------------------- |
-| `-H, --hostnames`          | Resolve hostnames.                    |
-| `-w, --workers <n>`        | Number of concurrent workers.         |
-| `-c, --count <n>`          | Number of ICMP Echo Requests to send. |
-| `-t, --timeout <duration>` | Ping timeout.                         |
-| `--up`                     | Show only reachable hosts.            |
-
-</details>
-
-</details>
-
-### **wifi**
-
-Scan nearby Wi-Fi networks (Linux only).
-
-<details>
-<summary><strong>Show details</strong></summary>
+Scan nearby Wi-Fi networks (Linux only). Shows SSID, BSSID, signal strength, channel, security type, etc.
 
 ```sh
-gscn wifi [flags]
+gscn wifi                       # auto-detect the wireless interface
+gscn wifi -i wlo3               # pick an interface
+gscn wifi -s KPLNet,Office      # only show these SSIDs
 ```
-
-Scans nearby Wi-Fi networks and displays SSID, BSSID, signal strength, channel, and security information.
-
-<details>
-<summary><strong>Examples</strong></summary>
-
-```sh
-# Auto-detect the wireless interface
-gscn wifi
-
-# Specify a wifi interface
-gscn wifi -i wlo3
-
-# Send results via the configured notifier
-gscn wifi -i wlo2 --notify
-```
-
-</details>
-
-<details>
-<summary><strong>Flags</strong></summary>
-
-| Flag                 | Description                                                                       |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `-i, --iface <name>` | Wireless interface to use. If omitted, gscn attempts to detect one automatically. |
-
-</details>
-
-</details>
 
 ## Configuration
 
-A configuration file is **only required** when using the `--notify` flag.
+A config file is **only needed** for `--notify`.
 
 Default locations:
 
@@ -490,7 +277,7 @@ sender_name = "gscn network scanner"
 app_password = "your_app_password"
 ```
 
-Use a custom configuration file:
+Use a custom config file:
 
 ```sh
 gscn --config /path/to/gscn.toml scan tcp 10.1.1.1 -p 80 --notify

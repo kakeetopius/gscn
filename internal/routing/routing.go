@@ -1,35 +1,49 @@
 package routing
 
 import (
+	"fmt"
 	"net/netip"
-	"slices"
 
 	"github.com/kakeetopius/gscn/internal/netutil"
 )
 
 type router struct {
-	table         *RoutingTable
+	v4Table       *RoutingTable
+	v6Table       *RoutingTable
 	ifaceProvider netutil.NetInterfaceProvider
 }
 
 func NewRouter(ifaceProvider netutil.NetInterfaceProvider) (Router, error) {
-	rt, err := getRoutingTable(ifaceProvider)
+	v4table, v6table, err := getRoutingTables(ifaceProvider)
 	if err != nil {
 		return nil, err
 	}
 	return &router{
-		table:         rt,
+		v4Table:       v4table,
+		v6Table:       v6table,
 		ifaceProvider: ifaceProvider,
 	}, nil
 }
 
 func (r *router) Lookup(dst netip.Addr) (Route, error) {
-	best, err := r.getBestRouteTo(dst)
-	if err != nil {
-		return Route{}, err
+	switch {
+	case dst.Is4():
+		return r.lookupV4(dst)
+	case dst.Is6():
+		return r.lookupV6(dst)
+	default:
+		return Route{}, fmt.Errorf("invalid IP address: %v", dst)
 	}
+}
 
-	if best.NextHop == netip.IPv4Unspecified() || best.NextHop == netip.IPv6Unspecified() {
+func (r *router) lookupV4(dst netip.Addr) (best Route, err error) {
+	routes, found := r.v4Table.Lookup(dst)
+	if !found || len(routes) == 0 {
+		return Route{}, ErrRouteNotFound{DstIP: dst}
+	}
+	best = routes[0] // routes were sorted in ascending metric when inserting so first route has best metric
+
+	if best.NextHop == netip.IPv4Unspecified() {
 		// the route is for a directly connected network so the NextHop is dst itself.
 		best.NextHop = dst
 		best.DirectlyConnected = true
@@ -38,40 +52,33 @@ func (r *router) Lookup(dst netip.Addr) (Route, error) {
 	return best, nil
 }
 
-func (t *RoutingTable) insertRoute(r Route) {
-	if routes, found := t.Get(r.Network); found {
-		routes = append(routes, r)
-
-		slices.SortFunc(routes, func(a, b Route) int {
-			return int(a.Metric) - int(b.Metric)
-		})
-
-		t.Insert(r.Network, routes)
-		return
-	}
-
-	t.Insert(r.Network, Routes{r})
-}
-
-func (r *router) getBestRouteTo(dst netip.Addr) (Route, error) {
+func (r *router) lookupV6(dst netip.Addr) (best Route, err error) {
 	var expectedIfaceIndex *int
+
 	if dst.Zone() != "" {
-		iface, err := r.ifaceProvider.InterfaceByName(dst.Zone())
-		if err != nil {
-			return Route{}, err
+		iface, zerr := r.ifaceProvider.InterfaceByName(dst.Zone())
+		if zerr != nil {
+			return Route{}, zerr
 		}
 		expectedIfaceIndex = &iface.Index
-
-		dst = dst.WithZone("") // strip the zone
 	}
 
-	routes, found := r.table.Lookup(dst)
+	routes, found := r.v6Table.Lookup(dst)
 	if !found || len(routes) == 0 {
 		return Route{}, ErrRouteNotFound{DstIP: dst}
 	}
 
+	defer func() {
+		// make sure the nexthop is initialised well.
+		if err == nil && best.NextHop == netip.IPv6Unspecified() {
+			// the route is for a directly connected network so the NextHop is dst itself.
+			best.NextHop = dst
+			best.DirectlyConnected = true
+		}
+	}()
+
 	if expectedIfaceIndex == nil {
-		return routes[0], nil // routes were sorted in ascending metric when inserting so first route has best metric
+		return routes[0], nil
 	}
 
 	routesWithExpectedIface := make(Routes, 0)
@@ -86,7 +93,9 @@ func (r *router) getBestRouteTo(dst netip.Addr) (Route, error) {
 		return Route{}, ErrRouteNotFound{DstIP: dst}
 	}
 
-	return minMetric(routesWithExpectedIface), nil
+	best = minMetric(routesWithExpectedIface)
+
+	return best, nil
 }
 
 func minMetric(routes Routes) Route {

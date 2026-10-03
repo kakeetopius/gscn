@@ -11,12 +11,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func getRoutingTable(ifaceProvider netutil.NetInterfaceProvider) (*RoutingTable, error) {
-	rTable := new(RoutingTable)
+func getRoutingTables(ifaceProvider netutil.NetInterfaceProvider) (*RoutingTable, *RoutingTable, error) {
+	v4table := new(RoutingTable)
+	v6table := new(RoutingTable)
+
 	var table *windows.MibIpForwardTable2
 	err := windows.GetIpForwardTable2(windows.AF_UNSPEC, &table)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer windows.FreeMibTable(unsafe.Pointer(table))
 
@@ -24,18 +26,18 @@ func getRoutingTable(ifaceProvider netutil.NetInterfaceProvider) (*RoutingTable,
 	for _, row := range rows {
 		prefix, err := convertToAddr(&row.DestinationPrefix.Prefix)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		prefixLen := row.DestinationPrefix.PrefixLength
 
 		gateway, err := convertToAddr(&row.NextHop)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		iface, err := ifaceProvider.InterfaceByIndex(int(row.InterfaceIndex))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		src, err := iface.AddrOnSameNetworkAs(gateway)
@@ -43,21 +45,27 @@ func getRoutingTable(ifaceProvider netutil.NetInterfaceProvider) (*RoutingTable,
 			// Fall back to the first interface ip.
 			ifAddr, err := iface.FirstAddr(netutil.AddressFamilyOf(gateway))
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			src = ifAddr.Addr()
 		}
 
-		rTable.insertRoute(Route{
+		route := Route{
 			Network:   netip.PrefixFrom(prefix, int(prefixLen)),
 			NextHop:   gateway,
 			Metric:    row.Metric,
 			Interface: iface,
 			SrcAddr:   src,
-		})
+		}
+
+		if prefix.Is4() {
+			v4table.insertRoute(route)
+		} else if prefix.Is6() {
+			v6table.insertRoute(route)
+		}
 	}
 
-	return rTable, nil
+	return v4table, v6table, nil
 }
 
 func convertToAddr(sa *windows.RawSockaddrInet) (netip.Addr, error) {

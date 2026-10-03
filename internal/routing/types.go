@@ -4,6 +4,7 @@ package routing
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 
 	"github.com/gaissmai/bart"
 	"github.com/kakeetopius/gscn/internal/netutil"
@@ -40,6 +41,22 @@ type Routes []Route
 
 type RoutingTable struct {
 	bart.Fast[Routes]
+}
+
+func (t *RoutingTable) insertRoute(r Route) {
+	if routes, found := t.Get(r.Network); found {
+		routes = append(routes, r)
+
+		slices.SortFunc(routes, func(a, b Route) int {
+			// sort routes from smallest metric to highest.
+			return int(a.Metric) - int(b.Metric)
+		})
+
+		t.Insert(r.Network, routes)
+		return
+	}
+
+	t.Insert(r.Network, Routes{r})
 }
 
 // ErrRouteNotFound indicates that no route exists for the specified destination IP address.
