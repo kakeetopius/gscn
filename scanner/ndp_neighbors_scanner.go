@@ -194,7 +194,7 @@ func (s *NDPNeighborScanner) runNDP(ctx context.Context) error {
 	defer packetSender.Close()
 	s.packetSender = packetSender
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 136", 1024, *s.Interface) // 136 is type code for Neighbor Advertisements
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "icmp6 and icmp6[0] == 136", 1024, *s.Interface) // 136 is type code for Neighbor Advertisements
 	if err != nil {
 		return err
 	}

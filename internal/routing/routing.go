@@ -53,16 +53,6 @@ func (r *router) lookupV4(dst netip.Addr) (best Route, err error) {
 }
 
 func (r *router) lookupV6(dst netip.Addr) (best Route, err error) {
-	var expectedIfaceIndex *int
-
-	if dst.Zone() != "" {
-		iface, zerr := r.ifaceProvider.InterfaceByName(dst.Zone())
-		if zerr != nil {
-			return Route{}, zerr
-		}
-		expectedIfaceIndex = &iface.Index
-	}
-
 	routes, found := r.v6Table.Lookup(dst)
 	if !found || len(routes) == 0 {
 		return Route{}, ErrRouteNotFound{DstIP: dst}
@@ -77,13 +67,20 @@ func (r *router) lookupV6(dst netip.Addr) (best Route, err error) {
 		}
 	}()
 
-	if expectedIfaceIndex == nil {
+	if dst.Zone() == "" {
+		// if there is no zone to handle, we return the first route because it will have the best(lowest) metric.
 		return routes[0], nil
 	}
 
+	iface, err := r.ifaceProvider.InterfaceByName(dst.Zone())
+	if err != nil {
+		return Route{}, err
+	}
+	expectedIfaceIndex := iface.Index
+
 	routesWithExpectedIface := make(Routes, 0)
 	for _, r := range routes {
-		if r.Interface.Index != *expectedIfaceIndex {
+		if r.Interface.Index != expectedIfaceIndex {
 			continue
 		}
 		routesWithExpectedIface = append(routesWithExpectedIface, r)
@@ -93,9 +90,7 @@ func (r *router) lookupV6(dst netip.Addr) (best Route, err error) {
 		return Route{}, ErrRouteNotFound{DstIP: dst}
 	}
 
-	best = minMetric(routesWithExpectedIface)
-
-	return best, nil
+	return minMetric(routesWithExpectedIface), nil
 }
 
 func minMetric(routes Routes) Route {

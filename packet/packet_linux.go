@@ -5,9 +5,15 @@ package packet
 import (
 	"context"
 	"fmt"
+	"sync"
 
+	"github.com/gopacket/gopacket"
+	"github.com/gopacket/gopacket/layers"
+	"github.com/gopacket/gopacket/pcap"
 	"github.com/kakeetopius/gscn/internal/bits"
 	"github.com/kakeetopius/gscn/internal/netutil"
+	packet_raw "github.com/mdlayher/packet"
+	"golang.org/x/net/bpf"
 	"golang.org/x/sys/unix"
 )
 
@@ -21,6 +27,17 @@ func GetPacketSender(ctx context.Context, senderType PacketSenderType) (PacketSe
 		return NewLinuxRawIPSender(ctx)
 	default:
 		return nil, fmt.Errorf("unknown sender type: %v", senderType)
+	}
+}
+
+func GetPacketReceiver(ctx context.Context, receiverType PacketReceiverType, filter string, channelCapacity int, receivingInterfaces ...netutil.Interface) (PacketReceiver, error) {
+	switch receiverType {
+	case PacketReceiverTypePcap:
+		return NewPcapPacketReceiver(ctx, filter, channelCapacity, receivingInterfaces...)
+	case PacketReceiverLinkLayer:
+		return NewLinuxPacketReceiver(ctx, filter, channelCapacity, receivingInterfaces...)
+	default:
+		return nil, fmt.Errorf("unknown or unsupported sender type: %v", receiverType)
 	}
 }
 
@@ -228,4 +245,171 @@ func (ps *LinuxRawIPSender) startSender() {
 			}
 		}
 	}
+}
+
+type LinuxPacketReceiver struct {
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	filter     string
+	ifaces     map[int]linuxreceivingInterface
+	packetChan chan Packet
+	receiverWg sync.WaitGroup
+	closed     bool
+}
+
+type linuxreceivingInterface struct {
+	netutil.Interface
+	conn *packet_raw.Conn
+}
+
+func NewLinuxPacketReceiver(ctx context.Context, filter string, channelCapacity int, receivingInterfaces ...netutil.Interface) (*LinuxPacketReceiver, error) {
+	newCtx, cancel := context.WithCancel(ctx)
+	packetReceiver := LinuxPacketReceiver{
+		ctx:        newCtx,
+		cancelFunc: cancel,
+		filter:     filter,
+		ifaces:     make(map[int]linuxreceivingInterface),
+		packetChan: make(chan Packet, channelCapacity),
+	}
+
+	for _, iface := range receivingInterfaces {
+		err := packetReceiver.AddInterface(iface)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &packetReceiver, nil
+}
+
+func (pr *LinuxPacketReceiver) AddInterface(iface netutil.Interface) error {
+	_, found := pr.ifaces[iface.Index]
+	if found {
+		return nil
+	}
+
+	conn, err := getIfaceConn(&iface)
+	if err != nil {
+		return err
+	}
+
+	if pr.filter != "" {
+		bpfFilter, err := bpfRawInstructions(pr.filter, iface.LinkType)
+		if err != nil {
+			return err
+		}
+		err = conn.SetBPF(bpfFilter)
+		if err != nil {
+			return err
+		}
+	}
+
+	receivingIface := linuxreceivingInterface{
+		Interface: iface,
+		conn:      conn,
+	}
+	pr.ifaces[iface.Index] = receivingIface
+
+	go pr.capturePacketsOnInterface(receivingIface)
+
+	return nil
+}
+
+func (pr *LinuxPacketReceiver) Close() error {
+	if pr.closed {
+		return nil
+	}
+
+	pr.cancelFunc()
+	pr.receiverWg.Wait()
+
+	clear(pr.ifaces)
+	close(pr.packetChan)
+
+	pr.closed = true
+	return nil
+}
+
+func (pr *LinuxPacketReceiver) Packets() <-chan Packet {
+	return pr.packetChan
+}
+
+func (pr *LinuxPacketReceiver) capturePacketsOnInterface(iface linuxreceivingInterface) {
+	pr.receiverWg.Add(1)
+
+	defer func() {
+		iface.conn.Close()
+		pr.receiverWg.Done()
+	}()
+
+	ifacePacketChan := make(chan gopacket.Packet, 1024)
+
+	go func() {
+		for {
+			select {
+			case <-pr.ctx.Done():
+				return
+			default:
+			}
+
+			buf := make([]byte, 65535)
+			n, _, err := iface.conn.ReadFrom(buf)
+			if err != nil {
+				continue
+			}
+
+			ifacePacketChan <- gopacket.NewPacket(
+				buf[:n],
+				layers.LayerTypeEthernet,
+				gopacket.Default,
+			)
+		}
+	}()
+
+	for {
+		var packet gopacket.Packet
+		var ok bool
+
+		select {
+		case <-pr.ctx.Done():
+			return
+		case packet, ok = <-ifacePacketChan:
+			if !ok {
+				return
+			}
+		}
+
+		select {
+		case <-pr.ctx.Done():
+			return
+		case pr.packetChan <- Packet{
+			Packet: packet,
+			Iface:  iface.Name,
+		}:
+		}
+	}
+}
+
+func getIfaceConn(iface *netutil.Interface) (*packet_raw.Conn, error) {
+	return packet_raw.Listen(&iface.Interface, packet_raw.Raw, unix.ETH_P_ALL, nil)
+}
+
+func bpfRawInstructions(filter string, ifaceLinktype layers.LinkType) ([]bpf.RawInstruction, error) {
+	bpfIns, err := pcap.CompileBPFFilter(ifaceLinktype, 65535, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	rawIns := make([]bpf.RawInstruction, len(bpfIns))
+
+	for i, insn := range bpfIns {
+		rawIns[i] = bpf.RawInstruction{
+			Op: insn.Code,
+			Jt: insn.Jt,
+			Jf: insn.Jf,
+			K:  insn.K,
+		}
+	}
+
+	return rawIns, nil
 }

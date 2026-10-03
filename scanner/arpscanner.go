@@ -190,7 +190,7 @@ func (s *ARPScanner) runArp(ctx context.Context) error {
 	defer packetSender.Close()
 	s.packetSender = packetSender
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "arp", 1024, s.Interfaces...)
 	if err != nil {
 		return err
 	}
