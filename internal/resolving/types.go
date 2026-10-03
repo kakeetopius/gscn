@@ -2,6 +2,7 @@
 package resolving
 
 import (
+	"context"
 	"fmt"
 	"net/netip"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type Resolver interface {
-	Resolve(netip.Addr) (netutil.MAC, error)
+	Resolve(context.Context, netip.Addr, netutil.Interface) (netutil.MAC, error)
 }
 
 type ErrMacNotFound struct {

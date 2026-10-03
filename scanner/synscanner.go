@@ -396,7 +396,7 @@ func (s *TCPSynScanner) synScanTCPPort(
 					return err
 				}
 			} else {
-				dstMac, err = s.macResolver.Resolve(route.NextHop)
+				dstMac, err = s.macResolver.Resolve(ctx, route.NextHop, route.Interface)
 				if err != nil {
 					if _, ok := errors.AsType[resolving.ErrMacNotFound](err); !ok {
 						return err
