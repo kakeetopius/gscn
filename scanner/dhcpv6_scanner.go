@@ -106,7 +106,7 @@ func (s *DHCPv6Scanner) Scan(ctx context.Context) (ScanResults, error) {
 	defer packetSender.Close()
 	s.packetSender = packetSender
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "udp and (port 546 or port 547)", 32, s.Interfaces...)
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "udp and (port 546 or port 547)", 32, s.Interfaces...)
 	if err != nil {
 		return nil, err
 	}

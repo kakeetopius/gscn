@@ -69,7 +69,7 @@ func (r *resolver) resolveMAC(ctx context.Context, addr netip.Addr, iface netuti
 	// transmitted directly to the destination host, allowing the correct destination MAC to be observed.
 	filter := fmt.Sprintf("dst host %s", addr.String())
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, filter, 5, iface)
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, filter, 5, iface)
 	if err != nil {
 		return nil, err
 	}

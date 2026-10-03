@@ -22,6 +22,16 @@ const (
 	PacketSenderTypeIPLayer
 )
 
+type PacketReceiverType int
+
+const (
+	// PacketReceiverTypePcap receives packets using libpcap.
+	PacketReceiverTypePcap PacketReceiverType = iota
+
+	// PacketReceiverLinkLayer receives packets using Linux AF_PACKET raw sockets.
+	PacketReceiverLinkLayer
+)
+
 // PacketSender defines the interface for sending packets
 type PacketSender interface {
 	// Type returns the packet sender type.

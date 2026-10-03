@@ -201,7 +201,7 @@ func (s *NDPRouterScanner) runNDP(ctx context.Context) error {
 	defer packetSender.Close()
 	s.packetSender = packetSender
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "icmp6 and icmp6[0] == 134", 1024, s.Interfaces...) // 134 is type code for Router Advertisements
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "icmp6 and icmp6[0] == 134", 1024, s.Interfaces...) // 134 is type code for Router Advertisements
 	if err != nil {
 		return err
 	}

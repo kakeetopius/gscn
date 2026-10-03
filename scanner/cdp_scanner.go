@@ -124,7 +124,7 @@ func NewCDPScanner(opts CDPScannerOptions) (*CDPScanner, error) {
 }
 
 func (s *CDPScanner) Scan(ctx context.Context) (ScanResults, error) {
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "ether dst 01:00:0c:cc:cc:cc", 64, s.Interfaces...)
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "ether dst 01:00:0c:cc:cc:cc", 64, s.Interfaces...)
 	if err != nil {
 		return nil, err
 	}

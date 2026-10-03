@@ -125,7 +125,7 @@ type receivingInterface struct {
 	handle *pcap.Handle
 }
 
-func NewPacketReceiver(ctx context.Context, filter string, channelCapacity int, receivingInterfaces ...netutil.Interface) (*PcapPacketReceiver, error) {
+func NewPcapPacketReceiver(ctx context.Context, filter string, channelCapacity int, receivingInterfaces ...netutil.Interface) (*PcapPacketReceiver, error) {
 	newCtx, cancel := context.WithCancel(ctx)
 	packetReceiver := PcapPacketReceiver{
 		ctx:        newCtx,

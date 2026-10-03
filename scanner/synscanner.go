@@ -186,18 +186,18 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	}
 
 	var packetSender packet.PacketSender
+	packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypePcap)
+	if err != nil {
+		return err
+	}
+
 	// localhostPacketSender is necessary coz if packets heading to localhost or any ip on any of the device's interfaces are injected directly at the datalink,
 	// they never reache localhost, so they have to be injected at the ip layer. but the ip layer packet injector only works on linux, so for the other OSes there is
 	// no solution yet
 	var localhostPacketSender packet.PacketSender
 	if runtime.GOOS == "linux" {
-		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypeLinkLayer)
-		if err != nil {
-			return err
-		}
 		localhostPacketSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypeIPLayer)
 	} else {
-		packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypePcap)
 		localhostPacketSender = packetSender
 	}
 	if err != nil {
@@ -206,7 +206,7 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	defer packetSender.Close()
 	defer localhostPacketSender.Close()
 
-	packetReceiver, err := packet.NewPacketReceiver(ctx, "(ip or ip6) and tcp", 1500, allIfaces...)
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "(ip or ip6) and tcp", 1500, allIfaces...)
 	if err != nil {
 		return err
 	}

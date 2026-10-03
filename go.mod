@@ -9,6 +9,7 @@ require (
 	github.com/gaissmai/bart v0.30.0
 	github.com/gopacket/gopacket v1.7.4
 	github.com/jsimonetti/rtnetlink v1.4.2
+	github.com/mdlayher/packet v1.2.0
 	github.com/mdlayher/wifi v0.9.0
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/pterm/pterm v0.12.83
