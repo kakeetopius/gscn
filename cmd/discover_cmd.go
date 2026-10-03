@@ -308,7 +308,7 @@ func discoverCDPCmd() *cobra.Command {
 	var ifaceStrings []string
 
 	cdpCmd := cobra.Command{
-		Use:   "cdp <targets>",
+		Use:   "cdp",
 		Short: "Discover devices on the network advertising with the Cisco Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Load(cfgFile)

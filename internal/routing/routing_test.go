@@ -11,7 +11,8 @@ import (
 
 func TestGeneralRouterLookup(t *testing.T) {
 	r := router{
-		table:         new(RoutingTable),
+		v4Table:       new(RoutingTable),
+		v6Table:       new(RoutingTable),
 		ifaceProvider: netutil.MockInterfaceProvider(),
 	}
 
@@ -101,7 +102,12 @@ func TestGeneralRouterLookup(t *testing.T) {
 	}
 
 	for _, route := range routes {
-		r.table.insertRoute(route)
+		switch {
+		case route.Network.Addr().Is4():
+			r.v4Table.insertRoute(route)
+		case route.Network.Addr().Is6():
+			r.v6Table.insertRoute(route)
+		}
 	}
 
 	tests := []struct {
