@@ -7,12 +7,12 @@ import (
 	"net/netip"
 	"unsafe"
 
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"golang.org/x/sys/windows"
 )
 
-func getRoutingTable() (routingTable, error) {
-	rTable := make(routingTable, 0, 5)
-
+func getRoutingTable(ifaceProvider netutil.NetInterfaceProvider) (*RoutingTable, error) {
+	rTable := new(RoutingTable)
 	var table *windows.MibIpForwardTable2
 	err := windows.GetIpForwardTable2(windows.AF_UNSPEC, &table)
 	if err != nil {
@@ -22,25 +22,39 @@ func getRoutingTable() (routingTable, error) {
 
 	rows := table.Rows()
 	for _, row := range rows {
-		routeAddr, err := convertToAddr(&row.DestinationPrefix.Prefix)
+		prefix, err := convertToAddr(&row.DestinationPrefix.Prefix)
 		if err != nil {
 			return nil, err
 		}
-		routeAddrLen := row.DestinationPrefix.PrefixLength
+		prefixLen := row.DestinationPrefix.PrefixLength
 
 		gateway, err := convertToAddr(&row.NextHop)
 		if err != nil {
 			return nil, err
 		}
 
-		routeEntry := routingTableEntry{
-			IfIndex: int(row.InterfaceIndex),
-			Metric:  row.Metric,
-			Network: netip.PrefixFrom(routeAddr, int(routeAddrLen)),
-			Gateway: gateway,
+		iface, err := ifaceProvider.InterfaceByIndex(int(row.InterfaceIndex))
+		if err != nil {
+			return nil, err
 		}
 
-		rTable = append(rTable, routeEntry)
+		src, err := iface.AddrOnSameNetworkAs(gateway)
+		if err != nil {
+			// Fall back to the first interface ip.
+			ifAddr, err := iface.FirstAddr(netutil.AddressFamilyOf(gateway))
+			if err != nil {
+				return nil, err
+			}
+			src = ifAddr.Addr()
+		}
+
+		rTable.insertRoute(Route{
+			Network:   netip.PrefixFrom(prefix, int(prefixLen)),
+			NextHop:   gateway,
+			Metric:    row.Metric,
+			Interface: iface,
+			SrcAddr:   src,
+		})
 	}
 
 	return rTable, nil

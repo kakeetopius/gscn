@@ -6,12 +6,16 @@ import (
 	"net/netip"
 
 	"github.com/jsimonetti/rtnetlink/rtnl"
+	"github.com/kakeetopius/gscn/internal/netutil"
 	"golang.org/x/sys/unix"
 )
 
-func getRoutingTable() (routingTable, error) {
-	rTable := make(routingTable, 0, 5)
-	rTable = appendLoopbackRoutes(rTable)
+func getRoutingTable(ifaceProvider netutil.NetInterfaceProvider) (*RoutingTable, error) {
+	rTable := new(RoutingTable)
+	err := insertLoopbackRoutes(rTable, ifaceProvider)
+	if err != nil {
+		return nil, err
+	}
 
 	rt, err := rtnl.Dial(nil)
 	if err != nil {
@@ -24,8 +28,6 @@ func getRoutingTable() (routingTable, error) {
 	}
 
 	for _, route := range routes {
-		var prefix netip.Prefix
-		var gateway netip.Addr
 		if route.Table != unix.RT_TABLE_MAIN {
 			continue
 		}
@@ -36,66 +38,97 @@ func getRoutingTable() (routingTable, error) {
 			continue
 		}
 
-		if route.Attributes.Dst == nil {
-			// indicates the route is the default route 0.0.0.0/0 or ::/0
-			prefix = netip.PrefixFrom(netip.IPv4Unspecified(), 0)
-		} else {
+		var prefix netip.Prefix
+		var gateway netip.Addr
+		var prefSrc netip.Addr
+
+		if route.Attributes.Dst != nil {
 			addr, ok := netip.AddrFromSlice(route.Attributes.Dst)
 			if !ok {
 				continue
 			}
 			prefix = netip.PrefixFrom(addr, int(route.DstLength))
+		} else {
+			// indicates the route is the default route 0.0.0.0/0 or ::/0
+			prefix = netip.PrefixFrom(netip.IPv4Unspecified(), 0)
 		}
 
-		if route.Attributes.Gateway == nil {
-			// indicates the target ip is directly connected
-			gateway = netip.IPv4Unspecified()
-		} else {
+		if route.Attributes.Gateway != nil {
 			gw, ok := netip.AddrFromSlice(route.Attributes.Gateway)
 			if !ok {
 				continue
 			}
 			gateway = gw
+		} else {
+			// indicates the target ip is directly connected
+			gateway = netip.IPv4Unspecified()
 		}
 
-		var prefSrc *netip.Addr
+		iface, err := ifaceProvider.InterfaceByIndex(int(route.Attributes.OutIface))
+		if err != nil {
+			return nil, err
+		}
+
 		if route.Attributes.Src != nil {
 			src, ok := netip.AddrFromSlice(route.Attributes.Src)
 			if !ok {
 				continue
 			}
-			prefSrc = &src
+			prefSrc = src
+		} else {
+			// if no src addr is given try to find on the interface on the same network as the gateway
+			src, err := iface.AddrOnSameNetworkAs(gateway)
+			if err != nil {
+				// Fall back to the first interface ip.
+				ifAddr, err := iface.FirstAddr(netutil.AddressFamilyOf(gateway))
+				if err != nil {
+					return nil, err
+				}
+				src = ifAddr.Addr()
+			}
+
+			prefSrc = src
 		}
 
-		rTable = append(rTable, routingTableEntry{
-			Network: prefix,
-			Gateway: gateway,
-			Metric:  route.Attributes.Priority,
-			IfIndex: int(route.Attributes.OutIface),
-			PrefSrc: prefSrc,
+		rTable.insertRoute(Route{
+			Network:   prefix,
+			NextHop:   gateway,
+			Metric:    route.Attributes.Priority,
+			Interface: iface,
+			SrcAddr:   prefSrc,
 		})
+
 	}
 
 	return rTable, nil
 }
 
-func appendLoopbackRoutes(r routingTable) routingTable {
-	lbIP4 := netip.AddrFrom4([4]byte{127, 0, 0, 1})
-	lb6Addr := [16]byte{}
-	lb6Addr[15] = 1
-	lbIP6 := netip.AddrFrom16(lb6Addr)
+func insertLoopbackRoutes(t *RoutingTable, ifaceProvider netutil.NetInterfaceProvider) error {
+	lo, err := netutil.LoopbackInterface(ifaceProvider)
+	if err != nil {
+		return err
+	}
+	t.Insert(
+		netip.MustParsePrefix("127.0.0.1/8"),
+		[]Route{
+			{
+				Network:   netip.MustParsePrefix("127.0.0.1/8"),
+				NextHop:   netip.IPv4Unspecified(),
+				Interface: *lo,
+			},
+		},
+	)
 
-	r = append(r, routingTableEntry{
-		Network: netip.PrefixFrom(lbIP4, 8),
-		Gateway: netip.IPv4Unspecified(),
-		IfIndex: 1,
-	})
+	t.Insert(
+		netip.MustParsePrefix("::1/128"),
+		[]Route{
+			{
+				Network:   netip.MustParsePrefix("::1/128"),
+				NextHop:   netip.IPv6Unspecified(),
+				Interface: *lo,
+			},
+		},
+	)
 
-	r = append(r, routingTableEntry{
-		Network: netip.PrefixFrom(lbIP6, 128),
-		Gateway: netip.IPv6Unspecified(),
-		IfIndex: 1,
-	})
-
-	return r
+	return nil
 }
