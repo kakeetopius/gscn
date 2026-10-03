@@ -136,19 +136,21 @@ func TargetsFromStringWithDNSLookup(s []string) ([]netip.Prefix, map[netip.Addr]
 // Returns an error if the target string cannot be parsed in any of the supported formats.
 func parseTargetString(s string) ([]netip.Prefix, error) {
 	targets := make([]netip.Prefix, 0)
-	if strings.ContainsRune(s, '/') {
+
+	switch {
+	case strings.ContainsRune(s, '/'):
 		addr, err := netip.ParsePrefix(s)
 		if err != nil {
 			return nil, err
 		}
 		targets = append(targets, addr)
-	} else if strings.ContainsRune(s, '-') {
+	case strings.ContainsRune(s, '-'):
 		IPRange, err := parseIPRange(s)
 		if err != nil {
 			return nil, err
 		}
 		targets = append(targets, IPRange...)
-	} else {
+	default:
 		targetStr := fmt.Sprintf("%v/%v", s, 32) // first assume it is IPv4 so use a /32 to indicate a single IP network.
 		addr, err := netip.ParsePrefix(targetStr)
 		if err != nil {
@@ -301,15 +303,16 @@ func parsePortSpec(s string) ([]PortNumber, error) {
 
 	ports := make([]PortNumber, 0, 5)
 
-	if s == "common" {
+	switch {
+	case s == "common":
 		ports = append(ports, CommonPorts...)
-	} else if s == "all" {
+	case s == "all":
 		allPorts := make([]PortNumber, 0, 65535)
 		for i := 1; i < 65536; i++ {
 			allPorts = append(allPorts, PortNumber(i))
 		}
 		return allPorts, nil
-	} else if strings.ContainsRune(s, '-') {
+	case strings.ContainsRune(s, '-'):
 		// Port Range Provided eg 10-20
 		dashIndex := strings.LastIndex(s, "-")
 		if dashIndex == len(s)-1 { // if '-' is at the end
@@ -344,7 +347,7 @@ func parsePortSpec(s string) ([]PortNumber, error) {
 		for i := lower; i <= upper; i++ {
 			ports = append(ports, PortNumber(i))
 		}
-	} else {
+	default:
 		// Single port presumed
 		portNum, err := strconv.Atoi(s)
 		if err != nil {
