@@ -200,9 +200,9 @@ Scan hosts and ports on any network. Scans start with a ping sweep to find live 
 Full TCP connect scan: completes a handshake on every port.
 
 ```sh
-gscn scan tcp 10.1.1.1                                        # scans common ports
-gscn scan tcp 10.1.1.1 -p all                                 # all ports (1-65535)
-gscn scan tcp 10.1.1.1 -p common,90,69                        # common ports plus some others.
+gscn scan tcp 10.1.1.1                                        # scans the default ports specified in the config file (See below) or the builtin default/common ports
+gscn scan tcp 10.1.1.1 -p all                                 # scans all ports (1-65535)
+gscn scan tcp 10.1.1.1 -p common,90,69                        # scans the builtin default/common ports plus some others.
 gscn scan tcp 10.1.1.1/24 -p 1-100 --workers 200
 gscn scan tcp 10.1.1.1 example.com 10.4.4.4-10 -p 22,80,443
 gscn scan tcp 2001:acad::1 -p 80
@@ -252,14 +252,14 @@ gscn wifi -s KPLNet,Office      # only show these SSIDs
 
 ## Configuration
 
-A config file is **only needed** for `--notify`.
-
 Default locations:
 
 - **Linux:** `~/.config/gscn.toml`
 - **Windows:** `%APPDATA%\gscn.toml`
 
 ```toml
+ports = [22, 80, 443, 8096, 53] # default ports to scan when not provided via the command line flag.
+
 [notifier]
 type = "discord" # or "email"
 

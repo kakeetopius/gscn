@@ -9,6 +9,7 @@ import (
 	"github.com/kakeetopius/gscn/internal/config"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func ScanCmd() *cobra.Command {
@@ -49,16 +50,16 @@ func tcpFullScanCmd() *cobra.Command {
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
-			opts.Targets, opts.HostNames, err = getScanTargets(args)
-			if err != nil {
-				return err
-			}
-			opts.TargetPorts, err = getPorts(ports)
+			appConfig, err := config.Load(cfgFile)
 			if err != nil {
 				return err
 			}
 
-			appConfig, err := config.Load(cfgFile)
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
+			if err != nil {
+				return err
+			}
+			opts.TargetPorts, err = getPorts(ports, appConfig)
 			if err != nil {
 				return err
 			}
@@ -108,19 +109,20 @@ func tcpSynScanCmd() *cobra.Command {
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
-			opts.Targets, opts.HostNames, err = getScanTargets(args)
-			if err != nil {
-				return err
-			}
-			opts.TargetPorts, err = getPorts(ports)
-			if err != nil {
-				return err
-			}
-
 			appConfig, err := config.Load(cfgFile)
 			if err != nil {
 				return err
 			}
+
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
+			if err != nil {
+				return err
+			}
+			opts.TargetPorts, err = getPorts(ports, appConfig)
+			if err != nil {
+				return err
+			}
+
 			synScanner, err := scanner.NewTCPSynScanner(opts)
 			if err != nil {
 				return err
@@ -168,16 +170,16 @@ func udpScanCmd() *cobra.Command {
 			}
 
 			var err error
-			opts.Targets, opts.HostNames, err = getScanTargets(args)
-			if err != nil {
-				return err
-			}
-			opts.TargetPorts, err = getPorts(ports)
+			appConfig, err := config.Load(cfgFile)
 			if err != nil {
 				return err
 			}
 
-			appConfig, err := config.Load(cfgFile)
+			opts.Targets, opts.HostNames, err = getScanTargets(args)
+			if err != nil {
+				return err
+			}
+			opts.TargetPorts, err = getPorts(ports, appConfig)
 			if err != nil {
 				return err
 			}
@@ -278,8 +280,13 @@ func getScanTargets(targetStrs []string) ([]netip.Prefix, map[netip.Addr]string,
 }
 
 // getPorts takes a string of comma separated ports and returns a slice of the port numbers as uints. It also returns an error if there is an error parsing the ports.
-func getPorts(portString string) (ports []scanner.PortNumber, err error) {
+func getPorts(portString string, appConfig *viper.Viper) (ports []scanner.PortNumber, err error) {
 	if portString == "" {
+		// if no ports are given, then try to get the ports to scan from the configuration.
+		portsFromConfig := appConfig.GetIntSlice("ports")
+		for _, p := range portsFromConfig {
+			ports = append(ports, scanner.PortNumber(p))
+		}
 		return
 	}
 
