@@ -3,51 +3,36 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 
 	goversion "github.com/caarlos0/go-version"
+	"github.com/kakeetopius/gscn/internal/config"
 	"github.com/spf13/cobra"
-)
-
-var (
-	cfgFile          string
-	sendNotification bool
-	debug            bool
-	outputFile       string
-	outputJSON       bool
-	jsonPretty       bool
+	"github.com/spf13/viper"
 )
 
 // rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:          "gscn",
-	Short:        "A simple command line tool to carry out different operations on a network.",
-	SilenceUsage: true,
-	Version:      cleanVersion(buildVersion().GitVersion),
-}
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
+func Command() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:          "gscn",
+		Short:        "A simple command line tool to carry out different operations on a network.",
+		SilenceUsage: true,
+		Version:      cleanVersion(buildVersion().GitVersion),
 	}
-}
-
-func init() {
 	rootCmd.Flags().SortFlags = false
 	rootCmd.PersistentFlags().SortFlags = false
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/gscn.toml)")
-	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Run in debug mode")
-	rootCmd.PersistentFlags().StringVarP(&outputFile, "out", "o", "", "Save scan results to an output file")
-	rootCmd.PersistentFlags().BoolVarP(&outputJSON, "json", "j", false, "Print scan results in json format.")
-	rootCmd.PersistentFlags().BoolVarP(&jsonPretty, "pretty", "P", false, "Print scan results in pretty json format.")
-	rootCmd.PersistentFlags().BoolVar(&sendNotification, "notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
+	rootCmd.PersistentFlags().String("config", "", "config file (default is $HOME/.config/gscn.toml)")
+	rootCmd.PersistentFlags().Bool("debug", false, "Run in debug mode")
+	rootCmd.PersistentFlags().StringP("out", "o", "", "Save scan results to an output file")
+	rootCmd.PersistentFlags().BoolP("json", "j", false, "Print scan results in json format.")
+	rootCmd.PersistentFlags().BoolP("pretty", "P", false, "Print scan results in pretty json format.")
+	rootCmd.PersistentFlags().Bool("notify", false, "Send scan results via a configured notifier in $HOME/config/gscn.toml file")
 
 	rootCmd.MarkFlagFilename("out")
+
 	rootCmd.AddCommand(
 		DiscoverCmd(),
 		ScanCmd(),
@@ -56,6 +41,24 @@ func init() {
 
 	if runtime.GOOS == "linux" {
 		rootCmd.AddCommand(WifiCmd())
+	}
+
+	return rootCmd
+}
+
+// rootCmdConfigSetup returns a function that binds some of the global flags to the configuration.
+func rootCmdConfigSetup(cmd *cobra.Command) config.ConfigSetupFunc {
+	return func(v *viper.Viper) {
+		err := v.BindPFlag("debug", cmd.Flags().Lookup("debug"))
+		cobra.CheckErr(err)
+		err = v.BindPFlag("out", cmd.Flags().Lookup("out"))
+		cobra.CheckErr(err)
+		err = v.BindPFlag("json", cmd.Flags().Lookup("json"))
+		cobra.CheckErr(err)
+		err = v.BindPFlag("pretty", cmd.Flags().Lookup("pretty"))
+		cobra.CheckErr(err)
+		err = v.BindPFlag("notify", cmd.Flags().Lookup("notify"))
+		cobra.CheckErr(err)
 	}
 }
 
@@ -71,6 +74,11 @@ func versionCmd() *cobra.Command {
 			fmt.Println(version)
 		},
 	}
+}
+
+func configPath(cmd *cobra.Command) string {
+	config, _ := cmd.Flags().GetString("config")
+	return config
 }
 
 // buildVersion constructs and returns the application's version information.

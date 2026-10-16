@@ -17,18 +17,16 @@ func WifiCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			wifiScanner := scanner.NewWiFiScanner(opts)
 
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
 
-			return scanner.DoScan(context.Background(), wifiScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), wifiScanner, config)
 		},
 	}
 

@@ -9,7 +9,6 @@ import (
 	"github.com/kakeetopius/gscn/internal/config"
 	"github.com/kakeetopius/gscn/scanner"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func ScanCmd() *cobra.Command {
@@ -50,7 +49,12 @@ func tcpFullScanCmd() *cobra.Command {
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
-			appConfig, err := config.Load(cfgFile)
+
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -59,20 +63,14 @@ func tcpFullScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			opts.TargetPorts, err = getPorts(ports, appConfig)
+			opts.TargetPorts, err = getPorts(ports, config)
 			if err != nil {
 				return err
 			}
 
 			tcpScanner := scanner.NewTCPFullScanner(opts)
 
-			return scanner.DoScan(context.Background(), tcpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), tcpScanner, config)
 		},
 	}
 
@@ -109,7 +107,12 @@ func tcpSynScanCmd() *cobra.Command {
 			if opts.Workers > 500 {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
-			appConfig, err := config.Load(cfgFile)
+
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -118,7 +121,7 @@ func tcpSynScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			opts.TargetPorts, err = getPorts(ports, appConfig)
+			opts.TargetPorts, err = getPorts(ports, config)
 			if err != nil {
 				return err
 			}
@@ -128,13 +131,7 @@ func tcpSynScanCmd() *cobra.Command {
 				return err
 			}
 
-			return scanner.DoScan(context.Background(), synScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), synScanner, config)
 		},
 	}
 
@@ -169,8 +166,11 @@ func udpScanCmd() *cobra.Command {
 				return fmt.Errorf("number of workers cannot go above 500")
 			}
 
-			var err error
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -179,19 +179,13 @@ func udpScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			opts.TargetPorts, err = getPorts(ports, appConfig)
+			opts.TargetPorts, err = getPorts(ports, config)
 			if err != nil {
 				return err
 			}
 
 			udpScanner := scanner.NewUDPScanner(opts)
-			return scanner.DoScan(context.Background(), udpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), udpScanner, config)
 		},
 	}
 	udpCmd.Flags().SortFlags = false
@@ -229,19 +223,17 @@ func pingScanCmd() *cobra.Command {
 			}
 			opts.SortResults = true
 
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
 
 			pingScanner := scanner.NewPingScanner(opts)
-			return scanner.DoScan(context.Background(), pingScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), pingScanner, config)
 		},
 	}
 
@@ -280,11 +272,10 @@ func getScanTargets(targetStrs []string) ([]netip.Prefix, map[netip.Addr]string,
 }
 
 // getPorts takes a string of comma separated ports and returns a slice of the port numbers as uints. It also returns an error if there is an error parsing the ports.
-func getPorts(portString string, appConfig *viper.Viper) (ports []scanner.PortNumber, err error) {
+func getPorts(portString string, appConfig *config.Config) (ports []scanner.PortNumber, err error) {
 	if portString == "" {
 		// if no ports are given, then try to get the ports to scan from the configuration.
-		portsFromConfig := appConfig.GetIntSlice("ports")
-		for _, p := range portsFromConfig {
+		for _, p := range appConfig.Ports {
 			ports = append(ports, scanner.PortNumber(p))
 		}
 		return

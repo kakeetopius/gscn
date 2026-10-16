@@ -260,21 +260,18 @@ Default locations:
 ```toml
 ports = [22, 80, 443, 8096, 53] # default ports to scan when not provided via the command line flag.
 
-[notifier]
-type = "discord" # or "email"
-
-[notifier.discord]
+[notifiers.discord]
+enabled = true
 token = "your_bot_token"
 channel_id = "your_channel_id"
 channel_name = "channel_name"
 
-# OR
-
-[notifier.email]
+[notifiers.email]
+enabled = false
 sender_address = "your_email@gmail.com"
 receiver_address = "recipient@gmail.com"
-sender_name = "gscn network scanner"
-app_password = "your_app_password"
+user_name = "gscn network scanner"
+password = "your_app_password"
 ```
 
 Use a custom config file:
