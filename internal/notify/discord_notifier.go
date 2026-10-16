@@ -13,9 +13,13 @@ type DiscordNotifier struct {
 	ChannelName string
 }
 
-func (n DiscordNotifier) SendMessage(ctx context.Context, message string) error {
+func (d DiscordNotifier) Name() string {
+	return "discord"
+}
+
+func (d DiscordNotifier) SendMessage(ctx context.Context, message string) error {
 	// BUG: fails when message is above 4000 characters.
-	token := n.Token
+	token := d.Token
 	if token == "" {
 		return fmt.Errorf("discord token is required to send messages to a discord server")
 	}
@@ -25,9 +29,9 @@ func (n DiscordNotifier) SendMessage(ctx context.Context, message string) error 
 	}
 	defer discord.Close()
 
-	channelID := n.ChannelID
+	channelID := d.ChannelID
 	if channelID == "" {
-		channelName := n.ChannelName
+		channelName := d.ChannelName
 		if channelName == "" {
 			return fmt.Errorf("no channel id or channel name given")
 		}

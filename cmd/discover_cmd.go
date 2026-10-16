@@ -43,7 +43,11 @@ func discoverArpCmd() *cobra.Command {
 		Use:   "arp <targets>",
 		Short: "Discover hosts on the local network using the Address Resolution Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -66,13 +70,7 @@ func discoverArpCmd() *cobra.Command {
 				return err
 			}
 
-			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), arpScanner, config)
 		},
 	}
 
@@ -111,7 +109,11 @@ func discoverNDPNeighborsCmd() *cobra.Command {
 		Aliases: []string{"neigh", "n"},
 		Short:   "Discover IPv6 neighbours on the local network using the ICMPv6 Neighbour Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -135,13 +137,7 @@ func discoverNDPNeighborsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return scanner.DoScan(context.Background(), ndpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), ndpScanner, config)
 		},
 	}
 
@@ -169,7 +165,11 @@ func discoverNDPRouters() *cobra.Command {
 		Aliases: []string{"r"},
 		Short:   "Discover IPv6 enabled routers on the local network using the ICMPv6 Neighbour Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -188,13 +188,7 @@ func discoverNDPRouters() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return scanner.DoScan(context.Background(), ndpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), ndpScanner, config)
 		},
 	}
 
@@ -219,7 +213,11 @@ func discoverDHCPv4Cmd() *cobra.Command {
 		Aliases: []string{"dhcp4"},
 		Short:   "Discover DHCPv4 servers on the connected networks.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -231,18 +229,12 @@ func discoverDHCPv4Cmd() *cobra.Command {
 			opts.Interfaces = ifaces
 			opts.Verbose = true
 
-			arpScanner, err := scanner.NewDHCPv4ServerScanner(opts)
+			dhcpScanner, err := scanner.NewDHCPv4ServerScanner(opts)
 			if err != nil {
 				return err
 			}
 
-			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), dhcpScanner, config)
 		},
 	}
 
@@ -265,7 +257,11 @@ func discoverDHCPv6Cmd() *cobra.Command {
 		Use:   "dhcp6",
 		Short: "Discover DHCPv6 servers on the connected networks.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -277,18 +273,12 @@ func discoverDHCPv6Cmd() *cobra.Command {
 			opts.Interfaces = ifaces
 			opts.Verbose = true
 
-			arpScanner, err := scanner.NewDHCPv6ServerScanner(opts)
+			dhcp6Scanner, err := scanner.NewDHCPv6ServerScanner(opts)
 			if err != nil {
 				return err
 			}
 
-			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), dhcp6Scanner, config)
 		},
 	}
 
@@ -311,7 +301,11 @@ func discoverCDPCmd() *cobra.Command {
 		Use:   "cdp",
 		Short: "Discover devices on the network advertising with the Cisco Discovery Protocol.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Load(cfgFile)
+			config, err := config.New(configPath(cmd), rootCmdConfigSetup(cmd))
+			if err != nil {
+				return err
+			}
+			err = config.Load()
 			if err != nil {
 				return err
 			}
@@ -323,18 +317,12 @@ func discoverCDPCmd() *cobra.Command {
 			opts.Interfaces = ifaces
 			opts.Verbose = true
 
-			arpScanner, err := scanner.NewCDPScanner(opts)
+			cdpScanner, err := scanner.NewCDPScanner(opts)
 			if err != nil {
 				return err
 			}
 
-			return scanner.DoScan(context.Background(), arpScanner, scanner.ScanOptions{
-				ResultsOutputFile: outputFile,
-				PrintJSON:         outputJSON,
-				PrintJSONPretty:   jsonPretty,
-				Notify:            sendNotification,
-				Config:            appConfig,
-			})
+			return DoScan(context.Background(), cdpScanner, config)
 		},
 	}
 

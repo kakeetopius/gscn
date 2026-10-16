@@ -4,62 +4,57 @@ package notify
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/pterm/pterm"
-	"github.com/spf13/viper"
 )
 
 // Notifier defines the interface for sending notification messages.
 type Notifier interface {
+	// Name identifies the backend notifier.
+	Name() string
 	// SendMessage sends a notification message and returns an error if it fails.
 	SendMessage(ctx context.Context, message string) error
 }
 
-// NotifierFromConfig returns a Notifier instance based on the name given in the config
-// It takes a notifier type string and a Viper configuration, and returns
-// the corresponding notifier properly configured using settings from viper or an error if the type is not supported.
-func NotifierFromConfig(config *viper.Viper) (Notifier, error) {
-	if config == nil {
-		return nil, fmt.Errorf("viper config not initialised")
-	}
-
-	notifierName := config.GetString("notifier.type")
-	if notifierName == "" {
-		return nil, fmt.Errorf("no notifier type set in the config file")
-	}
-
-	switch notifierName {
-	case "email":
-		return EmailNotifier{
-			FromAddress: config.GetString("notifier.email.sender_address"),
-			ToAddress:   config.GetString("notifier.email.receiver_address"),
-			SenderName:  config.GetString("notifier.email.sender_name"),
-			AppPassword: config.GetString("notifier.email.app_password"),
-		}, nil
-	case "discord":
-		return DiscordNotifier{
-			Token:       config.GetString("notifier.discord.token"),
-			ChannelID:   config.GetString("notifier.discord.channel_id"),
-			ChannelName: config.GetString("notifier.discord.channel_name"),
-		}, nil
-	}
-	return nil, fmt.Errorf("notifier %v not supported", notifierName)
+type Dispatcher struct {
+	notifiers []Notifier
 }
 
-func SendMessageWithNotifier(ctx context.Context, msg fmt.Stringer, notifier Notifier) (err error) {
-	spinner, err := pterm.DefaultSpinner.Start("Sending Results....")
-	if err != nil {
-		return err
+func NewDispatcher(notifiers ...Notifier) *Dispatcher {
+	return new(Dispatcher{notifiers: notifiers})
+}
+
+func (d *Dispatcher) Dispatch(ctx context.Context, msg fmt.Stringer) (err error) {
+	if len(d.notifiers) == 0 {
+		return fmt.Errorf("error: dispatcher has no notifiers to dispatch to.")
 	}
+	var wg sync.WaitGroup
 
-	defer func() {
-		if err != nil {
-			spinner.Fail()
-		} else {
-			spinner.Success("Results Sent")
-		}
-	}()
+	multiWriter := pterm.DefaultMultiPrinter
+	spinners := make([]*pterm.SpinnerPrinter, len(d.notifiers))
 
-	err = notifier.SendMessage(ctx, msg.String())
-	return
+	for i, n := range d.notifiers {
+		spinner, _ := pterm.DefaultSpinner.WithWriter(multiWriter.NewWriter()).Start("Sending results via ", n.Name())
+		spinners[i] = spinner
+	}
+	multiWriter.Start()
+
+	for i, n := range d.notifiers {
+		wg.Add(1)
+		go func(n Notifier) {
+			defer wg.Done()
+
+			err := n.SendMessage(ctx, msg.String())
+			if err != nil {
+				spinners[i].Fail("Error sending results via ", n.Name(), ": ", err)
+			} else {
+				spinners[i].Success("Results sent successfully via ", n.Name())
+			}
+		}(n)
+	}
+	wg.Wait()
+	multiWriter.Stop()
+
+	return nil
 }

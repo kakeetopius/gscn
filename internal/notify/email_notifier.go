@@ -8,10 +8,14 @@ import (
 )
 
 type EmailNotifier struct {
-	FromAddress string
-	ToAddress   string
-	SenderName  string
-	AppPassword string
+	SendAddress string
+	RcptAddress string
+	UserName    string
+	Password    string
+}
+
+func (n EmailNotifier) Name() string {
+	return "email"
 }
 
 // SendMessage sends an email notification with the provided message content.
@@ -20,19 +24,19 @@ type EmailNotifier struct {
 // Returns an error if email construction, client creation, or sending fails.
 func (n EmailNotifier) SendMessage(ctx context.Context, message string) error {
 	messageObj := mail.NewMsg()
-	username := n.SenderName
+	username := n.UserName
 	if username == "" {
 		username = "gscn network scanner"
 	}
-	senderAddress := n.FromAddress
+	senderAddress := n.SendAddress
 	if senderAddress == "" {
 		return fmt.Errorf("no sender address given")
 	}
-	receiver := n.ToAddress
+	receiver := n.RcptAddress
 	if receiver == "" {
 		return fmt.Errorf("no receiver address given")
 	}
-	password := n.AppPassword
+	password := n.Password
 	if password == "" {
 		return fmt.Errorf("no app password given")
 	}
