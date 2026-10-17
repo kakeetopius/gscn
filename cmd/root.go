@@ -12,8 +12,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// rootCmd represents the base command when called without any subcommands
-
 func Command() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:          "gscn",
