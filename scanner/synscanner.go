@@ -184,6 +184,13 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	usableIfaces := make([]netutil.Interface, 0)
+	for _, iface := range allIfaces {
+		if ierr := netutil.VerifyInterface(&iface); ierr != nil {
+			continue
+		}
+		usableIfaces = append(usableIfaces, iface)
+	}
 
 	var packetSender packet.PacketSender
 	packetSender, err = packet.GetPacketSender(ctx, packet.PacketSenderTypePcap)
@@ -206,7 +213,7 @@ func (s *TCPSynScanner) runTCPSynScan(ctx context.Context) (err error) {
 	defer packetSender.Close()
 	defer localhostPacketSender.Close()
 
-	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "(ip or ip6) and tcp", 1500, allIfaces...)
+	packetReceiver, err := packet.NewPcapPacketReceiver(ctx, "(ip or ip6) and tcp", 1500, usableIfaces...)
 	if err != nil {
 		return err
 	}

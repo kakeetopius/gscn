@@ -15,7 +15,7 @@ import (
 
 func DoScan(ctx context.Context, scanner scanner.Scanner, config *config.Config) error {
 	if config == nil {
-		return fmt.Errorf("config not initialised.")
+		return fmt.Errorf("config not initialised")
 	}
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)

@@ -32,10 +32,7 @@ func InterfaceProvider() (*realNetInterfaceProvider, error) {
 		netIface.allAddresses = make([]netip.Prefix, 0, len(addrs))
 		netIface.AppendNetAddr(addrs...)
 
-		linktype, err := GetLinktypeOf(netIface.PcapName)
-		if err != nil {
-			return nil, err
-		}
+		linktype, _ := GetLinktypeOf(netIface.PcapName)
 		netIface.LinkType = linktype
 
 		r.interfaces = append(r.interfaces, netIface)

@@ -27,7 +27,7 @@ func NewDispatcher(notifiers ...Notifier) *Dispatcher {
 
 func (d *Dispatcher) Dispatch(ctx context.Context, msg fmt.Stringer) (err error) {
 	if len(d.notifiers) == 0 {
-		return fmt.Errorf("error: dispatcher has no notifiers to dispatch to.")
+		return fmt.Errorf("error: dispatcher has no notifiers to dispatch to")
 	}
 	var wg sync.WaitGroup
 
