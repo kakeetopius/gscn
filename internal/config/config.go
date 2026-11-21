@@ -34,10 +34,9 @@ type EmailNotifierConfig struct {
 }
 
 type DiscordNotifierConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	Token       string `mapstructure:"token"`
-	ChannelID   string `mapstructure:"channel_id"`
-	ChannelName string `mapstructure:"channel_name"`
+	Enabled   bool   `mapstructure:"enabled"`
+	Token     string `mapstructure:"token"`
+	ChannelID string `mapstructure:"channel_id"`
 }
 
 // ConfigSetupFunc configures a Viper instance with command-specific flags,
@@ -93,8 +92,8 @@ func (c *Config) Validate() error {
 		if d.Token == "" {
 			return fmt.Errorf("discord notifier enabled but token is empty.")
 		}
-		if d.ChannelID == "" && d.ChannelName == "" {
-			return fmt.Errorf("discord notifier enabled but neither the channel id nor channel name is given.")
+		if d.ChannelID == "" {
+			return fmt.Errorf("discord notifier enabled but the channel id is not given.")
 		}
 	}
 

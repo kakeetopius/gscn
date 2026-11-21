@@ -248,7 +248,6 @@ ports = [22, 80, 443, 8096, 53] # default ports to scan when not provided via th
 enabled = true
 token = "your_bot_token"
 channel_id = "your_channel_id"
-channel_name = "channel_name"
 
 [notifiers.email]
 enabled = false

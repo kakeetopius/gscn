@@ -96,9 +96,8 @@ func buildNotifiers(c *config.Config) []notify.Notifier {
 	if c.Notifiers.Discord.Enabled {
 		d := c.Notifiers.Discord
 		ns = append(ns, notify.DiscordNotifier{
-			Token:       d.Token,
-			ChannelID:   d.ChannelID,
-			ChannelName: d.ChannelName,
+			Token:     d.Token,
+			ChannelID: d.ChannelID,
 		})
 	}
 
